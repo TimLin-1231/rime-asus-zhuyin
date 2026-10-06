@@ -18,14 +18,35 @@
 | `reports/eval_history.jsonl` | 歷次評估結果 |
 | `backups/` | 改動前的完整備份（不進 git） |
 
+## 功能速查
+| 操作 | 效果 |
+|---|---|
+| 打注音 | 首選直接出現在行內；小框只顯示首選，還沒打聲調時顯示注音 |
+| ↓ | 展開候選（1–9 選字、空白鍵選反白、Esc 收合） |
+| 連按兩下 Shift／Ctrl+Space | 切換中英（會先送出已打好的中文） |
+| `` ` `` | 符號小鍵盤：按對應的鍵輸出符號；Tab 切換一般／數學／特殊 |
+| Ctrl+, . ' ; | ， 。 、 ； |
+| Ctrl+Shift+; / 1 [ ] 9 0 | ： ？ ！ 『 』 （ ） |
+| ( ) | 半形括號（全形用 Ctrl+Shift+9/0） |
+| 注音縮寫，例如 ㄉㄓ | 快捷文字本的展開文字（`rime/shortcuts.txt`） |
+
+## 詞庫
+- **個人詞彙**：`lexicon/personal_words.txt`（不進 git），一行一個詞：`詞<Tab>注音<Tab>來源`，注音可以留空，會自動查。
+  第一次使用時由 `tools/import_personal.py` 從華碩、新注音、舊小狼毫的匯出檔合併產生。
+- **台灣補充詞庫**：從教育部國語辭典產生。補上台灣讀音（晚上 ㄕㄤˋ）、台灣寫法（螢幕勝過熒幕），以及缺漏的詞。
+- 修改詞庫後執行 `python tools/build_lexicon.py`，再重新部署。
+- **快捷文字本**：`rime/shortcuts.txt`（不進 git，範例在 `shortcuts.example.txt`）。改完要重新部署。
+- **符號鍵盤配置**：`rime/asus_zhuyin.schema.yaml` 的 `asus_symbols`。
+
 ## 部署
 1. 修改 `rime/` 裡的檔案。
 2. 系統匣的小狼毫圖示按右鍵 →「**重新部署**」。
-3. 如果是改了 `RimeUserDir`，或是第一次在新電腦上使用：先跑 `python tools/fetch_models.py`，再重新啟動小狼毫服務（重開機最簡單），然後重新部署。
+3. 如果是改了 `RimeUserDir`，或是第一次在新電腦上使用：先跑 `python tools/fetch_models.py` 和 `python tools/build_lexicon.py`，再重新啟動小狼毫服務（重開機最簡單），然後重新部署。
 
 ## 測試
 ```
 C:\Users\User\anaconda3\python.exe tests\test_stage1.py
+C:\Users\User\anaconda3\python.exe tests\test_stage2.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
 ```
 評估表格的括號裡是**同一版評估集**上一次的數字，可以直接前後對照。

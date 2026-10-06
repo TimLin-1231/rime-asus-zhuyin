@@ -31,3 +31,10 @@ rime/user.yaml
 
 # Eval sets derived from personal exports
 tests/eval/private/
+
+# Personal lexicon and generated dictionaries derived from it / from MOE data
+lexicon/personal_words.txt
+lexicon/english_words.txt
+rime/shortcuts.txt
+rime/terra_pinyin.personal.dict.yaml
+rime/terra_pinyin.tw.dict.yaml

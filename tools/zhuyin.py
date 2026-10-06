@@ -48,12 +48,28 @@ def pinyin_to_symbols(pinyin: str) -> str:
     return _internal(pinyin).translate(_TO_SYMBOLS)
 
 
+# One syllable: optional leading neutral dot, [initial][medial][final], tone.
+_SYLLABLE = re.compile(r"˙?[ㄅ-ㄙ]?[ㄧㄨㄩ]?[ㄚ-ㄦ]?[ˉˊˇˋ˙]?")
+
+
+def split_syllables(zhuyin: str) -> list[str]:
+    """Split unseparated Zhuyin by syllable structure, not by tone marks."""
+    out, pos = [], 0
+    while pos < len(zhuyin):
+        m = _SYLLABLE.match(zhuyin, pos)
+        if not m or m.end() == pos:
+            raise ValueError(f"bad zhuyin {zhuyin!r} at {pos}")
+        out.append(m.group())
+        pos = m.end()
+    return out
+
+
 def symbols_to_keys(zhuyin: str) -> str:
     """'ㄋㄧˇㄏㄠˇ' or 'ㄋㄧˇ ㄏㄠˇ' -> 'su3cl3'. Neutral-tone ˙ may lead a syllable."""
     if re.search(r"[ 　]", zhuyin.strip()):
         syllables = re.split(r"[ 　]+", zhuyin.strip())
-    else:  # unseparated (ASUS export): every syllable ends with a tone mark
-        syllables = re.findall(r"˙?[ㄅ-ㄩ]+[ˉˊˇˋ˙]?", zhuyin)
+    else:  # unseparated (ASUS export, e.g. 'ㄌㄞˊ˙ㄉㄜㄐㄧˊ')
+        syllables = split_syllables(zhuyin)
     out = []
     for syl in syllables:
         if syl.startswith("˙"):
@@ -164,6 +180,56 @@ def reading_keys(text: str, standard: str = "moe") -> tuple[list[str], list[str]
             sources.append(f"{text[i]}:char")
             i += 1
     return keys, sources
+
+
+@lru_cache(maxsize=1)
+def keys_to_pinyin_map() -> dict[str, str]:
+    """Dachen key sequence of one syllable -> terra_pinyin syllable (e.g. 'cl3' -> 'hao3')."""
+    path = weasel_root() / "data" / "terra_pinyin.dict.yaml"
+    out: dict[str, str] = {}
+    body = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not body:
+            body = line == "..."
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2 and len(parts[0]) == 1:
+            out.setdefault(pinyin_to_keys(parts[1]), parts[1])
+    return out
+
+
+def zhuyin_to_pinyin(zhuyin: str) -> list[str] | None:
+    """'ㄋㄧˇ ㄏㄠˇ' -> ['ni3', 'hao3']; None if a syllable is unknown to terra_pinyin."""
+    table = keys_to_pinyin_map()
+    out = []
+    for syl in re.split(r"[ 　]+", zhuyin.strip()):
+        p = table.get(symbols_to_keys(syl))
+        if p is None:
+            return None
+        out.append(p)
+    return out
+
+
+def essay_weights() -> dict[str, int]:
+    path = weasel_root() / "data" / "essay.txt"
+    out: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        w, _, n = line.partition("\t")
+        if n:
+            out[w] = int(n)
+    return out
+
+
+def terra_char_readings() -> dict[str, str]:
+    return _dictionary()[0]
+
+
+def terra_word_readings() -> dict[str, str]:
+    return _dictionary()[1]
+
+
+def moe_words() -> dict[str, list[str]]:
+    return _moe_words()
 
 
 def reading(text: str) -> list[str]:

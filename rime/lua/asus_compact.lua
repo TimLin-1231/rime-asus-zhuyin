@@ -6,7 +6,8 @@
 -- syllable (no tone key yet), its Zhuyin reading is shown as the comment,
 -- like the blue reading bubble in ASUS Smart Input.
 -- Pressing Down (handled in asus_keys.lua) sets the _asus_expanded option and
--- this filter then passes the full candidate list through untouched.
+-- this filter then passes the full candidate list through untouched. The `
+-- symbol keyboard (asus_symbols.lua) is always shown in full.
 --
 -- Must be the last filter.
 
@@ -38,7 +39,8 @@ end
 
 local function func(input, env)
   local ctx = env.engine.context
-  if ctx:get_option(EXPANDED) then
+  local seg = ctx.composition:back()
+  if ctx:get_option(EXPANDED) or (seg and seg:has_tag("asus_symbol")) then
     for cand in input:iter() do
       yield(cand)
     end

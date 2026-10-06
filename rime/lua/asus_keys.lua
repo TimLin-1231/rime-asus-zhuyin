@@ -139,6 +139,9 @@ local function func(key, env)
   if ctx:get_option("ascii_mode") or not ctx:is_composing() then
     return kNoop
   end
+  if ctx.input:sub(1, 1) == "`" then
+    return kNoop  -- symbol keyboard (asus_symbols.lua) owns these keys
+  end
 
   -- Accidental Shift while composing Zhuyin --------------------------------
   if key:shift() and not key:ctrl() and not key:alt()

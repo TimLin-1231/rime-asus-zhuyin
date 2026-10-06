@@ -2,26 +2,27 @@
 # encoding: utf-8
 #
 # ASUS-style Zhuyin, built on the stock bopomofo_tw schema (standard Dachen
-# layout, terra_pinyin dictionary, octagram via grammar:/hant).
-# Using the terra_pinyin dictionary keeps learned data in terra_pinyin.userdb.
+# layout, octagram via grammar:/hant). Dictionary terra_pinyin.asus keeps
+# learned data in terra_pinyin.userdb.
 
 __include: bopomofo_tw.schema:/
 
 schema:
   schema_id: asus_zhuyin
   name: 華碩風注音
-  version: "0.1.0"
+  version: "0.2.0"
   author:
     - TimLin-1231
   description: |
     華碩智慧輸入法風格的注音方案（大千式鍵盤、臺灣字形）。
     行內預覽首選、精簡候選泡泡；↓ 展開候選、1–9 選字。
     連按兩下 Shift 或 Ctrl+Space 切換中英。
-  dependencies:
-    - stroke
+    ` 符號小鍵盤；Ctrl+標點直接輸出全形標點；注音縮寫快捷文字本。
+  dependencies: []
 
 engine:
   processors:
+    - lua_processor@*asus_symbols*processor  # ` symbol keyboard, Ctrl+punctuation
     - lua_processor@*asus_keys  # double-Shift / Ctrl+Space, compact menu keys
     - ascii_composer
     - recognizer
@@ -39,14 +40,27 @@ engine:
     - fallback_segmentor
   translators:
     - punct_translator
-    - table_translator@custom_phrase
-    - reverse_lookup_translator
+    - lua_translator@*asus_symbols*translator
+    - lua_translator@*asus_shortcuts  # rime/shortcuts.txt
     - script_translator
   filters:
     - simplifier@zh_hans
     - simplifier@zh_hant_tw
     - uniquifier
     - lua_filter@*asus_compact  # must stay last
+
+# Half-width mode (the default, as in ASUS Smart Input) types ASCII
+# parentheses; full-width （） stay on Ctrl+Shift+9/0 and the ` keyboard.
+# Patched (replaced) rather than merged: the stock values are scalars.
+__patch:
+  - "punctuator/half_shape/(": { commit: "(" }
+    "punctuator/half_shape/)": { commit: ")" }
+  - asus_zhuyin.custom:/patch?
+
+recognizer:
+  patterns:
+    asus_symbol: "^`$"
+    reverse_lookup: "(?!)"  # stroke reverse lookup removed; ` opens symbols
 
 menu:
   page_size: 9
@@ -58,9 +72,36 @@ menu:
   alternative_select_labels: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
 translator:
+  # terra_pinyin + Taiwan MOE supplement + personal words (tools/build_lexicon.py).
+  # Learned data stays in terra_pinyin.userdb.
+  dictionary: terra_pinyin.asus
   prism: asus_zhuyin
   # librime's keyboard-adjacency corrector stays off: on the eval set it cut
   # clean-sentence accuracy from 76% to 54% (it "corrects" valid input) while
   # only lifting typo sentences from 0% to 22%. Typo handling is done in Lua
   # instead, only when the input is not valid Zhuyin (stage 3).
   enable_correction: false
+
+# Symbol keyboard for ` (lua/asus_symbols.lua). Each item is "<key><symbol>",
+# items separated by spaces; uppercase / shifted keys are typed with Shift.
+# "一般" follows the ASUS Smart Input layout.
+asus_symbols:
+  categories:
+    - name: 一般
+      layout: '`｀ 1１ 2２ 3３ 4４ 5５ 6６ 7７ 8８ 9９ 0０ -－ =＝
+        q《 w》 e〈 r〉 t〝 y〞 u【 i】 o（ p） [〔 ]〕 \＼
+        a※ s＊ d○ f● g「 h」 j『 k』 l： ;； ''、
+        z！ x？ c… v⋯ b— n｛ m｝ ,， .。 /／'
+    - name: 數學
+      layout: '`≈ 1∑ 2∏ 3∫ 4∂ 5∇ 6∞ 7√ 8× 9∈ 0∉ -± =≠
+        qθ wω eε rρ tτ yψ uυ iι oο pπ [⊆ ]⊇ \∖
+        aα sσ dδ fφ gγ hη jξ kκ lλ ;∴ ''′
+        zζ xχ c∠ v∨ bβ nν mμ ,≤ .≥ /÷
+        !¬ @² #³ $∀ %‰ ^∃ &∧ *· (⊂ )⊃ _∓ :∵ "″ <≪ >≫ ?≅ {∪ }∩ |∥ ~∼
+        QΘ WΩ DΔ SΣ FΦ GΓ LΛ PΠ CΨ XΞ'
+    - name: 特殊
+      layout: '`※ 1① 2② 3③ 4④ 5⑤ 6⑥ 7⑦ 8⑧ 9⑨ 0⑩ -─ =═
+        q↖ w↑ e↗ r★ t☆ y℃ u℉ i© o® p™ [§ ]¶ \†
+        a← s↓ d→ f♥ g♡ h㎡ j㎏ k㎝ l㎞ ;◎ ''△
+        z↙ x↔ c↘ v✓ b✗ n㎜ m♪ ,‧ .• /↕
+        !▲ @▼ #◆ $◇ %■ ^□ &● *○ <⇐ >⇒ ?⇔ ~～'
