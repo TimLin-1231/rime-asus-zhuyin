@@ -1,0 +1,50 @@
+# English suggestions DEV set: typed<TAB>expected word<TAB>kind
+#   prefix  an unfinished word; the expected completion should be suggested
+#   typo    a misspelling; the corrected word should be suggested
+#   word    a complete, correctly spelled word; it must stay as typed
+# Written before the suggestion code. Typed in Chinese mode, no Shift.
+pyth	python	prefix
+algor	algorithm	prefix
+experi	experiment	prefix
+probl	problem	prefix
+differ	different	prefix
+recomm	recommend	prefix
+neur	neural	prefix
+transf	transformer	prefix
+optimi	optimization	prefix
+gover	government	prefix
+restau	restaurant	prefix
+tomorr	tomorrow	prefix
+inform	information	prefix
+availab	available	prefix
+environ	environment	prefix
+implem	implementation	prefix
+probab	probability	prefix
+regres	regression	prefix
+classif	classification	prefix
+datase	dataset	prefix
+recieve	receive	typo
+definately	definitely	typo
+seperate	separate	typo
+enviroment	environment	typo
+accomodate	accommodate	typo
+occured	occurred	typo
+wierd	weird	typo
+untill	until	typo
+begining	beginning	typo
+beleive	believe	typo
+adress	address	typo
+tommorow	tomorrow	typo
+sucess	success	typo
+experiance	experience	typo
+alogrithm	algorithm	typo
+functoin	function	typo
+pyhton	python	typo
+retrun	return	typo
+improt	import	typo
+becuase	because	typo
+python	python	word
+model	model	word
+paper	paper	word
+meeting	meeting	word
+deadline	deadline	word

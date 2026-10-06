@@ -26,6 +26,9 @@ Sets
   particles / particles_test  的/得/地 (typed ㄉㄜ˙) and 在/再; PartAcc = share
             of those positions converted correctly
   numbers / numbers_test  Chinese with numbers typed on the top-row digit keys
+  english / english_test  English prefixes and misspellings (tests/eval/english*.txt);
+            Guess1 / Guess3 = expected word first / in the first three English
+            guesses of the menu, Keep = correct words stay as typed
   dev_partial  partial inputs of dev sentences ending on a digit key; Digits =
             share whose preview shows a digit (a number leaking into Chinese)
   words     tests/eval/private/asus_words.tsv (personal ASUS dictionary), if present
@@ -169,6 +172,12 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     # digit key; a digit in the preview is a number leaking into Chinese.
     sets["dev_partial"] = [(k[:i], "") for k, _ in dev[:50]
                            for i in range(1, len(k) + 1) if k[i - 1].isdigit()]
+    for stem in ("english", "english_test"):
+        path = EVAL / f"{stem}.txt"
+        if path.exists():
+            sets[stem] = [tuple(line.split("\t")[:2]) for line in
+                          path.read_text(encoding="utf-8").splitlines()
+                          if line.strip() and not line.startswith("#")]
     words = EVAL / "private" / "asus_words.tsv"
     if words.exists():
         sets["words"] = load_set(words)
@@ -252,6 +261,22 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
         # Digits = share of partial inputs showing a digit; lower is better.
         m = {"n": n, "Digits": sum(bool(re.search(r"[0-9]", r["preview"])) for r in res) / n,
              "ms/key": m["ms/key"]}
+    if name.startswith("english"):
+        # Guesses = English candidates other than the typed letters, in menu
+        # order. Guess1/Guess3: expected word first / in the first three (for
+        # prefixes and typos); Keep: a correct word stays as typed inline.
+        g1 = g3 = ng = keep = nk = 0
+        for (k, t), r in zip(cases, res):
+            if k == t:
+                nk += 1
+                keep += r["preview"] == t
+                continue
+            ng += 1
+            guesses = [c for c in r["page"] if c != k and c.isascii() and c.strip()]
+            g1 += guesses[:1] == [t]
+            g3 += t in guesses[:3]
+        m = {"n": n, "Guess1": g1 / max(ng, 1), "Guess3": g3 / max(ng, 1),
+             "Keep": keep / max(nk, 1), "ms/key": m["ms/key"]}
     if name in ("words", "moe_words"):
         m = {"n": n, "Top1": exact / n,
              "Top9": sum(t in r["page"] for (_, t), r in zip(cases, res)) / n,
@@ -336,7 +361,7 @@ def main() -> None:
              "(previous run on the same eval sets in parentheses)", ""]
     for name in sets:
         keys = list(records[0]["metrics"][name].keys() - {"n"})
-        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Digits", "Top1", "Top9", "ms/key"].index)
+        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Digits", "Guess1", "Guess3", "Keep", "Top1", "Top9", "ms/key"].index)
         lines.append(f"### {name} (n={records[0]['metrics'][name]['n']})")
         lines.append("| variant | " + " | ".join(keys) + " |")
         lines.append("|---|" + "---:|" * len(keys))
