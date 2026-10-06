@@ -34,8 +34,9 @@ def main() -> int:
           s.candidates and s.candidates[0][1] == "ㄏㄨㄚ", f"{s.candidates}")
 
     r.clear(); r.type("su3cl3"); s = r.snapshot()
-    check("compact: no reading once syllable has a tone",
-          s.candidates and s.candidates[0][1] == "", f"{s.candidates}")
+    check("compact: no reading once syllable has a tone (an ⇥ autocomplete hint may show)",
+          s.candidates and (s.candidates[0][1] == "" or s.candidates[0][1].startswith("⇥")),
+          f"{s.candidates}")
 
     r.clear(); r.type("2k7"); s = r.snapshot()
     check("digits stay Zhuyin keys while composing",
@@ -49,9 +50,10 @@ def main() -> int:
     expanded = [c for c, _ in s.candidates]
 
     r.key("3"); s = r.snapshot()
+    # After the commit a next-word prediction may show; the input itself is empty.
     check("expanded: digit picks and commits a completing candidate (no Enter)",
-          s.committed == expanded[2] and not s.composing and not r.get_option("_asus_expanded"),
-          f"committed={s.committed!r} want={expanded[2]} composing={s.composing}")
+          s.committed == expanded[2] and s.input == "" and not r.get_option("_asus_expanded"),
+          f"committed={s.committed!r} want={expanded[2]} input={s.input!r}")
 
     # Re-read the page: the commit above was learned and may reorder candidates.
     r.clear(); r.type("ru04"); r.key("Down"); r.key("Right"); s = r.snapshot()

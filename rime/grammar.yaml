@@ -2,12 +2,18 @@
 # encoding: utf-8
 #
 # Octagram language model settings, applied by bopomofo.schema.yaml through
-# "__patch: grammar:/hant?". Values follow lotem/rime-octagram-data (master).
-# Model file: zh-hant-t-essay-bgw.gram (fetch with tools/fetch_models.py).
+# "__patch: grammar:/hant?".
+#
+# Model: wanxiang-lts-zh-hant.gram (amzxyz/RIME-LMDG, CC-BY-4.0), fetched by
+# tools/fetch_models.py. Chosen by A/B on the dev sets over
+# zh-hant-t-essay-bgw (lotem/rime-octagram-data): Chinese dev 91% -> 94%,
+# mixed dev 95% -> 92.5% (one sentence), 131 vs 129 of 140 overall.
+# The current octagram settings beat Wanxiang's recommended ones (94% vs 93%).
+# To go back: language: zh-hant-t-essay-bgw
 
 hant:
   grammar:
-    language: zh-hant-t-essay-bgw
+    language: wanxiang-lts-zh-hant
   # Re-rank candidates using the last committed text as left context.
   translator/contextual_suggestions: true
   translator/max_homophones: 7

@@ -15,6 +15,7 @@ max_phrase_length: 7
 min_phrase_weight: 100
 import_tables:
   - terra_pinyin
-  - terra_pinyin.tw
+  - terra_pinyin.mcb        # Taiwan phrase frequencies (McBopomofo, MIT)
+  - terra_pinyin.tw         # Taiwan MOE readings / spellings
   - terra_pinyin.personal
 ...

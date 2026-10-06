@@ -12,6 +12,7 @@
 -- Must be the last filter.
 
 local EXPANDED = "_asus_expanded"
+local complete = require("asus_predict").complete
 
 -- Keyboard key -> Zhuyin symbol, from bopomofo.schema.yaml preedit_format.
 local KEYS = "1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/-"
@@ -61,8 +62,15 @@ local function func(input, env)
   local reading = pending_reading(ctx.input:sub(1, ctx.caret_pos))
   for cand in input:iter() do
     if keep_rare or not is_rare(cand.text) then
-      if reading ~= "" and cand.comment == "" and cand.type ~= "english" then
-        yield(ShadowCandidate(cand, cand.type, cand.text, reading))
+      local comment = ""
+      if cand.type ~= "english" and cand.comment == "" then
+        comment = reading
+        -- Autocomplete hint (Tab accepts, see asus_predict.lua).
+        local cont = reading == "" and ctx:get_option("prediction") and complete(cand.text)
+        if cont then comment = "⇥" .. cont end
+      end
+      if comment ~= "" then
+        yield(ShadowCandidate(cand, cand.type, cand.text, comment))
       else
         yield(cand)
       end

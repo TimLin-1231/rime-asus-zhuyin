@@ -58,6 +58,23 @@ NO_LANG = {"asus_zhuyin.custom.yaml": (
     "patch:\n  engine/segmentors: [ascii_segmentor, matcher, abc_segmentor, "
     "punct_segmentor, fallback_segmentor]\n")}
 NO_TW = {"terra_pinyin.tw.dict.yaml": _empty_dict("terra_pinyin.tw")}
+NO_MCB = {"terra_pinyin.mcb.dict.yaml": _empty_dict("terra_pinyin.mcb")}
+# Wanxiang zh-hant model (amzxyz/RIME-LMDG, CC-BY-4.0) with its recommended
+# settings, and with the current octagram settings (only the model swapped).
+WX_RECOMMENDED = {"grammar.yaml": (
+    "hant:\n  grammar:\n    language: wanxiang-lts-zh-hant\n"
+    "    collocation_max_length: 6\n    collocation_min_length: 3\n"
+    "    collocation_penalty: -14\n    non_collocation_penalty: -6\n"
+    "    weak_collocation_penalty: -100\n    rear_penalty: -20\n"
+    "  translator/contextual_suggestions: false\n  translator/max_homophones: 8\n")}
+ESSAY_LM = {"grammar.yaml": (
+    "hant:\n  grammar:\n    language: zh-hant-t-essay-bgw\n"
+    "  translator/contextual_suggestions: true\n"
+    "  translator/max_homophones: 7\n  translator/max_homographs: 7\n")}
+WX_OURS = {"grammar.yaml": (
+    "hant:\n  grammar:\n    language: wanxiang-lts-zh-hant\n"
+    "  translator/contextual_suggestions: true\n"
+    "  translator/max_homophones: 7\n  translator/max_homographs: 7\n")}
 NO_PERSONAL = {"terra_pinyin.personal.dict.yaml": _empty_dict("terra_pinyin.personal")}
 VARIANTS = {
     # name: (config, schema, excluded files, extra files)
@@ -69,9 +86,14 @@ VARIANTS = {
     "asus-tw": ("project", "asus_zhuyin", (), NO_TW),          # ablation: no MOE supplement
     "asus-personal": ("project", "asus_zhuyin", (), NO_PERSONAL),  # ablation: no personal words
     "asus-lang": ("project", "asus_zhuyin", (), NO_LANG),     # ablation: no mixed input (= stage 2)
+    "asus-mcb": ("project", "asus_zhuyin", (), NO_MCB),       # ablation: no Taiwan frequencies
+    "stage3": ("project", "asus_zhuyin", (), {**NO_MCB, **ESSAY_LM}),  # = stage 3 config
+    "asus-wx": ("project", "asus_zhuyin", (), ESSAY_LM),      # ablation: previous LM
+    "asus+wx": ("project", "asus_zhuyin", (), WX_RECOMMENDED),  # Wanxiang LM, its settings
+    "asus+wx-ours": ("project", "asus_zhuyin", (), WX_OURS),  # Wanxiang LM, our settings
     "asus": ("project", "asus_zhuyin", (), {}),                # current project config
 }
-DEFAULT_VARIANTS = ["stock", "asus-lang", "asus"]
+DEFAULT_VARIANTS = ["stock", "stage3", "asus-wx", "asus"]
 
 # QWERTY neighbours for typo injection (letters/digits/punct used by Dachen).
 ROWS = ["1234567890-", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./"]

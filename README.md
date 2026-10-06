@@ -34,6 +34,8 @@
 | 英文後按空白 | 送出目前打的內容（不自動加空格） |
 | 多打一個鍵 | 判斷為贅字時會自動略過 |
 | Backspace | 已打完聲調的字一次刪整個字；還沒打完的音節、英文則一次刪一個鍵 |
+| 送出文字後 | 小框顯示「接下來可能要打的詞」（灰色）；Tab 或 → 接受，↑↓ 切換，按其他鍵就消失 |
+| 打字中出現 ⇥詞 | 按 Tab 直接送出「目前的字＋提示的詞」（自動完成） |
 
 ## 詞庫
 - **個人詞彙**：`lexicon/personal_words.txt`（不進 git），一行一個詞：`詞<Tab>注音<Tab>來源`，注音可以留空，會自動查。
@@ -42,6 +44,11 @@
 - 修改詞庫後執行 `python tools/build_lexicon.py`，再重新部署。
 - **快捷文字本**：`rime/shortcuts.txt`（不進 git，範例在 `shortcuts.example.txt`）。改完要重新部署。
 - **符號鍵盤配置**：`rime/asus_zhuyin.schema.yaml` 的 `asus_symbols`。
+- **台灣詞頻**：來自[小麥注音](https://github.com/openvanilla/McBopomofo)（MIT）的 `phrase.occ` 和 `BPMFMappings.txt`，放在 `third_party/mcbopomofo/`。
+  `build_lexicon.py` 會依共同詞的中位數比例，把詞頻換算成跟 `essay.txt` 相同的尺度，
+  `build_lang_data.py` 也用它產生「下一個詞預測」的對照表（`rime/opencc/asus_next.*`）。
+- **語言模型**：`wanxiang-lts-zh-hant.gram`（[RIME-LMDG](https://github.com/amzxyz/RIME-LMDG)，CC-BY-4.0）。
+  它是用開發集 A/B 評估選出來的，`rime/grammar.yaml` 裡有改回舊模型的方法。
 - **英文詞彙**：來自舊小狼毫的 `easy_en` 詞頻表，加上 `lexicon/english_words.txt`（你自己的英文專有名詞，一行一個）。
   修改後執行 `python tools/build_lang_data.py`，再重新部署。
   詞表放在 OpenCC 字典裡（`rime/opencc/asus_en.*`），不放在 Lua 記憶體，否則每次按鍵會慢約 40 ms。

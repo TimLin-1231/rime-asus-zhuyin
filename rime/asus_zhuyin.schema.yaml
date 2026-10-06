@@ -22,6 +22,7 @@ schema:
 
 engine:
   processors:
+    - lua_processor@*asus_predict*processor  # next-word prediction, Tab autocomplete
     - lua_processor@*asus_symbols*processor  # ` symbol keyboard, Ctrl+punctuation
     - lua_processor@*asus_keys  # double-Shift / Ctrl+Space, compact menu keys
     - ascii_composer
@@ -57,6 +58,11 @@ engine:
 __patch:
   - "punctuator/half_shape/(": { commit: "(" }
     "punctuator/half_shape/)": { commit: ")" }
+    # Next-word prediction / autocomplete (lua/asus_predict.lua), on by default.
+    "switches/+":
+      - name: prediction
+        reset: 1
+        states: [ 預測關, 預測開 ]
   - asus_zhuyin.custom:/patch?
 
 recognizer:

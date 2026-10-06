@@ -128,6 +128,42 @@ def build_tw(floor: int, prefer: bool) -> tuple[list[tuple[str, str, int]], dict
     return rows, stats
 
 
+MCB_DIR = ROOT / "third_party" / "mcbopomofo"
+
+
+def build_mcb() -> tuple[list[tuple[str, str, int]], dict]:
+    """Taiwan phrase frequencies from McBopomofo (MIT): BPMFMappings + phrase.occ.
+
+    Counts are rescaled to essay.txt's scale by the median essay/occ ratio of
+    words frequent in both corpora, so the two weight sources are comparable.
+    Explicit entries suppress essay.txt's (mainland) weight for the same word.
+    """
+    occ: dict[str, int] = {}
+    for line in (MCB_DIR / "phrase.occ").read_text(encoding="utf-8").splitlines():
+        word, _, n = line.rpartition(" ")
+        if word and n.isdigit():
+            occ[word] = int(n)
+    essay = essay_weights()
+    ratios = sorted(essay[w] / c for w, c in occ.items()
+                    if len(w) >= 2 and c >= 50 and essay.get(w, 0) >= 50)
+    scale = ratios[len(ratios) // 2]
+    rows, seen, skipped = [], set(), 0
+    for line in (MCB_DIR / "BPMFMappings.txt").read_text(encoding="utf-8").splitlines():
+        word, _, zhuyin = line.partition(" ")
+        if not (2 <= len(word) <= MAX_PHRASE_LENGTH and HAN.match(word)) or word not in occ:
+            continue
+        sylls = zhuyin_to_pinyin(zhuyin)
+        if not sylls or len(sylls) != len(word):
+            skipped += 1
+            continue
+        key = (word, " ".join(sylls))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append((word, key[1], max(1, round(occ[word] * scale))))
+    return rows, {"scale": round(scale, 2), "skipped": skipped}
+
+
 def build_personal(personal_weight: int) -> tuple[list[tuple[str, str, int]], int]:
     if not PERSONAL_SRC.exists():
         return [], 0
@@ -169,6 +205,7 @@ def main() -> None:
     ap.add_argument("--personal", type=int, default=DEFAULT_PERSONAL)
     ap.add_argument("--no-tw", action="store_true", help="write an empty Taiwan supplement")
     ap.add_argument("--no-prefer", action="store_true")
+    ap.add_argument("--no-mcb", action="store_true", help="write an empty McBopomofo table")
     ap.add_argument("--out", type=Path, default=RIME)
     args = ap.parse_args()
 
@@ -178,8 +215,11 @@ def main() -> None:
     p_rows, skipped = build_personal(args.personal)
     write_dict(args.out / "terra_pinyin.personal.dict.yaml", "terra_pinyin.personal", p_rows,
                "Source: lexicon/personal_words.txt (private).")
+    mcb_rows, mcb_stats = ([], {}) if args.no_mcb or not MCB_DIR.exists() else build_mcb()
+    write_dict(args.out / "terra_pinyin.mcb.dict.yaml", "terra_pinyin.mcb", mcb_rows,
+               "Source: McBopomofo Source/Data (MIT), third_party/mcbopomofo.")
     print(f"tw: {len(tw_rows)} entries {stats}; personal: {len(p_rows)} entries, "
-          f"{skipped} skipped (unknown reading)")
+          f"{skipped} skipped (unknown reading); mcb: {len(mcb_rows)} entries {mcb_stats}")
 
 
 if __name__ == "__main__":
