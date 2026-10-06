@@ -20,6 +20,7 @@
 -- (tools/build_lang_data.py).
 
 local zy = require("asus_zhuyin_data")
+local learn = require("asus_learn")
 
 -- ㄓㄔㄕㄖㄗㄘㄙ are syllables on their own, so almost any letter string parses
 -- as toneless Zhuyin; toneless syllables must cost more than an unfinished one.
@@ -88,8 +89,8 @@ local function english_prefix(key)
   if #key < 3 or not prefix_cc then return nil end
   local hit = prefix_memo[key]
   if hit ~= nil then return hit or nil end
-  local entry = false
-  local forms = prefix_cc:convert_word(key)
+  local entry = learn.complete_english(key) or false  -- learned words first
+  local forms = not entry and prefix_cc:convert_word(key)
   local value = forms and forms[1]
   if value then
     local rank, word = value:match("^(%d+):(.+)$")
@@ -104,6 +105,12 @@ local function english(key)
   if #key > max_en_len then return nil end
   local hit = memo[key]
   if hit ~= nil then return hit or nil end
+  -- Words the user has committed as English (lua/asus_learn.lua) rank first.
+  local learned = learn.english(key)
+  if learned then
+    memo[key] = learned
+    return learned
+  end
   local entry = false
   if english_cc then
     local forms = english_cc:convert_word(key)

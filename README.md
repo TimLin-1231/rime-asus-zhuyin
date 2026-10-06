@@ -10,8 +10,10 @@
 | `rime/` | 小狼毫使用者目錄：方案、Lua、外觀設定 |
 | `rime/lua/asus_keys.lua` | 連按兩下 Shift／Ctrl+Space 切換中英、Shift 防誤觸、展開選單後的按鍵 |
 | `rime/lua/asus_compact.lua` | 精簡候選泡泡（只顯示首選，以及尚未打聲調的注音） |
+| `rime/lua/asus_learn.lua` | 自我學習：改過的字詞、英文詞、常接的下一個詞；Shift+Del 忘記 |
 | `tools/rime_harness.py` | 用 Python 驅動 `rime.dll`，在 `.harness/` 的複本上測試，不會碰到正在使用的設定 |
 | `tools/eval_ime.py` | 量化評估（整句正確率、字正確率、個人詞 Top1／Top9、每鍵延遲） |
+| `tools/eval_learn.py` | 學習評估：模擬一位使用者連續打字、改字，量測學到的東西有沒有用、有沒有改壞 |
 | `tools/make_eval_set.py` | 從 `tests/eval/sentences.txt` 產生評估用的按鍵序列（採台灣教育部讀音） |
 | `tools/fetch_models.py` | 下載語言模型 `.gram`（不進 git） |
 | `tests/test_stage1.py` | 階段 1 的行為測試 |
@@ -36,6 +38,9 @@
 | Backspace | 已打完聲調的字一次刪整個字；還沒打完的音節、英文則一次刪一個鍵 |
 | 送出文字後 | 小框顯示「接下來可能要打的詞」（灰色）；Tab 或 → 接受，↑↓ 切換，按其他鍵就消失 |
 | 打字中出現 ⇥詞 | 按 Tab 直接送出「目前的字＋提示的詞」（自動完成） |
+| 改過一次的字詞 | 之後在別的句子也會用你改過的（例如改過一次「程式」，「應用程式」也會對） |
+| 英文詞被拆成注音 | 按 **Ctrl+Enter**（或 Shift+Enter）照打的字母送出，之後這個詞就會被認成英文、Tab 也能補完 |
+| 學錯了 | 在展開的候選清單選到那個字詞（或預測的詞）按 **Shift+Del**（或 Ctrl+Del）忘掉它 |
 
 ## 詞庫
 - **個人詞彙**：`lexicon/personal_words.txt`（不進 git），一行一個詞：`詞<Tab>注音<Tab>來源`，注音可以留空，會自動查。
@@ -46,12 +51,40 @@
 - **符號鍵盤配置**：`rime/asus_zhuyin.schema.yaml` 的 `asus_symbols`。
 - **台灣詞頻**：來自[小麥注音](https://github.com/openvanilla/McBopomofo)（MIT）的 `phrase.occ` 和 `BPMFMappings.txt`，放在 `third_party/mcbopomofo/`。
   `build_lexicon.py` 會依共同詞的中位數比例，把詞頻換算成跟 `essay.txt` 相同的尺度，
-  `build_lang_data.py` 也用它產生「下一個詞預測」的對照表（`rime/opencc/asus_next.*`）。
+  `build_lang_data.py` 也用它產生「下一個詞預測」的對照表（`rime/opencc/asus_next.*`），
+  以及把送出的文字切成詞用的詞表（`rime/opencc/asus_seg.*`，自我學習用）。
 - **語言模型**：`wanxiang-lts-zh-hant.gram`（[RIME-LMDG](https://github.com/amzxyz/RIME-LMDG)，CC-BY-4.0）。
   它是用開發集 A/B 評估選出來的，`rime/grammar.yaml` 裡有改回舊模型的方法。
 - **英文詞彙**：來自舊小狼毫的 `easy_en` 詞頻表，加上 `lexicon/english_words.txt`（你自己的英文專有名詞，一行一個）。
   修改後執行 `python tools/build_lang_data.py`，再重新部署。
   詞表放在 OpenCC 字典裡（`rime/opencc/asus_en.*`），不放在 Lua 記憶體，否則每次按鍵會慢約 40 ms。
+
+## 自我學習
+小狼毫本身就會記住你打過的句子；`asus_learn.lua` 再加上三件事，學到的資料都存在 `rime/asus_learn.userdb`（只在本機）。
+
+- **改字**：展開候選改掉某個詞再送出，就記成「這組注音：原本的詞 → 你選的詞」，連同前後的字。
+  - 前後的字一樣時，立刻改用你選的詞。
+  - 其他句子：只改過一次而且從來沒改回去，就直接套用；如果兩個方向都改過（例如「程式」和「城市」），就只看前後文。
+  - 單一個字，以及只差在「在／再／的／得／地」的詞，一定要前後的字都相同才會套用。
+  - 被學到的詞換掉時，原本的轉換結果會排在候選第二個，按一次就能改回來；改回來也會被記住。
+  - 想要「改兩次才套用到所有句子」（比較不會誤改別的句子，但學得比較慢）：在 `rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_learn/global_after: 2`。
+- **英文詞**：用 Ctrl+Enter 送出的字母、句子裡打過的英文詞。
+- **下一個詞**：把你送出的文字切成詞，同樣的兩個詞前後出現兩次（或接受預測一次），之後就會排在預測的第一個。
+- **淡化**：學到的東西每 90 天權重減半（`asus_learn/half_life_days`），太舊的會自動刪掉。
+- **忘記**：Shift+Del（見上表）。整個清空：結束小狼毫服務 → 刪除 `rime/asus_learn.userdb` 資料夾 → 重新啟動。
+- **關閉**：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_learn/enabled: false`，再重新部署（小狼毫自己的學習不受影響）。
+
+評估（`tests/eval/learn.txt` 是開發集，`learn_test.txt` 是保留測試集，只看總分）：
+
+| 保留測試集 | 原本 | 只有小狼毫學習 | 加上 asus_learn |
+|---|---:|---:|---:|
+| 改過的詞用在新句子（Probe） | 76% | 76% | 88% |
+| 同音的另一個詞沒被改壞（Contrast） | 60% | 60% | 60% |
+| 教過的英文詞 | 0% | 0% | 88% |
+| 預測第一個就對（Pred@1） | 0% | 0% | 75% |
+| 一般句子（學習之後） | 90% | 90% | 90% |
+
+已知代價：只改過一次就套用到所有句子，所以同音的另一個詞會被換掉，直到你把它改回來一次（開發集上 Contrast 從 92% 掉到 58%）。
 
 ## 部署
 1. 修改 `rime/` 裡的檔案。
@@ -63,7 +96,10 @@
 C:\Users\User\anaconda3\python.exe tests\test_stage1.py
 C:\Users\User\anaconda3\python.exe tests\test_stage2.py
 C:\Users\User\anaconda3\python.exe tests\test_stage3.py
+C:\Users\User\anaconda3\python.exe tests\test_stage4.py
+C:\Users\User\anaconda3\python.exe tests\test_stage5.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
+C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改了什麼"
 ```
 評估表格的括號裡是**同一版評估集**上一次的數字，可以直接前後對照。
 
@@ -76,5 +112,6 @@ C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了�
 - **改回華碩輸入法**：在 Windows 的語言設定切換輸入法就好，這個專案不會改到華碩的任何東西。
 
 ## 隱私
-- 學習資料（`*.userdb`）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
+- 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
+- 英文學習只從透過輸入法送出的文字學，不會記錄英文模式（直接輸出）下打的字，所以不會碰到密碼之類的內容。
 - 沒有設定任何雲端同步目錄。舊設定裡的 Google Drive 同步路徑沒有沿用。

@@ -179,7 +179,8 @@ def worker(variant: str, sets_json: str) -> None:
     # scores depend on set order. Learning is evaluated separately (stage 5).
     extra = dict(extra)
     custom = f"{schema}.custom.yaml"
-    extra[custom] = (extra.get(custom) or "patch:\n") + "  translator/enable_user_dict: false\n"
+    extra[custom] = ((extra.get(custom) or "patch:\n") + "  translator/enable_user_dict: false\n"
+                     + "  asus_learn/enabled: false\n")
     rime = open_rime(f"eval-{variant}", config, schema, exclude=exclude, extra=extra)
     sets = json.loads(sets_json)
     out: dict[str, list] = {}

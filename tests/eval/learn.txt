@@ -4,7 +4,8 @@
 #   T text          teach: type it; if the conversion is wrong, correct it by
 #                   picking candidates (as a user would), then commit
 #   A text|wrong    accident: pick `wrong` instead and commit it
-#   E word          English: type the letters, pick the English word, commit
+#   E word          English: type the letters; if they do not come out as the
+#                   word, commit them as typed with Ctrl+Enter
 #   P text          probe: same word in a new sentence (should become right)
 #   C text          contrast: the rival word is right here (must stay right)
 #   Q context|word  prediction: after committing `context`, `word` should be

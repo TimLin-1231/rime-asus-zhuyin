@@ -36,7 +36,9 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("stage4")
+    # Static tables and rules only: with learning on, the accepted predictions
+    # below would reorder later ones (that is tested in test_stage5.py).
+    r = open_rime("stage4", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/enabled: false\n"})
 
     r.clear(); r.type(JIQI); s = r.snapshot()
     check("precondition: ㄐㄧ ㄑㄧˋ converts to 機器", s.preview == "機器", f"{s.preview!r}")

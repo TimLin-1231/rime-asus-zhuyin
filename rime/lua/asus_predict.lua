@@ -21,6 +21,8 @@ local kRejected, kAccepted, kNoop = 0, 1, 2
 local XK_Tab, XK_Right, XK_Up, XK_Down = 0xff09, 0xff53, 0xff52, 0xff54
 local XK_Shift_L, XK_Shift_R, XK_Control_L, XK_Control_R = 0xffe1, 0xffe2, 0xffe3, 0xffe4
 
+local learn = require("asus_learn")
+
 local TAG = "prediction"
 local MAX_PREFIX = 4   -- characters of committed text used as the key
 local SHOW = 3         -- predictions offered
@@ -56,12 +58,18 @@ end
 -- known prefix wins; shorter suffixes fill up the list.
 local function predict(text, limit)
   local out, seen = {}, {}
+  -- Learned next words (lua/asus_learn.lua) come first.
+  for _, w in ipairs(learn.predict(text, limit)) do
+    seen[w] = true
+    out[#out + 1] = w
+  end
+  if #out >= limit then return out end
   local cps = {}
   for _, cp in utf8.codes(text) do cps[#cps + 1] = cp end
   for len = math.min(MAX_PREFIX, #cps), 1, -1 do
     local key = utf8.char(table.unpack(cps, #cps - len + 1, #cps))
     for _, w in ipairs(lookup(key) or {}) do
-      if not seen[w] then
+      if not seen[w] and not learn.banned(w) then
         seen[w] = true
         out[#out + 1] = w
         if #out >= limit then return out end
@@ -178,6 +186,7 @@ function processor.func(key, env)
       local text = ctx:get_commit_text()
       local cont = complete(text)
       if cont then
+        learn.accepted(text, cont)
         env.pending = false
         ctx:commit()          -- learns the conversion; history gets `text`
         env.pending = false   -- (commit_notifier set it again)
@@ -197,7 +206,10 @@ function processor.func(key, env)
     local cand = seg:get_candidate_at(seg.selected_index)
     local word = cand and cand.comment or ""
     ctx:clear()
-    if word ~= "" then commit_and_predict(env, word) end  -- chains predictions
+    if word ~= "" then
+      learn.accepted(env.history, word)
+      commit_and_predict(env, word)
+    end  -- chains predictions
     return kAccepted
   end
   if key.modifier == 0 and (code == XK_Down or code == XK_Up) and count > 1 then
