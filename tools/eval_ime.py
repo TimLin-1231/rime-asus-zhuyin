@@ -21,6 +21,8 @@ Sets
   test      tests/eval/sentences_test.tsv, held out: aggregate scores only
   dev_stray / test_stray  one extra neighbouring key inserted per sentence (seed 3)
   mixed / mixed_test      Chinese with English words (tests/eval/mixed*.txt)
+  particles / particles_test  的/得/地 (typed ㄉㄜ˙) and 在/再; PartAcc = share
+            of those positions converted correctly
   words     tests/eval/private/asus_words.tsv (personal ASUS dictionary), if present
   moe_words tests/eval/private/moe_words.tsv: 400 common MOE words (essay >= 1000,
             seed 42) typed with Taiwan readings; held out from lexicon tuning
@@ -97,6 +99,7 @@ DEFAULT_VARIANTS = ["stock", "stage3", "asus-wx", "asus"]
 
 # QWERTY neighbours for typo injection (letters/digits/punct used by Dachen).
 ROWS = ["1234567890-", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./"]
+PARTICLES = set("的得地在再")
 TONE_KEYS = set(" 6347")
 
 
@@ -144,7 +147,8 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     stray_rng = random.Random(3)
     sets["dev_stray"] = [(inject_stray(k, stray_rng), t) for k, t in dev]
     sets["test_stray"] = [(inject_stray(k, stray_rng), t) for k, t in test]
-    for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test")):
+    for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
+                       ("particles", "particles"), ("particles_test", "particles_test")):
         if (EVAL / f"{stem}.tsv").exists():
             sets[name] = load_set(EVAL / f"{stem}.tsv")
     words = EVAL / "private" / "asus_words.tsv"
@@ -210,6 +214,16 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
     total = sum(len(t) for _, t in cases)
     m = {"n": n, "SentAcc": exact / n, "CharAcc": 1 - errs / total,
          "ms/key": statistics.mean(r["ms_per_key"] for r in res)}
+    if name.startswith("particles"):
+        # PartAcc: share of 的/得/地/在/再 positions that come out right
+        # (a sentence whose length differs counts all its targets wrong).
+        hit = tot = 0
+        for (_, t), r in zip(cases, res):
+            for i, ch in enumerate(t):
+                if ch in PARTICLES:
+                    tot += 1
+                    hit += len(r["preview"]) == len(t) and r["preview"][i] == ch
+        m["PartAcc"] = hit / tot if tot else 0.0
     if name in ("words", "moe_words"):
         m = {"n": n, "Top1": exact / n,
              "Top9": sum(t in r["page"] for (_, t), r in zip(cases, res)) / n,
@@ -294,7 +308,7 @@ def main() -> None:
              "(previous run on the same eval sets in parentheses)", ""]
     for name in sets:
         keys = list(records[0]["metrics"][name].keys() - {"n"})
-        keys.sort(key=["SentAcc", "CharAcc", "Top1", "Top9", "ms/key"].index)
+        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "Top1", "Top9", "ms/key"].index)
         lines.append(f"### {name} (n={records[0]['metrics'][name]['n']})")
         lines.append("| variant | " + " | ".join(keys) + " |")
         lines.append("|---|" + "---:|" * len(keys))

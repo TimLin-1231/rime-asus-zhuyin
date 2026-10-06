@@ -78,6 +78,30 @@ def build_mixed(stem: str) -> int:
     return len(rows)
 
 
+def build_particles(stem: str) -> int:
+    """Sentences where {X} marks a character typed as ㄉㄜ˙ (2k7)."""
+    rows = []
+    for line in (EVAL / f"{stem}.txt").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        text = line.replace("{", "").replace("}", "")
+        forced = set()
+        pos = 0
+        for m in re.finditer(r"\{(.)\}|.", line):
+            if m.group(1):
+                forced.add(pos)
+            pos += 1
+        keys = reading_keys(text)[0]
+        if len(keys) != len(text):
+            raise ValueError(f"syllable/character mismatch in {line!r}")
+        keys = ["2k7" if i in forced else k for i, k in enumerate(keys)]
+        k = "".join(keys)
+        rows.append(f"{k}\t{keys_to_display(k)}\t{text}\tparticles")
+    (EVAL / f"{stem}.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return len(rows)
+
+
 def build_asus_words() -> int:
     src = ROOT / "UserDictionary.txt"
     if not src.exists():
@@ -101,4 +125,6 @@ if __name__ == "__main__":
     print("test sentences (held out):", build_sentences("sentences_test"))
     print("mixed dev:", build_mixed("mixed"))
     print("mixed test (held out):", build_mixed("mixed_test"))
+    print("particles dev:", build_particles("particles"))
+    print("particles test (held out):", build_particles("particles_test"))
     print("asus words (private):", build_asus_words())
