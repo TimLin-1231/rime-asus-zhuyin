@@ -57,8 +57,28 @@ def main() -> int:
           len(s.candidates) > 1, f"n={len(s.candidates)}")
 
     r.clear(); r.type("ji3m/4python"); r.key("space"); s = r.snapshot()
-    check("Space after English commits everything, no space added",
-          s.committed == "我用python" and not s.composing, f"committed={s.committed!r}")
+    check("Space after English commits everything plus the space",
+          s.committed == "我用python " and not s.composing, f"committed={s.committed!r}")
+
+    # An English sentence typed word by word (reported: "Ihave貓pencil").
+    r.clear()
+    for word in ["I", "have", "a", "pencil"]:
+        for ch in word:
+            r.key(ch, SHIFT_MASK if ch.isupper() else 0)
+        r.key("space")
+    s = r.snapshot()
+    check("English sentence: I have a pencil", s.committed == "I have a pencil ",
+          f"committed={s.committed!r}")
+
+    # After English, Chinese with tones still converts normally.
+    r.clear(); r.type("hello"); r.key("space"); r.type("su3cl3"); s = r.snapshot()
+    check("Chinese with tones right after English still converts",
+          s.committed == "hello " and s.preview == "你好", f"{s.committed!r} {s.preview!r}")
+
+    # After Chinese, a lone "a" is still Zhuyin.
+    r.clear(); r.type("su3cl3"); r.key("Return"); r.clear(); r.type("a"); s = r.snapshot()
+    check("after Chinese, lone 'a' stays Zhuyin (ㄇ)", s.preview != "a",
+          f"preview={s.preview!r}")
 
     r.clear(); r.type("su3cl3"); r.key("space"); s = r.snapshot()
     check("Space after Chinese is still the first-tone key (no commit)",

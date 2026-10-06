@@ -43,3 +43,7 @@ rime/terra_pinyin.tw.dict.yaml
 rime/opencc/asus_en.txt
 rime/opencc/asus_en.json
 rime/lua/asus_zhuyin_data.lua
+
+# Third-party data (downloaded; licenses kept alongside)
+third_party/
+*.gram.part

@@ -33,6 +33,7 @@ local C_CAPS = 0.5
 local C_DIGIT = 1.0
 local C_STRAY = 4.0
 local C_SWITCH = 0.5
+local C_EN_BASE_CTX = 0.3  -- English base cost right after an English commit
 local MAX_SYLLABLE = 5
 
 -- Optional overrides from the schema (asus_lang/costs/<name>), for tuning.
@@ -108,10 +109,20 @@ local function zh_cost(tok, at_end)
   return nil
 end
 
-local function en_cost(tok)
+-- Short English words are excluded from the lexicon (ru, su, cl are common
+-- Zhuyin), but right after English was committed ("I have a ...") these are
+-- far more likely than a toneless syllable.
+local SHORT_WORDS = {}
+for w in ("a i am an as at be by do go he hi if in is it me my no of oh ok on "
+          .. "or so to up us we"):gmatch("%a+") do SHORT_WORDS[w] = true end
+
+-- en_ctx: the previous commit was English, so English is the expected language.
+local function en_cost(tok, en_ctx)
   local entry = english(tok:lower())
+  local base = en_ctx and C_EN_BASE_CTX or C_EN_BASE
   local best
-  if entry then best = C_EN_BASE + C_EN_RANK * math.log(entry.rank + 1, 10) end
+  if entry then best = base + C_EN_RANK * math.log(entry.rank + 1, 10) end
+  if en_ctx and SHORT_WORDS[tok:lower()] then best = math.min(best or math.huge, base) end
   -- Capitalised tokens (GPU, GPT4, DE-LSTM) are English even if unknown.
   -- Digits double as tone keys, so each one costs extra: "GPU2k7" must
   -- split as GPU + 的, not GPU2 + ㄜ˙.
@@ -125,7 +136,7 @@ end
 -- Cheapest segmentation of run (a string of keys). Returns a list of
 -- {kind = "zh"|"en"|"stray", i, j} with 1-based inclusive i..j, and whether
 -- the plan is "special" (contains en or stray tokens).
-local function plan_run(run)
+local function plan_run(run, en_ctx)
   local n = #run
   local INF = math.huge
   -- best[i][lang]: cost of covering run[1..i-1]; lang of last token
@@ -159,10 +170,12 @@ local function plan_run(run)
           if not (tok:match("^[%a][%a%-']*$") or (caps and tok:match("^%u[%w%-]*$"))) then
             break
           end
-          relax(i, from, j, "en", en_cost(tok), "en")
+          relax(i, from, j, "en", en_cost(tok, en_ctx), "en")
         end
         if is_upper(run:sub(i, i)) then
           relax(i, from, i, "en", C_CAPS, "en")  -- single capital letter
+        elseif en_ctx and SHORT_WORDS[run:sub(i, i)] then
+          relax(i, from, i, "en", C_EN_BASE_CTX, "en")  -- "a" after English
         end
         -- stray key
         relax(i, from, i, "none", C_STRAY, "stray")
@@ -195,8 +208,8 @@ local function plan_run(run)
 end
 
 -- Plan for input[floor:], cached; positions are 0-based [start, end) in input.
-local function plan_input(env, input, floor)
-  local cache_key = floor .. ":" .. input
+local function plan_input(env, input, floor, en_ctx)
+  local cache_key = (en_ctx and "e" or "z") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
   if memo_input ~= input then memo, memo_input = {}, input end
   local spans = {}
@@ -211,7 +224,8 @@ local function plan_input(env, input, floor)
     if in_run(input:sub(pos, pos)) then
       local e = pos
       while e < #input and in_run(input:sub(e + 1, e + 1)) do e = e + 1 end
-      local toks, special, cost = plan_run(input:sub(pos, e))
+      -- English context only applies to the run the composition starts with.
+      local toks, special, cost = plan_run(input:sub(pos, e), en_ctx and pos == 1)
       if env.debug then
         local parts = {}
         for _, t in ipairs(toks or {}) do parts[#parts + 1] = t.kind .. ":" .. input:sub(pos + t.i - 1, pos + t.j - 1) end
@@ -290,7 +304,8 @@ function segmentor.func(segmentation, env)
   local input = segmentation.input
   if type(input) == "function" then input = segmentation:input() end
   local start = segmentation:get_current_start_position()
-  local spans = plan_input(env, input, fixed_floor(segmentation))
+  local en_ctx = env.engine.context:get_property("asus_en_ctx") == "1"
+  local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx)
   if not kept_matches(segmentation, spans, start) then
     rewind(segmentation)
     start = segmentation:get_current_start_position()

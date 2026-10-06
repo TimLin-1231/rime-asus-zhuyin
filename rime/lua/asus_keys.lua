@@ -6,7 +6,7 @@
 --     while composing, the converted Chinese text is committed first, so raw
 --     keys are never dumped into the document.
 --   * Shift+letter types a capital letter (English, see asus_lang.lua).
---   * Space right after an English word commits the input (no space added).
+--   * Space right after an English word commits the input plus that space.
 --   * BackSpace removes a whole completed syllable (one character).
 --   * Compact menu (see asus_compact.lua): Down expands the full candidate
 --     list. While expanded, Left/Right move the highlight, Up/Down change
@@ -123,6 +123,9 @@ local function init(env)
   env.commit_conn = ctx.commit_notifier:connect(function(c)
     c:set_option(EXPANDED, false)
     set_list_options(c, false)
+    -- English context for asus_lang.lua: was the last commit English?
+    local text = c:get_commit_text() or ""
+    c:set_property("asus_en_ctx", text:match("[%a%d][%p]*$") and "1" or "0")
   end)
   env.update_conn = ctx.update_notifier:connect(function(c)
     if not c:is_composing() and (c:get_option(EXPANDED) or c:get_option("_linear")) then
@@ -198,13 +201,15 @@ local function func(key, env)
     return kNoop
   end
 
-  -- Space after an English word commits everything typed so far (no space is
-  -- added); otherwise Space stays the first-tone key.
+  -- Space after an English word commits everything typed so far followed by
+  -- the space itself (so "I have a pencil" types naturally); after Chinese,
+  -- Space stays the first-tone key.
   if code == XK_space and key.modifier == 0 and not ctx:get_option(EXPANDED) then
     local seg = ctx.composition:back()
     local cand = seg and seg:get_selected_candidate()
     if seg and seg:has_tag("asus_en") and cand and cand.type == "english" then
       ctx:commit()
+      env.engine:commit_text(" ")
       return kAccepted
     end
   end
