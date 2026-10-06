@@ -1,0 +1,20 @@
+# Local backups of the Rime user dir (never versioned)
+backups/
+
+# Raw personal exports (ASUS / MS Bopomofo); converted dicts are generated from these
+UserDictionary.txt
+import/
+
+# Rime build artifacts and learned user data (local-only by design)
+build/
+*.userdb/
+*.userdb.txt
+sync/
+
+# Learning statistics produced by the self-learning module (stage 5)
+learning/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
