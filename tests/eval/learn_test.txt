@@ -1,0 +1,137 @@
+# Self-learning HELD-OUT test set (stage 5). Same format as learn.txt.
+# Written before the learning code; only aggregate scores may be looked at.
+
+# group 變數
+T 這個變數沒有初始化
+P 請把變數名稱改短一點
+P 全域變數要少用
+
+# group 迴圈
+T 這個迴圈跑不完
+P 用迴圈把陣列印出來
+C 他的演講迴響很大
+
+# group 硬碟
+T 我的硬碟快滿了
+P 外接硬碟壞掉了
+
+# group 資料庫
+T 資料庫連線失敗
+P 請先備份資料庫
+
+# group 部署
+T 新版本已經部署了
+P 部署的時候出錯了
+C 這個部屬很聽話
+
+# group 臉書
+T 我在臉書上看到你的照片
+P 他很少用臉書
+
+# group 群組
+T 我把你加進群組了
+P 群組裡有人在問問題
+
+# group 載具
+T 發票請存在手機載具
+P 我忘記帶載具條碼
+
+# group 宅配
+T 這個包裹用宅配寄
+P 宅配明天才會到
+
+# group 柏翰
+T 我等一下要去找柏翰
+P 柏翰說他今天會晚到
+P 我借柏翰一支筆
+
+# group 品妤
+T 品妤今天請假
+P 我跟品妤約在車站
+C 這家店的產品很好
+
+# group 郁婷
+T 郁婷打電話給我
+P 郁婷的報告寫得很好
+
+# group 俊宏
+T 俊宏在辦公室嗎
+P 我把檔案寄給俊宏了
+
+# group 汐止
+T 我住在汐止
+P 汐止的房價比較便宜
+
+# group 蘆洲
+T 我們約在蘆洲捷運站
+P 蘆洲有很多好吃的
+
+# group 內湖
+T 他在內湖上班
+P 內湖科學園區塞車很嚴重
+C 我們要團結不要內鬨
+
+# group 預購
+T 這款手機開放預購了
+P 我已經預購新書了
+
+# group 補習班
+T 我晚上要去補習班
+P 補習班的老師很兇
+
+# group 在 (single character: context only)
+T 他在看影片
+P 他在看書
+C 我晚點再看
+
+# group accident 開會
+A 我們明天開會|我們明天開匯
+T 我們明天開會
+P 我們明天開會
+P 下午三點開會
+
+# group accident 鍵盤
+A 這個鍵盤很好打|這個建盤很好打
+T 這個鍵盤很好打
+P 這個鍵盤很好打
+P 我想買新的鍵盤
+
+# group english jira
+E jira
+P 請在[jira]開一張單
+P [jira]上的進度要更新
+
+# group english vercel
+E vercel
+P 網站部署在[vercel]上
+P 我把專案放上[vercel]
+
+# group english zotero
+E zotero
+P 我用[zotero]管理文獻
+P [zotero]的引用格式很方便
+
+# group english wandb
+E wandb
+P 訓練紀錄都在[wandb]上
+P 我打開[wandb]看曲線
+
+# group predict 吃飯
+T 我們中午一起吃飯
+T 今天中午一起吃飯
+Q 我們中午|一起
+
+# group predict 確認
+T 麻煩你幫我確認合約內容
+T 再幫我確認合約內容
+Q 幫我確認|合約
+
+# group predict 程式
+T 我在寫程式作業
+T 今天要寫程式作業
+Q 我要寫程式|作業
+
+# group predict 回家
+T 我下班後直接回家
+T 今天下班後直接回家
+Q 下班後|直接

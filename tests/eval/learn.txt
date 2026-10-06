@@ -1,0 +1,162 @@
+# Self-learning dev set (stage 5). Written before the learning code; groups are
+# replayed in order as one user's typing stream, with learning on.
+#
+#   T text          teach: type it; if the conversion is wrong, correct it by
+#                   picking candidates (as a user would), then commit
+#   A text|wrong    accident: pick `wrong` instead and commit it
+#   E word          English: type the letters, pick the English word, commit
+#   P text          probe: same word in a new sentence (should become right)
+#   C text          contrast: the rival word is right here (must stay right)
+#   Q context|word  prediction: after committing `context`, `word` should be
+#                   the top next-word prediction
+# Chinese uses MOE readings; [english] is typed as-is.
+
+# group 程式
+T 我把程式碼上傳到伺服器了
+P 這個程式跑很慢
+P 請重新啟動應用程式
+C 這個城市很漂亮
+
+# group 當機
+T 電腦一直當機要重新開機
+P 我的手機又當機了
+P 遊戲玩到一半當機
+
+# group 配戴
+T 疫情期間請配戴口罩
+P 騎車要配戴安全帽
+C 我很佩服他的勇氣
+
+# group 座標
+T 請把圖表的座標軸標清楚
+P 這個點的座標是多少
+C 請坐下來休息
+
+# group 函式
+T 這個函式回傳錯誤
+P 我寫了一個新的函式
+P 函式的參數太多了
+
+# group 訂
+T 請幫我訂便當
+P 我想訂兩張電影票
+P 我已經訂好餐廳了
+C 我一定會準時到
+C 這件事已經決定了
+
+# group 徵
+T 我們公司在徵人
+P 他們在徵工程師
+
+# group 帳
+T 我的帳號被鎖了
+P 請輸入帳號和密碼
+P 這個月薪水入帳了
+
+# group 捷徑
+T 我在桌面建立捷徑
+P 這條路是捷徑
+C 這個廚房很潔淨
+
+# group 遞迴
+T 這個遞迴寫錯了
+P 用遞迴計算階乘
+C 請把文件遞回給我
+
+# group 統編
+T 發票要打統編
+P 請告訴我公司統編
+
+# group 竹科
+T 他在竹科上班
+P 竹科的薪水很高
+C 這是一件竹刻作品
+
+# group 中壢
+T 我在中壢等你
+P 中壢火車站人很多
+C 法官必須保持中立
+
+# group 志豪
+T 我打給志豪
+P 志豪今天沒來上課
+P 我跟志豪一起吃飯
+C 他至少來過三次
+
+# group 怡君
+T 怡君在開會
+P 我把資料寄給怡君了
+
+# group 冠廷
+T 我跟冠廷一起去
+P 冠廷說他晚點到
+C 這家工廠已經關停了
+
+# group 詠晴
+T 請問詠晴在嗎
+P 詠晴明天要考試
+
+# group 佩珊
+T 佩珊生日快樂
+P 我送佩珊一本書
+
+# group 家瑋
+T 家瑋說他晚點到
+P 我在等家瑋回訊息
+
+# group 在 (single character: context only)
+T 我在改程式
+P 我在改作業
+C 我等一下再改
+
+# group accident 晚上
+A 我今天晚上要去吃飯|我今天挽上要去吃飯
+T 我今天晚上要去吃飯
+P 我今天晚上要去吃飯
+P 明天晚上要加班
+
+# group accident 報告
+A 這份報告要修改|這份報告要休改
+T 這份報告要修改
+P 這份報告要修改
+P 請修改你的密碼
+
+# group english kubectl
+E kubectl
+P 我用[kubectl]部署服務
+P [kubectl]指令很好用
+
+# group english huggingface
+E huggingface
+P 模型放在[huggingface]上
+P 我從[huggingface]下載資料
+
+# group english leetcode
+E leetcode
+P 我每天寫[leetcode]
+P [leetcode]的題目很難
+
+# group english figma
+E figma
+P 設計稿在[figma]裡
+P 我用[figma]畫介面
+
+# group predict 開會
+T 我們下午開會討論專案進度
+T 明天早上開會討論預算
+Q 下午開會|討論
+
+# group predict 健身房
+T 我等一下要去健身房運動
+T 下班後去健身房運動
+Q 我要去健身房|運動
+
+# group predict 論文
+T 我今天在實驗室寫論文
+T 晚上繼續寫論文
+Q 我在寫|論文
+
+# group predict 報告
+T 我明天要交報告
+T 下週要交報告
+Q 我明天要交|報告

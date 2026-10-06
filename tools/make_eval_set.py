@@ -102,6 +102,47 @@ def build_particles(stem: str) -> int:
     return len(rows)
 
 
+def _mixed_keys(line: str) -> tuple[str, str]:
+    """Keys and display for text where [english] is typed as-is."""
+    keys, shown = [], []
+    for zh, en in re.findall(r"([^\[\]]+)|\[([^\]]+)\]", line):
+        if en:
+            keys.append(en)
+            shown.append(f"[{en}]")
+        else:
+            k = "".join(reading_keys(zh)[0])
+            keys.append(k)
+            shown.append(keys_to_display(k))
+    return "".join(keys), " ".join(shown)
+
+
+def build_learn(stem: str) -> int:
+    """Self-learning stream: TSV kind, keys, display, text, group.
+
+    Keys are those of the (first) text: T/P/C text, A right text, Q context,
+    E the English word itself.
+    """
+    rows, group = [], ""
+    for line in (EVAL / f"{stem}.txt").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("# group "):
+            group = line[len("# group "):]
+            continue
+        if not line or line.startswith("#"):
+            continue
+        kind, _, body = line.partition(" ")
+        if kind not in "TAEPCQ" or len(kind) != 1:
+            raise ValueError(f"bad line {line!r}")
+        first = body.split("|")[0]
+        if kind == "E":
+            keys, shown = first, f"[{first}]"
+        else:
+            keys, shown = _mixed_keys(first)
+        rows.append(f"{kind}\t{keys}\t{shown}\t{body.replace('[', '').replace(']', '')}\t{group}")
+    (EVAL / f"{stem}.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return len(rows)
+
+
 def build_asus_words() -> int:
     src = ROOT / "UserDictionary.txt"
     if not src.exists():
@@ -127,4 +168,6 @@ if __name__ == "__main__":
     print("mixed test (held out):", build_mixed("mixed_test"))
     print("particles dev:", build_particles("particles"))
     print("particles test (held out):", build_particles("particles_test"))
+    print("learning dev:", build_learn("learn"))
+    print("learning test (held out):", build_learn("learn_test"))
     print("asus words (private):", build_asus_words())
