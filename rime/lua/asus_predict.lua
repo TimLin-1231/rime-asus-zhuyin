@@ -26,11 +26,17 @@ local SHOW = 3         -- predictions offered
 
 local next_cc
 
-local function lookup(key)
+-- Loading the OpenCC text dict takes ~140 ms; done at session start (init)
+-- instead of on the first keystroke that needs it, which was a visible hitch.
+local function load_next()
   if next_cc == nil then
     local ok, cc = pcall(Opencc, "asus_next.json")
     next_cc = ok and cc or false
   end
+end
+
+local function lookup(key)
+  load_next()
   if not next_cc then return nil end
   local forms = next_cc:convert_word(key)
   if forms and #forms > 0 then return forms end
@@ -99,6 +105,7 @@ end
 local processor = {}
 
 function processor.init(env)
+  load_next()
   local ctx = env.engine.context
   env.history = ""
   env.pending = false
