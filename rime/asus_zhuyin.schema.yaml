@@ -53,6 +53,7 @@ engine:
     - uniquifier
     - lua_filter@*asus_grammar  # 的/得/地, 在/再 context rules
     - lua_filter@*asus_learn*filter  # learned corrections (after the rules)
+    - lua_filter@*asus_lang*digits  # 204 -> 但, digits second
     - lua_filter@*asus_compact  # must stay last
 
 # Half-width mode (the default, as in ASUS Smart Input) types ASCII ( ) ? ! :

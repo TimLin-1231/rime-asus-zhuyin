@@ -8,11 +8,21 @@
 --   English word     C_EN_BASE + C_EN_RANK * log10(rank + 1)  (rank 0 = personal)
 --   typed with caps  C_CAPS + C_DIGIT per digit (uppercase can never be Zhuyin)
 --   stray key        C_STRAY (dropped from the output)
+--   number           C_NUM + C_NUM_DIGIT per character (digits, optionally
+--                    one decimal point), plus C_NUM_END when it ends the input
+--                    in what could still be an unfinished syllable (typing ㄅㄢˋ
+--                    passes through "10"), plus C_NUM_OPEN right after an
+--                    unfinished syllable (謝謝 ㄒㄧㄝ˙: the 7 is its tone)
 --   + C_SWITCH whenever the language changes.
--- Only when the cheapest plan contains English or stray tokens does the
+-- Every digit key is also a Zhuyin key (1 ㄅ, 2 ㄉ, 5 ㄓ, 8 ㄚ, 9 ㄞ, 0 ㄢ, tones
+-- 3 4 6 7), so a number only wins where the keys are not good Zhuyin:
+-- 2026 / 100 / 3.14 are numbers, 204 (但) and 283 (打) stay Chinese.
+-- Only when the cheapest plan contains English, number or stray tokens does the
 -- segmentor take over; pure Chinese input keeps the stock segmentation.
--- English segments are tagged {asus_en, abc} so the Chinese reading of the
--- same keys stays available below the English candidate.
+-- English segments are tagged {asus_en, abc} and numbers {asus_num, abc}, so
+-- the Chinese reading of the same keys stays available below them; a Chinese
+-- segment typed only with digit keys gets the digits as its second candidate
+-- (filter lua_filter@*asus_lang*digits).
 --
 --   segmentor   lua_segmentor@*asus_lang*segmentor   (before abc_segmentor)
 --   translator  lua_translator@*asus_lang*translator
@@ -37,6 +47,10 @@ local C_SWITCH = 0.5
 local C_EN_BASE_CTX = 0.3  -- English base cost right after an English commit
 local C_EN_PREFIX = 1.0    -- extra cost of an unfinished word (prefix of a common word)
 local MAX_SYLLABLE = 5
+local C_NUM = 0.2        -- + 2 x C_SWITCH between Chinese: below a toneless syllable
+local C_NUM_DIGIT = 0.05 -- longer numbers cost a little more: 2838 = 打 + 8
+local C_NUM_END = 1.0
+local C_NUM_OPEN = 4.0   -- = C_STRAY: such a digit is a tone or a stray key
 
 -- Optional overrides from the schema (asus_lang/costs/<name>), for tuning.
 local function load_costs(config)
@@ -51,6 +65,10 @@ local function load_costs(config)
   C_EN_RANK = get("en_rank", C_EN_RANK)
   C_STRAY = get("stray", C_STRAY)
   C_SWITCH = get("switch", C_SWITCH)
+  C_NUM = get("num", C_NUM)
+  C_NUM_DIGIT = get("num_digit", C_NUM_DIGIT)
+  C_NUM_END = get("num_end", C_NUM_END)
+  C_NUM_OPEN = get("num_open", C_NUM_OPEN)
 end
 
 local ZHUYIN_KEYS = "1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/- 6347"
@@ -58,6 +76,8 @@ local INITIAL_KEYS = "1qaz2wsxedcrfv5tgbyhn"
 local IS_KEY, IS_INITIAL = {}, {}
 for i = 1, #ZHUYIN_KEYS do IS_KEY[ZHUYIN_KEYS:sub(i, i)] = true end
 for i = 1, #INITIAL_KEYS do IS_INITIAL[INITIAL_KEYS:sub(i, i)] = true end
+
+local TONE_KEYS = { [" "] = true, ["6"] = true, ["3"] = true, ["4"] = true, ["7"] = true }
 
 local function is_upper(c) return c:match("%u") ~= nil end
 local function in_run(c) return IS_KEY[c] or is_upper(c) end
@@ -172,7 +192,7 @@ local function plan_run(run, en_ctx)
   local INF = math.huge
   -- best[i][lang]: cost of covering run[1..i-1]; lang of last token
   local best, back = {}, {}
-  for i = 1, n + 1 do best[i] = { zh = INF, en = INF, none = INF }; back[i] = {} end
+  for i = 1, n + 1 do best[i] = { zh = INF, en = INF, num = INF, none = INF }; back[i] = {} end
   best[1].none = 0
   local function relax(i, from_lang, j, lang, cost, kind)
     local base = best[i][from_lang]
@@ -186,7 +206,7 @@ local function plan_run(run, en_ctx)
     end
   end
   for i = 1, n do
-    for _, from in ipairs({ "none", "zh", "en" }) do
+    for _, from in ipairs({ "none", "zh", "en", "num" }) do
       if best[i][from] < INF then
         -- Zhuyin syllables
         for j = i, math.min(n, i + MAX_SYLLABLE - 1) do
@@ -217,13 +237,34 @@ local function plan_run(run, en_ctx)
         elseif en_ctx and SHORT_WORDS[run:sub(i, i)] then
           relax(i, from, i, "en", C_EN_BASE_CTX, "en")  -- "a" after English
         end
+        -- numbers: 2026, 3.14
+        if run:sub(i, i):match("%d") then
+          local prev = (i > 1) and run:sub(i - 1, i - 1) or " "
+          local open = not TONE_KEYS[prev] and not prev:match("%d")
+          for j = i, n do
+            local tok = run:sub(i, j)
+            if not tok:match("^%d+%.?%d*$") then break end
+            if tok:match("%d$") then
+              local cost = C_NUM + C_NUM_DIGIT * #tok
+              if j == n then
+                -- Still typing a syllable? (10 -> 辦, 2832 -> 打 + ㄉ...)
+                for k = 1, math.min(3, #tok) do
+                  local tail = tok:sub(-k)
+                  if zy.prefix[tail] or zy.toneless[tail] then cost = cost + C_NUM_END; break end
+                end
+              end
+              if open then cost = cost + C_NUM_OPEN end
+              relax(i, from, j, "num", cost, "num")
+            end
+          end
+        end
         -- stray key
         relax(i, from, i, "none", C_STRAY, "stray")
       end
     end
   end
   local lang, cost = "none", INF
-  for _, l in ipairs({ "none", "zh", "en" }) do
+  for _, l in ipairs({ "none", "zh", "en", "num" }) do
     if best[n + 1][l] < cost then lang, cost = l, best[n + 1][l] end
   end
   if cost == INF then return nil, false, cost end
@@ -304,16 +345,28 @@ end
 -- new tail. Typing on can change the best plan for keys already segmented
 -- ("bec" is a word, "because" too), so kept segments before `start` must
 -- still agree with the plan; otherwise segmentation is rewound to `floor`.
-local function kept_matches(segmentation, spans, start)
+local function kept_matches(segmentation, spans, start, new_input, input)
   local by_start = {}
-  for _, sp in ipairs(spans) do by_start[sp.s] = sp end
+  for _, sp in ipairs(spans) do
+    -- With a number in the plan, segments kept from the previous key are
+    -- redone (measure words and 第 depend on the neighbouring number).
+    if new_input and sp.kind == "num" and start > 0 then return false end
+    by_start[sp.s] = sp
+  end
   for _, seg in ipairs(segmentation:get_segments()) do
     if seg.start >= start then break end
     if not is_fixed(seg) then
-      local special = seg:has_tag("asus_en") or seg:has_tag("asus_stray")
+      local special = seg:has_tag("asus_en") or seg:has_tag("asus_stray") or seg:has_tag("asus_num")
       local sp = by_start[seg.start]
       if #spans == 0 then
-        if special then return false end
+        -- A plain Chinese plan is one stock segment per run of keys: a kept
+        -- boundary inside a run (left by a number at "283" before 打電話)
+        -- would split the sentence and hide context from the language model
+        -- and rules. Boundaries at punctuation are librime's own.
+        local e = seg._end
+        if special or (e < #input and in_run(input:sub(e, e)) and in_run(input:sub(e + 1, e + 1))) then
+          return false
+        end
       elseif not sp or sp.e ~= seg._end or (sp.kind ~= "zh") ~= special then
         return false
       end
@@ -347,7 +400,10 @@ function segmentor.func(segmentation, env)
   local start = segmentation:get_current_start_position()
   local en_ctx = env.engine.context:get_property("asus_en_ctx") == "1"
   local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx)
-  if not kept_matches(segmentation, spans, start) then
+  local new_input = env.seg_input ~= input
+  env.seg_input = input
+  local call_start = start
+  if not kept_matches(segmentation, spans, start, new_input, input) then
     rewind(segmentation)
     start = segmentation:get_current_start_position()
   end
@@ -358,7 +414,7 @@ function segmentor.func(segmentation, env)
     log.info(string.format("asus_lang input=%q start=%d last=%s plan=%s", input, start,
       last and ("[" .. last.start .. "," .. last._end .. ")") or "-", table.concat(parts, " ")))
   end
-  for _, span in ipairs(spans) do
+  for idx, span in ipairs(spans) do
     if span.s == start then
       -- While typing, librime keeps the open segment from the previous
       -- keystroke and AddSegment always prefers the longer one, so a
@@ -376,13 +432,22 @@ function segmentor.func(segmentation, env)
       local seg = Segment(span.s, span.e)
       if span.kind == "en" then
         seg.tags = Set({ "asus_en", "abc" })
+      elseif span.kind == "num" then
+        seg.tags = Set({ "asus_num", "abc" })
       elseif span.kind == "stray" then
         seg.tags = Set({ "asus_stray" })
       else
         seg.tags = Set({ "abc" })
       end
       segmentation:add_segment(seg)
-      return false  -- this span is decided; skip the stock segmentors
+      -- librime stops segmenting when a call ends at or before the position
+      -- it started from, so after a rewind the spans up to there are all
+      -- added in this call.
+      local nxt = spans[idx + 1]
+      if not (span.e <= call_start and nxt and nxt.s == span.e and segmentation:forward()) then
+        return false  -- this span is decided; skip the stock segmentors
+      end
+      start = span.e
     end
   end
   return true
@@ -407,6 +472,12 @@ end
 function translator.func(input, seg, env)
   if seg:has_tag("asus_stray") then
     local cand = Candidate("stray", seg.start, seg._end, "", "〔略過贅字 " .. input .. "〕")
+    cand.quality = 1000
+    yield(cand)
+    return
+  end
+  if seg:has_tag("asus_num") then
+    local cand = Candidate("number", seg.start, seg._end, input, "")
     cand.quality = 1000
     yield(cand)
     return
@@ -443,5 +514,107 @@ local function complete_english(typed)
   return p.word:sub(#typed + 1)
 end
 
-return { segmentor = segmentor, translator = translator, plan_run = plan_run,
+-- Filter -------------------------------------------------------------------
+--   * A Chinese segment typed only with digit keys gets the digits as its
+--     second candidate (204 -> 但, then 204); a number gets full-width digits.
+--   * Measure words: the Chinese right after a number is converted without
+--     the number as context (2盃, 18碎), so a first syllable read as a common
+--     measure word becomes that word (2杯, 18歲); ㄉㄧˋ right before a number
+--     becomes 第, and ㄓㄤ after 第 + number is 章.
+-- Segments are found by the candidate's span: earlier segments are
+-- re-translated too, so composition:back() is not necessarily this one.
+local FULL = { ["0"] = "０", ["1"] = "１", ["2"] = "２", ["3"] = "３", ["4"] = "４",
+  ["5"] = "５", ["6"] = "６", ["7"] = "７", ["8"] = "８", ["9"] = "９", ["."] = "．" }
+
+-- Dachen keys (MOE readings) -> measure word. 隻/支 (both ㄓ) are left to
+-- the language model.
+local MEASURE = {
+  ["ek4"] = "個", ["1o "] = "杯", ["5; "] = "張", ["njo4"] = "歲", ["m06"] = "元",
+  ["dj94"] = "塊", ["2u03"] = "點", ["zp "] = "分", ["aul3"] = "秒", ["h4"] = "次",
+  ["wu0 "] = "天", ["su06"] = "年", ["m,4"] = "月", ["b4"] = "日", ["cl4"] = "號",
+  ["x.6"] = "樓", ["1p3"] = "本", ["ru04"] = "件", ["zp4"] = "份", ["u,4"] = "頁",
+  ["2j4"] = "度", ["au/6"] = "名", ["jo4"] = "位", ["bp6"] = "人", ["ru8 "] = "家",
+  ["ru0 "] = "間", ["xu;4"] = "輛", ["1j4"] = "部", ["gj; "] = "雙", ["wul6"] = "條",
+  ["qu04"] = "片", ["j03"] = "碗", ["qu/6"] = "瓶", ["1l "] = "包", ["g.3"] = "首",
+  ["qu0 "] = "篇", ["5k6"] = "折", ["1o4"] = "倍", ["h/6"] = "層", ["t;3"] = "場",
+  ["5. "] = "週", ["5j/3"] = "種", ["wu6"] = "題", ["rm4"] = "句", ["dk "] = "顆",
+  ["vu; "] = "箱", ["ck6"] = "盒", ["rup "] = "斤", ["j04"] = "萬", ["fu0 "] = "千",
+  ["193"] = "百",
+}
+local MEASURE2 = {
+  ["ej/ xu3"] = "公里", ["ej/ rup "] = "公斤", ["ej/ zp "] = "公分", ["ej/ t3"] = "公尺",
+  ["vul3g6"] = "小時", ["zp 5j/ "] = "分鐘", ["ek4m,4"] = "個月",
+}
+local DI, ZHANG = "2u4", "5; "
+
+local function chars(s)
+  local out = {}
+  for _, cp in utf8.codes(s) do out[#out + 1] = utf8.char(cp) end
+  return out
+end
+
+-- Number segment ending at (before = true) or starting at pos.
+local function number_at(comp, pos, before)
+  local ok, segs = pcall(function() return comp:toSegmentation():get_segments() end)
+  for _, s in ipairs(ok and segs or {}) do
+    if s._end > s.start and s:has_tag("asus_num") and (before and s._end or s.start) == pos then
+      return s
+    end
+  end
+  return nil
+end
+
+local function measure_words(ctx, cand, keys)
+  local syl = require("asus_learn").syllables(keys)
+  local cs = chars(cand.text)
+  if not syl or #syl ~= #cs then return nil end
+  local changed = false
+  local num = number_at(ctx.composition, cand.start, true)
+  if num then
+    local two = #syl >= 2 and MEASURE2[syl[1] .. syl[2]]
+    if two then
+      local w = chars(two)
+      if cs[1] ~= w[1] or cs[2] ~= w[2] then cs[1], cs[2] = w[1], w[2]; changed = true end
+    else
+      local w = MEASURE[syl[1]]
+      local before = ctx.input:sub(1, num.start)
+      if syl[1] == ZHANG and before:sub(-#DI) == DI then w = "章" end
+      if w and cs[1] ~= w then cs[1] = w; changed = true end
+    end
+  end
+  if syl[#syl] == DI and cs[#cs] ~= "第" and number_at(ctx.composition, cand._end, false) then
+    cs[#cs] = "第"
+    changed = true
+  end
+  return changed and table.concat(cs) or nil
+end
+
+local function digits(input, env)
+  local ctx = env.engine.context
+  local n = 0
+  for cand in input:iter() do
+    n = n + 1
+    if n == 1 then
+      local keys = ctx.input:sub(cand.start + 1, cand._end)
+      local plain = keys:match("^%d+%.?%d*$") and keys:match("%d$")
+      local fixed = cand.type ~= "number" and measure_words(ctx, cand, keys)
+      if fixed then
+        yield(ShadowCandidate(cand, cand.type, fixed, cand.comment))
+      else
+        yield(cand)
+      end
+      if plain then
+        if cand.type == "number" then
+          yield(Candidate("number", cand.start, cand._end, (keys:gsub(".", FULL)), "全形"))
+        else
+          yield(Candidate("number", cand.start, cand._end, keys, "數字"))
+        end
+      end
+    else
+      yield(cand)
+    end
+  end
+end
+
+return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
          complete_english = complete_english }

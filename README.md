@@ -33,6 +33,7 @@
 | 注音縮寫，例如 ㄉㄓ | 快捷文字本的展開文字（`rime/shortcuts.txt`） |
 | 直接打英文，例如 `python` | 自動判斷成英文；可以夾在中文之間（我用python跑model） |
 | Shift＋字母 | 大寫英文（GPU、Python） |
+| 中文模式直接打數字 | 2026、100、3.14 會直接變成數字，可以跟中文混打（2026年、3點、100元）；數字後面的量詞會自動選對（2杯、18歲、第2章）。剛好是完整注音的數字（204＝但、283＝打）照樣是中文，按 ↓ 第二個就是數字；數字鍵盤（numpad）永遠輸出數字 |
 | 英文後按空白 | 送出目前打的內容（不自動加空格） |
 | 多打一個鍵 | 判斷為贅字時會自動略過 |
 | Backspace | 已打完聲調的字一次刪整個字；還沒打完的音節、英文則一次刪一個鍵 |
@@ -98,6 +99,7 @@ C:\Users\User\anaconda3\python.exe tests\test_stage2.py
 C:\Users\User\anaconda3\python.exe tests\test_stage3.py
 C:\Users\User\anaconda3\python.exe tests\test_stage4.py
 C:\Users\User\anaconda3\python.exe tests\test_stage5.py
+C:\Users\User\anaconda3\python.exe tests\test_numbers.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
 C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改了什麼"
 ```
