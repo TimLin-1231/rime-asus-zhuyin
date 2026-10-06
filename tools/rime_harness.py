@@ -16,6 +16,7 @@ import ctypes as C
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 import winreg
@@ -249,7 +250,14 @@ def stage_user_dir(name: str, config: str, with_userdb: bool = False,
             _link_or_copy(src, user / rel)
         if with_userdb:
             for db in RIME_SRC.glob("*.userdb"):
-                shutil.copytree(db, user / db.name)
+                # The live Weasel keeps the leveldb files open; robocopy can
+                # still read them where Python's open() is denied. LOCK is
+                # skipped (leveldb recreates it). Exit codes < 8 mean success.
+                rc = subprocess.run(["robocopy", str(db), str(user / db.name), "/E",
+                                     "/R:1", "/W:1", "/XF", "LOCK", "/NFL", "/NDL", "/NJH",
+                                     "/NJS", "/NP"], capture_output=True).returncode
+                if rc >= 8:
+                    raise RuntimeError(f"robocopy {db} failed with code {rc}")
     elif config != "stock":
         raise ValueError(f"unknown config {config!r}")
     for rel, text in (extra or {}).items():
