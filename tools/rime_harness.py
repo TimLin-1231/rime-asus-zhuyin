@@ -346,6 +346,9 @@ class Rime:
         self.api.clear_composition(self.session)
         self.committed.clear()
 
+    def caret(self) -> int:
+        return int(self.api.get_caret_pos(self.session))
+
     def set_option(self, name: str, value: bool) -> None:
         self.api.set_option(self.session, name.encode(), int(value))
 

@@ -49,15 +49,43 @@ def main() -> int:
     expanded = [c for c, _ in s.candidates]
 
     r.key("3"); s = r.snapshot()
-    check("expanded: digit selects on page and collapses",
-          s.preview == expanded[2] and not r.get_option("_asus_expanded")
-          and "3" not in s.input.replace("ru04", ""),
-          f"preview={s.preview} want={expanded[2]} input={s.input}")
+    check("expanded: digit picks and commits a completing candidate (no Enter)",
+          s.committed == expanded[2] and not s.composing and not r.get_option("_asus_expanded"),
+          f"committed={s.committed!r} want={expanded[2]} composing={s.composing}")
 
-    r.clear(); r.type("ru04"); r.key("Down"); r.key("Down"); r.key("space"); s = r.snapshot()
-    check("expanded: Space confirms highlighted candidate",
-          s.preview == expanded[1] and not r.get_option("_asus_expanded"),
-          f"preview={s.preview} want={expanded[1]}")
+    # Re-read the page: the commit above was learned and may reorder candidates.
+    r.clear(); r.type("ru04"); r.key("Down"); r.key("Right"); s = r.snapshot()
+    check("expanded: Right moves the highlight (horizontal list)",
+          s.highlighted == 1, f"highlighted={s.highlighted}")
+    want = s.candidates[1][0] if len(s.candidates) > 1 else None
+    r.key("space"); s = r.snapshot()
+    check("expanded: Space picks and commits the highlighted candidate",
+          s.committed == want and not r.get_option("_asus_expanded"),
+          f"committed={s.committed!r} want={want}")
+
+    r.clear(); r.type("ru04"); r.key("Down"); r.key("Down"); s = r.snapshot()
+    check("expanded: Down goes to the next page",
+          s.candidates and [c for c, _ in s.candidates] != expanded,
+          f"{[c for c, _ in s.candidates][:3]}")
+
+    r.clear(); r.type("su3cl3"); r.key("Down"); s = r.snapshot()
+    page = [c for c, _ in s.candidates]
+    if "你" in page:
+        r.key(str(page.index("你") + 1)); s = r.snapshot()
+        check("expanded: picking a partial word does not commit",
+              s.committed == "" and s.composing and s.preview.startswith("你"),
+              f"committed={s.committed!r} preview={s.preview!r}")
+    else:
+        check("expanded: picking a partial word does not commit", False, f"page={page}")
+
+    r.clear(); r.type("su3cl3"); r.key("Left"); s = r.snapshot()
+    check("compact: Left moves the caret (editing), not the highlight",
+          r.caret() < len("su3cl3") and len(s.candidates) == 1,
+          f"caret={r.caret()} n={len(s.candidates)}")
+
+    r.clear(); r.type("su3cl3"); r.key("space"); s = r.snapshot()
+    check("compact: Space after a toned syllable does not commit",
+          s.committed == "", f"committed={s.committed!r}")
 
     r.clear(); r.type("ru04"); r.key("Down"); r.key("Escape"); s = r.snapshot()
     check("expanded: Esc collapses but keeps composition",

@@ -3,9 +3,10 @@
 --
 --   * ` opens a symbol keyboard: the candidate window lists "symbol  key" for
 --     the current category; pressing a key commits its symbol immediately.
---     Tab / Shift+Tab switch category, Up/Down/Page browse, Space/Enter commit
---     the highlighted symbol, Esc/BackSpace close. Layouts live in the schema
---     under asus_symbols/categories ("<key><symbol>" items separated by spaces).
+--     Tab / Shift+Tab switch category, Left/Right move the highlight, Up/Down
+--     change page, Space/Enter commit the highlighted symbol, Esc/BackSpace
+--     close. Layouts live in the schema under asus_symbols/categories
+--     ("<key><symbol>" items separated by spaces; item order = display order).
 --   * Ctrl+punctuation commits full-width punctuation directly (Chinese mode
 --     only). Ctrl+/ and Ctrl+[ ] are deliberately left to applications.
 --
@@ -115,6 +116,7 @@ function processor.func(key, env)
   if not ctx:is_composing() then
     if code == XK_grave and not key:shift() and #env.cats > 0 then
       ctx:set_property(PROP, "1")
+      ctx:set_option("_linear", true)  -- horizontal list: Left/Right, Up/Down = page
       ctx:push_input(TRIGGER)
       return kAccepted
     end
@@ -171,8 +173,13 @@ function translator.func(input, seg, env)
   pcall(function()
     ctx.composition:back().prompt = table.concat(names, " ") .. "  Tab 切換"
   end)
-  for _, item in ipairs(env.cats[i].items) do
-    local cand = Candidate("asus_symbol", seg.start, seg._end, item.sym, key_label(item.key))
+  -- The prompt is hidden when Weasel previews inline, so the first candidate
+  -- also carries the category bar in its comment.
+  local tabs = table.concat(names, " ")
+  for n, item in ipairs(env.cats[i].items) do
+    local comment = key_label(item.key)
+    if n == 1 then comment = comment .. "  " .. tabs .. " ⇥" end
+    local cand = Candidate("asus_symbol", seg.start, seg._end, item.sym, comment)
     cand.quality = 1000
     yield(cand)
   end

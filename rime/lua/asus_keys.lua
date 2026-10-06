@@ -8,8 +8,10 @@
 --   * Shift+letter while composing is treated as the plain letter, because
 --     uppercase letters are never valid Zhuyin keys (accidental Shift).
 --   * Compact menu (see asus_compact.lua): Down expands the full candidate
---     list. While expanded, 1-9 select on the current page, Space confirms the
---     highlighted candidate and Esc collapses back to the compact bubble.
+--     list. While expanded, Left/Right move the highlight, Up/Down change
+--     page, 1-9 select on the current page, Space picks the highlighted
+--     candidate and Esc collapses back to the compact bubble. A pick that
+--     completes the input is committed at once (no Enter needed).
 --
 -- Must be the first processor so it sees Shift events before ascii_composer.
 
@@ -58,9 +60,22 @@ local function toggle_ascii(ctx)
   ctx:set_option("ascii_mode", to_ascii)
 end
 
+-- Options tied to the expanded candidate list:
+--   _linear       the list is horizontal, so Left/Right move the highlight and
+--                 Up/Down change page (librime selector). Off in compact mode,
+--                 where Left/Right must move the caret for editing.
+--   _auto_commit  picking a candidate that completes the input commits it
+--                 right away (librime Engine::OnSelect), as in ASUS Smart
+--                 Input; Weasel discards uncommitted text when focus moves.
+local function set_list_options(ctx, value)
+  ctx:set_option("_linear", value)
+  ctx:set_option("_auto_commit", value)
+end
+
 local function set_expanded(ctx, value)
   if ctx:get_option(EXPANDED) == value then return end
   ctx:set_option(EXPANDED, value)
+  set_list_options(ctx, value)
   if ctx:is_composing() then
     ctx:refresh_non_confirmed_composition()
   end
@@ -96,15 +111,18 @@ local function init(env)
   env.shift_down, env.shift_down_at, env.last_tap_at = nil, 0, nil
   local ctx = env.engine.context
   ctx:set_option(EXPANDED, false)
+  set_list_options(ctx, false)
   -- Always start the next composition in compact mode, whether the previous
   -- one was committed or cleared (Esc, BackSpace to empty, app focus change).
   -- Otherwise digits of the next syllable would act as select keys.
   env.commit_conn = ctx.commit_notifier:connect(function(c)
     c:set_option(EXPANDED, false)
+    set_list_options(c, false)
   end)
   env.update_conn = ctx.update_notifier:connect(function(c)
-    if not c:is_composing() and c:get_option(EXPANDED) then
+    if not c:is_composing() and (c:get_option(EXPANDED) or c:get_option("_linear")) then
       c:set_option(EXPANDED, false)
+      set_list_options(c, false)
     end
   end)
 end
@@ -172,7 +190,9 @@ local function func(key, env)
     return kAccepted  -- never insert the digit as Zhuyin while expanded
   end
   if code == XK_space and key.modifier == 0 then
-    ctx:confirm_current_selection()
+    -- select() (not confirm_current_selection) so Engine::OnSelect runs and
+    -- _auto_commit can commit a completed input.
+    ctx:select(ctx.composition:back().selected_index)
     set_expanded(ctx, false)
     return kAccepted
   end

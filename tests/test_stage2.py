@@ -26,8 +26,9 @@ def main() -> int:
 
     # Symbol keyboard ------------------------------------------------------
     r.clear(); r.key("`"); s = r.snapshot()
-    check("` opens the symbol keyboard with a full list",
-          s.input == "`" and len(s.candidates) == 9 and s.candidates[0] == ("｀", "`"),
+    check("` opens the symbol keyboard: full page, common punctuation first",
+          s.input == "`" and len(s.candidates) == 9 and s.candidates[0][0] == "，"
+          and s.candidates[0][1].startswith(",") and "【一般】" in s.candidates[0][1],
           f"input={s.input!r} n={len(s.candidates)} first={s.candidates[:2]}")
 
     r.key("q"); s = r.snapshot()
@@ -50,9 +51,14 @@ def main() -> int:
     r.clear(); r.key("`"); r.key("Tab"); r.key("Tab"); r.key("Tab"); r.key("q"); s = r.snapshot()
     check("Tab wraps around to 一般", s.committed == "《", f"committed={s.committed!r}")
 
-    r.clear(); r.key("`"); r.key("Down"); r.key("space"); s = r.snapshot()
-    check("Down + Space commits the highlighted symbol",
-          s.committed == "１", f"committed={s.committed!r}")
+    r.clear(); r.key("`"); r.key("Right"); r.key("space"); s = r.snapshot()
+    check("Right + Space commits the highlighted symbol",
+          s.committed == "。", f"committed={s.committed!r}")
+
+    r.clear(); r.key("`"); r.key("Down"); s = r.snapshot()
+    check("Down shows the next page of symbols",
+          s.composing and s.candidates and s.candidates[0][0] != "，",
+          f"first={s.candidates[:1]}")
 
     r.clear(); r.key("`"); r.key("Escape"); s = r.snapshot()
     check("Esc closes the symbol keyboard", not s.composing and s.committed == "",

@@ -84,14 +84,15 @@ translator:
 
 # Symbol keyboard for ` (lua/asus_symbols.lua). Each item is "<key><symbol>",
 # items separated by spaces; uppercase / shifted keys are typed with Shift.
-# "一般" follows the ASUS Smart Input layout.
+# Item order is the display order. "一般" uses the ASUS Smart Input key
+# mapping, listed with the most common punctuation first.
 asus_symbols:
   categories:
     - name: 一般
-      layout: '`｀ 1１ 2２ 3３ 4４ 5５ 6６ 7７ 8８ 9９ 0０ -－ =＝
-        q《 w》 e〈 r〉 t〝 y〞 u【 i】 o（ p） [〔 ]〕 \＼
-        a※ s＊ d○ f● g「 h」 j『 k』 l： ;； ''、
-        z！ x？ c… v⋯ b— n｛ m｝ ,， .。 /／'
+      layout: ',， .。 ''、 ;； l： x？ z！ g「 h」 j『 k』 o（ p）
+        q《 w》 e〈 r〉 u【 i】 [〔 ]〕 c… v⋯ b— t〝 y〞
+        a※ s＊ d○ f● n｛ m｝ /／ \＼ -－ =＝
+        `｀ 1１ 2２ 3３ 4４ 5５ 6６ 7７ 8８ 9９ 0０'
     - name: 數學
       layout: '`≈ 1∑ 2∏ 3∫ 4∂ 5∇ 6∞ 7√ 8× 9∈ 0∉ -± =≠
         qθ wω eε rρ tτ yψ uυ iι oο pπ [⊆ ]⊇ \∖
