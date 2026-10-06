@@ -109,9 +109,9 @@ def main() -> int:
           s.input == "w96" and len(s.candidates) == 1, f"input={s.input} n={len(s.candidates)}")
 
     # Accidental Shift ----------------------------------------------------
-    r.clear(); r.type("su3"); r.key("C", SHIFT_MASK); r.type("l3"); s = r.snapshot()
-    check("Shift+letter while composing acts as the plain key",
-          s.input == "su3cl3" and s.top == "你好", f"input={s.input} top={s.top}")
+    r.clear(); r.type("su3"); r.key("C", SHIFT_MASK); s = r.snapshot()
+    check("Shift+letter types a capital (English), per stage-3 decision",
+          s.input == "su3C", f"input={s.input}")
 
     r.clear(); r.type("su3cl3"); r.tap("Shift_L"); s = r.snapshot()
     check("single Shift tap: no mode switch, nothing committed",

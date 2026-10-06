@@ -236,9 +236,14 @@ def stage_user_dir(name: str, config: str, with_userdb: bool = False,
             shutil.rmtree(user)
         except PermissionError:
             # A hard link whose target the live Weasel keeps mapped cannot be
-            # deleted; the directory can still be moved out of the way.
+            # deleted; the directory can still be moved out of the way. If even
+            # that fails (handle still held, e.g. by a scanner), use a fresh dir.
             trash.mkdir(parents=True, exist_ok=True)
-            user.rename(trash / f"{name}-{time.time_ns()}")
+            try:
+                user.rename(trash / f"{name}-{time.time_ns()}")
+            except PermissionError:
+                user = HARNESS_DIR / f"{name}-{os.getpid()}" / "user"
+                shutil.rmtree(user, ignore_errors=True)
     user.mkdir(parents=True)
     if config == "project":
         for src in RIME_SRC.rglob("*"):

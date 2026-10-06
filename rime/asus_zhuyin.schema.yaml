@@ -35,6 +35,7 @@ engine:
   segmentors:
     - ascii_segmentor
     - matcher
+    - lua_segmentor@*asus_lang*segmentor  # Chinese/English/stray-key spans
     - abc_segmentor
     - punct_segmentor
     - fallback_segmentor
@@ -42,6 +43,7 @@ engine:
     - punct_translator
     - lua_translator@*asus_symbols*translator
     - lua_translator@*asus_shortcuts  # rime/shortcuts.txt
+    - lua_translator@*asus_lang*translator  # English words, dropped stray keys
     - script_translator
   filters:
     - simplifier@zh_hans
@@ -61,6 +63,7 @@ recognizer:
   patterns:
     asus_symbol: "^`$"
     reverse_lookup: "(?!)"  # stroke reverse lookup removed; ` opens symbols
+    uppercase: "(?!)"  # capitals are handled as English by asus_lang.lua
 
 menu:
   page_size: 9

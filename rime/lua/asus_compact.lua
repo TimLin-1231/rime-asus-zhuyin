@@ -37,23 +37,37 @@ local function pending_reading(input)
   return table.concat(out)
 end
 
+-- CJK Extension B+ and the compatibility supplement (e.g. 𦃕) are almost never
+-- intended; librime's charset_filter is a no-op in 1.13.1 when listed in a
+-- schema (it requires an empty name_space), so they are dropped here unless
+-- the extended_charset option is on.
+local function is_rare(text)
+  for _, cp in utf8.codes(text) do
+    if cp >= 0x20000 then return true end
+  end
+  return false
+end
+
 local function func(input, env)
   local ctx = env.engine.context
   local seg = ctx.composition:back()
+  local keep_rare = ctx:get_option("extended_charset")
   if ctx:get_option(EXPANDED) or (seg and seg:has_tag("asus_symbol")) then
     for cand in input:iter() do
-      yield(cand)
+      if keep_rare or not is_rare(cand.text) then yield(cand) end
     end
     return
   end
   local reading = pending_reading(ctx.input:sub(1, ctx.caret_pos))
   for cand in input:iter() do
-    if reading ~= "" and cand.comment == "" then
-      yield(ShadowCandidate(cand, cand.type, cand.text, reading))
-    else
-      yield(cand)
+    if keep_rare or not is_rare(cand.text) then
+      if reading ~= "" and cand.comment == "" and cand.type ~= "english" then
+        yield(ShadowCandidate(cand, cand.type, cand.text, reading))
+      else
+        yield(cand)
+      end
+      return  -- compact: best candidate only
     end
-    return  -- compact: best candidate only
   end
 end
 

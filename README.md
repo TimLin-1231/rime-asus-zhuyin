@@ -29,6 +29,11 @@
 | Ctrl+Shift+; / 1 [ ] 9 0 | ： ？ ！ 『 』 （ ） |
 | ( ) | 半形括號（全形用 Ctrl+Shift+9/0） |
 | 注音縮寫，例如 ㄉㄓ | 快捷文字本的展開文字（`rime/shortcuts.txt`） |
+| 直接打英文，例如 `python` | 自動判斷成英文；可以夾在中文之間（我用python跑model） |
+| Shift＋字母 | 大寫英文（GPU、Python） |
+| 英文後按空白 | 送出目前打的內容（不自動加空格） |
+| 多打一個鍵 | 判斷為贅字時會自動略過 |
+| Backspace | 已打完聲調的字一次刪整個字；還沒打完的音節、英文則一次刪一個鍵 |
 
 ## 詞庫
 - **個人詞彙**：`lexicon/personal_words.txt`（不進 git），一行一個詞：`詞<Tab>注音<Tab>來源`，注音可以留空，會自動查。
@@ -37,16 +42,20 @@
 - 修改詞庫後執行 `python tools/build_lexicon.py`，再重新部署。
 - **快捷文字本**：`rime/shortcuts.txt`（不進 git，範例在 `shortcuts.example.txt`）。改完要重新部署。
 - **符號鍵盤配置**：`rime/asus_zhuyin.schema.yaml` 的 `asus_symbols`。
+- **英文詞彙**：來自舊小狼毫的 `easy_en` 詞頻表，加上 `lexicon/english_words.txt`（你自己的英文專有名詞，一行一個）。
+  修改後執行 `python tools/build_lang_data.py`，再重新部署。
+  詞表放在 OpenCC 字典裡（`rime/opencc/asus_en.*`），不放在 Lua 記憶體，否則每次按鍵會慢約 40 ms。
 
 ## 部署
 1. 修改 `rime/` 裡的檔案。
 2. 系統匣的小狼毫圖示按右鍵 →「**重新部署**」。
-3. 如果是改了 `RimeUserDir`，或是第一次在新電腦上使用：先跑 `python tools/fetch_models.py` 和 `python tools/build_lexicon.py`，再重新啟動小狼毫服務（重開機最簡單），然後重新部署。
+3. 如果是改了 `RimeUserDir`，或是第一次在新電腦上使用：先跑 `python tools/fetch_models.py`、`python tools/build_lexicon.py` 和 `python tools/build_lang_data.py`，再重新啟動小狼毫服務（重開機最簡單），然後重新部署。
 
 ## 測試
 ```
 C:\Users\User\anaconda3\python.exe tests\test_stage1.py
 C:\Users\User\anaconda3\python.exe tests\test_stage2.py
+C:\Users\User\anaconda3\python.exe tests\test_stage3.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
 ```
 評估表格的括號裡是**同一版評估集**上一次的數字，可以直接前後對照。

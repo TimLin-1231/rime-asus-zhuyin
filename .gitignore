@@ -38,3 +38,8 @@ lexicon/english_words.txt
 rime/shortcuts.txt
 rime/terra_pinyin.personal.dict.yaml
 rime/terra_pinyin.tw.dict.yaml
+
+# Generated data for mixed input (tools/build_lang_data.py)
+rime/opencc/asus_en.txt
+rime/opencc/asus_en.json
+rime/lua/asus_zhuyin_data.lua

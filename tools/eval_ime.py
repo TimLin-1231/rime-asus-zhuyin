@@ -19,6 +19,8 @@ Sets
   dev_typo  dev with one adjacent-key substitution per sentence
             (seeded; never on tone keys)
   test      tests/eval/sentences_test.tsv, held out: aggregate scores only
+  dev_stray / test_stray  one extra neighbouring key inserted per sentence (seed 3)
+  mixed / mixed_test      Chinese with English words (tests/eval/mixed*.txt)
   words     tests/eval/private/asus_words.tsv (personal ASUS dictionary), if present
   moe_words tests/eval/private/moe_words.tsv: 400 common MOE words (essay >= 1000,
             seed 42) typed with Taiwan readings; held out from lexicon tuning
@@ -52,6 +54,9 @@ def _empty_dict(name: str) -> str:
             "use_preset_vocabulary: false\n...\n")
 
 
+NO_LANG = {"asus_zhuyin.custom.yaml": (
+    "patch:\n  engine/segmentors: [ascii_segmentor, matcher, abc_segmentor, "
+    "punct_segmentor, fallback_segmentor]\n")}
 NO_TW = {"terra_pinyin.tw.dict.yaml": _empty_dict("terra_pinyin.tw")}
 NO_PERSONAL = {"terra_pinyin.personal.dict.yaml": _empty_dict("terra_pinyin.personal")}
 VARIANTS = {
@@ -63,9 +68,10 @@ VARIANTS = {
     "asus-lex": ("project", "asus_zhuyin", (), {**NO_TW, **NO_PERSONAL}),  # = stage 1
     "asus-tw": ("project", "asus_zhuyin", (), NO_TW),          # ablation: no MOE supplement
     "asus-personal": ("project", "asus_zhuyin", (), NO_PERSONAL),  # ablation: no personal words
+    "asus-lang": ("project", "asus_zhuyin", (), NO_LANG),     # ablation: no mixed input (= stage 2)
     "asus": ("project", "asus_zhuyin", (), {}),                # current project config
 }
-DEFAULT_VARIANTS = ["stock", "asus-lex", "asus-tw", "asus-personal", "asus"]
+DEFAULT_VARIANTS = ["stock", "asus-lang", "asus"]
 
 # QWERTY neighbours for typo injection (letters/digits/punct used by Dachen).
 ROWS = ["1234567890-", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./"]
@@ -89,6 +95,14 @@ def inject_typo(keys: str, rng: random.Random) -> str:
     return keys[:i] + rng.choice(nb[keys[i]]) + keys[i + 1:]
 
 
+def inject_stray(keys: str, rng: random.Random) -> str:
+    """Insert one extra key next to a neighbouring key (fat finger), never at the ends."""
+    nb = _neighbours()
+    idx = [i for i in range(1, len(keys)) if nb.get(keys[i - 1])]
+    i = rng.choice(idx)
+    return keys[:i] + rng.choice(nb[keys[i - 1]]) + keys[i:]
+
+
 def load_set(path: Path) -> list[tuple[str, str]]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -100,10 +114,17 @@ def load_set(path: Path) -> list[tuple[str, str]]:
 
 def build_sets() -> dict[str, list[tuple[str, str]]]:
     dev = load_set(EVAL / "sentences.tsv")
+    test = load_set(EVAL / "sentences_test.tsv")
     rng = random.Random(20261006)
     sets = {"dev": dev,
             "dev_typo": [(inject_typo(k, rng), t) for k, t in dev],
-            "test": load_set(EVAL / "sentences_test.tsv")}
+            "test": test}
+    stray_rng = random.Random(3)
+    sets["dev_stray"] = [(inject_stray(k, stray_rng), t) for k, t in dev]
+    sets["test_stray"] = [(inject_stray(k, stray_rng), t) for k, t in test]
+    for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test")):
+        if (EVAL / f"{stem}.tsv").exists():
+            sets[name] = load_set(EVAL / f"{stem}.tsv")
     words = EVAL / "private" / "asus_words.tsv"
     if words.exists():
         sets["words"] = load_set(words)
@@ -115,19 +136,31 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
 
 # -- worker (runs inside a subprocess) -------------------------------------
 def worker(variant: str, sets_json: str) -> None:
-    from rime_harness import open_rime
+    from rime_harness import SHIFT_MASK, open_rime
     config, schema, exclude, extra = VARIANTS[variant]
+    # No learning during evaluation: a commit (e.g. Space after an English
+    # word) would otherwise change the ranking for every later case, making
+    # scores depend on set order. Learning is evaluated separately (stage 5).
+    extra = dict(extra)
+    custom = f"{schema}.custom.yaml"
+    extra[custom] = (extra.get(custom) or "patch:\n") + "  translator/enable_user_dict: false\n"
     rime = open_rime(f"eval-{variant}", config, schema, exclude=exclude, extra=extra)
     sets = json.loads(sets_json)
     out: dict[str, list] = {}
     for name, cases in sets.items():
         res = []
         for keys, _ in cases:
+            # Same left context for every case: contextual_suggestions ranks by
+            # the last committed text, so commit "。" (sentence start) first.
+            rime.clear()
+            rime.key(">", SHIFT_MASK)
             rime.clear()
             t0 = time.perf_counter()
-            rime.type(keys)
+            for ch in keys:  # capitals are typed with Shift
+                rime.key(ch, SHIFT_MASK if ch.isupper() else 0)
             dt_ms = (time.perf_counter() - t0) * 1000 / max(len(keys), 1)
-            preview = rime.snapshot().preview
+            snap = rime.snapshot()
+            preview = snap.committed + snap.preview
             if schema == "asus_zhuyin":
                 rime.key("Down")  # expand the compact bubble to a full page
             page = [c for c, _ in rime.snapshot().candidates]
@@ -226,10 +259,13 @@ def main() -> None:
         metrics = {name: score(name, sets[name], res[name]) for name in sets}
         records.append({"time": stamp, "rev": rev, "note": args.note, "sets": set_hash,
                         "variant": variant, "metrics": metrics})
-        # Failures are reported for the dev set only; the test set stays blind.
-        for (keys, text), r in zip(sets.get("dev", []), res.get("dev", [])):
-            if r["preview"] != text:
-                failures.append((variant, text, r["preview"]))
+        # Failures are reported for dev sets only; test sets stay blind.
+        for name in sets:
+            if "test" in name or name in ("words", "moe_words"):
+                continue
+            for (keys, text), r in zip(sets[name], res[name]):
+                if r["preview"] != text:
+                    failures.append((variant, name, text, r["preview"]))
 
     # Markdown report: one table per set, previous run in parentheses.
     lines = [f"## Eval {stamp} @ {rev} sets={set_hash} {args.note}".rstrip(),
@@ -257,7 +293,7 @@ def main() -> None:
             for rec in records:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         detail = REPORTS / "last_failures.tsv"
-        detail.write_text("variant\texpected\tgot\n" + "\n".join(
+        detail.write_text("variant\tset\texpected\tgot\n" + "\n".join(
             "\t".join(x) for x in failures) + "\n", encoding="utf-8")
         print(f"(saved to {HISTORY.relative_to(ROOT)}; dev-set failures in "
               f"{detail.relative_to(ROOT)}; test-set failures are never shown)")

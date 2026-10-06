@@ -68,4 +68,4 @@ local function func(input, seg, env)
   end
 end
 
-return { init = init, func = func }
+return { init = init, func = func, load = load }
