@@ -16,6 +16,8 @@ Metrics
   ms/key    mean librime process_key latency
 Sets
   dev       tests/eval/sentences.tsv (Taiwan MOE readings); tune against this
+  dev_toneless  dev typed without tone keys; ASCII = share of outputs with
+            Latin letters (English leaking into Chinese), lower is better
   dev_typo  dev with one adjacent-key substitution per sentence
             (seeded; never on tone keys)
   test      tests/eval/sentences_test.tsv, held out: aggregate scores only
@@ -35,6 +37,7 @@ import datetime as dt
 import hashlib
 import json
 import random
+import re
 import statistics
 import subprocess
 import sys
@@ -61,6 +64,7 @@ NO_LANG = {"asus_zhuyin.custom.yaml": (
     "punct_segmentor, fallback_segmentor]\n")}
 NO_TW = {"terra_pinyin.tw.dict.yaml": _empty_dict("terra_pinyin.tw")}
 NO_MCB = {"terra_pinyin.mcb.dict.yaml": _empty_dict("terra_pinyin.mcb")}
+NO_EN_PREFIX = {"opencc/asus_en_prefix.txt": "zzzzzz\t0:zzzzzz\n"}  # English autocomplete off
 # Wanxiang zh-hant model (amzxyz/RIME-LMDG, CC-BY-4.0) with its recommended
 # settings, and with the current octagram settings (only the model swapped).
 WX_RECOMMENDED = {"grammar.yaml": (
@@ -91,6 +95,7 @@ VARIANTS = {
     "asus-mcb": ("project", "asus_zhuyin", (), NO_MCB),       # ablation: no Taiwan frequencies
     "stage3": ("project", "asus_zhuyin", (), {**NO_MCB, **ESSAY_LM}),  # = stage 3 config
     "asus-wx": ("project", "asus_zhuyin", (), ESSAY_LM),      # ablation: previous LM
+    "asus-enpre": ("project", "asus_zhuyin", (), NO_EN_PREFIX),  # ablation: no English prefixes
     "asus-rules": ("project", "asus_zhuyin", (), {"asus_zhuyin.custom.yaml": (  # ablation: no 的得地/在再 rules
         "patch:\n  engine/filters: [simplifier@zh_hans, simplifier@zh_hant_tw, uniquifier, "
         "lua_filter@*asus_compact]\n")}),
@@ -147,6 +152,8 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     sets = {"dev": dev,
             "dev_typo": [(inject_typo(k, rng), t) for k, t in dev],
             "test": test}
+    # Guard: dev typed with no tone keys at all; English must not leak in.
+    sets["dev_toneless"] = [(re.sub(r"[ 6347]", "", k), t) for k, t in dev]
     stray_rng = random.Random(3)
     sets["dev_stray"] = [(inject_stray(k, stray_rng), t) for k, t in dev]
     sets["test_stray"] = [(inject_stray(k, stray_rng), t) for k, t in test]
@@ -227,6 +234,11 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
                     tot += 1
                     hit += len(r["preview"]) == len(t) and r["preview"][i] == ch
         m["PartAcc"] = hit / tot if tot else 0.0
+    if name == "dev_toneless":
+        # ASCII = share of outputs with Latin letters (English hallucinated
+        # into toneless Chinese); lower is better.
+        m = {"n": n, "ASCII": sum(bool(re.search(r"[A-Za-z]", r["preview"])) for r in res) / n,
+             "ms/key": m["ms/key"]}
     if name in ("words", "moe_words"):
         m = {"n": n, "Top1": exact / n,
              "Top9": sum(t in r["page"] for (_, t), r in zip(cases, res)) / n,
@@ -300,7 +312,7 @@ def main() -> None:
                         "variant": variant, "metrics": metrics})
         # Failures are reported for dev sets only; test sets stay blind.
         for name in sets:
-            if "test" in name or name in ("words", "moe_words"):
+            if "test" in name or name in ("words", "moe_words", "dev_toneless"):
                 continue
             for (keys, text), r in zip(sets[name], res[name]):
                 if r["preview"] != text:
@@ -311,7 +323,7 @@ def main() -> None:
              "(previous run on the same eval sets in parentheses)", ""]
     for name in sets:
         keys = list(records[0]["metrics"][name].keys() - {"n"})
-        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "Top1", "Top9", "ms/key"].index)
+        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Top1", "Top9", "ms/key"].index)
         lines.append(f"### {name} (n={records[0]['metrics'][name]['n']})")
         lines.append("| variant | " + " | ".join(keys) + " |")
         lines.append("|---|" + "---:|" * len(keys))

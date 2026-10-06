@@ -50,3 +50,5 @@ third_party/
 rime/terra_pinyin.mcb.dict.yaml
 rime/opencc/asus_next.txt
 rime/opencc/asus_next.json
+rime/opencc/asus_en_prefix.txt
+rime/opencc/asus_en_prefix.json

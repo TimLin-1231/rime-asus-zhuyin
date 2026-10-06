@@ -34,6 +34,7 @@ local C_DIGIT = 1.0
 local C_STRAY = 4.0
 local C_SWITCH = 0.5
 local C_EN_BASE_CTX = 0.3  -- English base cost right after an English commit
+local C_EN_PREFIX = 1.0    -- extra cost of an unfinished word (prefix of a common word)
 local MAX_SYLLABLE = 5
 
 -- Optional overrides from the schema (asus_lang/costs/<name>), for tuning.
@@ -68,11 +69,34 @@ local english_cc
 local max_en_len = zy.max_en_len or 24
 local memo, memo_input = {}, nil
 
+local prefix_cc
+local prefix_memo, prefix_memo_input = {}, nil
+
 local function load_english()
   if english_cc == nil then
     local ok, cc = pcall(Opencc, "asus_en.json")
     english_cc = ok and cc or false
   end
+  if prefix_cc == nil then  -- English autocomplete (opencc/asus_en_prefix.json)
+    local ok, cc = pcall(Opencc, "asus_en_prefix.json")
+    prefix_cc = ok and cc or false
+  end
+end
+
+-- Best common word starting with key (>= 3 lowercase letters): {word=, rank=} or nil.
+local function english_prefix(key)
+  if #key < 3 or not prefix_cc then return nil end
+  local hit = prefix_memo[key]
+  if hit ~= nil then return hit or nil end
+  local entry = false
+  local forms = prefix_cc:convert_word(key)
+  local value = forms and forms[1]
+  if value then
+    local rank, word = value:match("^(%d+):(.+)$")
+    if rank then entry = { word = word, rank = tonumber(rank) } end
+  end
+  prefix_memo[key] = entry
+  return entry or nil
 end
 
 -- key (lowercase) -> {word=, rank=} or nil
@@ -170,7 +194,16 @@ local function plan_run(run, en_ctx)
           if not (tok:match("^[%a][%a%-']*$") or (caps and tok:match("^%u[%w%-]*$"))) then
             break
           end
-          relax(i, from, j, "en", en_cost(tok, en_ctx), "en")
+          local cost = en_cost(tok, en_ctx)
+          if not cost and j == n and tok:match("^%l+$") then
+            -- Unfinished English word at the end ("pyth" -> python).
+            local p = english_prefix(tok)
+            if p then
+              cost = (en_ctx and C_EN_BASE_CTX or C_EN_BASE)
+                + C_EN_RANK * math.log(p.rank + 1, 10) + C_EN_PREFIX
+            end
+          end
+          relax(i, from, j, "en", cost, "en")
         end
         if is_upper(run:sub(i, i)) then
           relax(i, from, i, "en", C_CAPS, "en")  -- single capital letter
@@ -212,6 +245,7 @@ local function plan_input(env, input, floor, en_ctx)
   local cache_key = (en_ctx and "e" or "z") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
   if memo_input ~= input then memo, memo_input = {}, input end
+  if prefix_memo_input ~= input then prefix_memo, prefix_memo_input = {}, input end
   local spans = {}
   -- Shortcut abbreviations (ㄉㄓ) are runs of lone initials by design; leave
   -- them to the stock segmentation so asus_shortcuts.lua can match them.
@@ -347,6 +381,15 @@ function segmentor.func(segmentation, env)
   return true
 end
 
+-- Completion to offer for typed key: when it is not a word, or only a rare
+-- one ("beca", "datas") and the completion is at least 10x more common.
+local function completion_for(key, entry)
+  local p = english_prefix(key)
+  if not p or #p.word <= #key then return nil end
+  if entry and entry.rank <= p.rank * 10 then return nil end
+  return p
+end
+
 -- Translator -----------------------------------------------------------------
 local translator = {}
 
@@ -370,7 +413,12 @@ function translator.func(input, seg, env)
   if entry and not input:find("%u") and not entry.word:match("^%u%l*$") then
     shown = entry.word
   end
-  local cand = Candidate("english", seg.start, seg._end, shown, "")
+  -- Unfinished word: show the completion as a hint; Tab accepts it
+  -- (asus_predict.lua calls complete_english).
+  local hint = ""
+  local p = completion_for(input:lower(), entry)
+  if p then hint = "⇥" .. p.word end
+  local cand = Candidate("english", seg.start, seg._end, shown, hint)
   cand.quality = 1000
   yield(cand)
   if entry and entry.word ~= shown then
@@ -380,4 +428,13 @@ function translator.func(input, seg, env)
   end
 end
 
-return { segmentor = segmentor, translator = translator, plan_run = plan_run }
+-- Remainder that completes the typed English prefix ("pyth" -> "on"), or nil.
+local function complete_english(typed)
+  load_english()
+  local p = completion_for(typed:lower(), english(typed:lower()))
+  if not p or #p.word <= #typed then return nil end
+  return p.word:sub(#typed + 1)
+end
+
+return { segmentor = segmentor, translator = translator, plan_run = plan_run,
+         complete_english = complete_english }

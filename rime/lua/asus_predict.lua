@@ -8,6 +8,7 @@
 --     normally (Enter / BackSpace / punctuation go to the app).
 --   * While composing (>= 2 characters converted), asus_compact.lua shows
 --     "⇥ continuation"; Tab commits conversion + continuation (autocomplete).
+--   * An unfinished English word shows "⇥ word" (asus_lang.lua); Tab completes it.
 --
 -- Data: opencc/asus_next.json (prefix -> continuations, best first), built by
 -- tools/build_lang_data.py from McBopomofo phrases + personal words. Only the
@@ -161,8 +162,21 @@ function processor.func(key, env)
     if code == XK_Tab and key.modifier == 0 and ctx:is_composing()
         and not ctx:get_option("ascii_mode") and ctx.input:sub(1, 1) ~= "`" then
       local last = ctx.composition:back()
+      -- English: complete the unfinished word ("pyth" + Tab -> python).
+      if last and last:has_tag("asus_en") then
+        local typed = ctx.input:sub(last.start + 1, last._end)
+        local rest = require("asus_lang").complete_english(typed)
+        if rest then
+          ctx:commit()
+          env.pending = false
+          ctx:clear()
+          env.engine:commit_text(rest)
+          return kAccepted
+        end
+        return kNoop
+      end
       local text = ctx:get_commit_text()
-      local cont = not (last and last:has_tag("asus_en")) and complete(text)
+      local cont = complete(text)
       if cont then
         env.pending = false
         ctx:commit()          -- learns the conversion; history gets `text`

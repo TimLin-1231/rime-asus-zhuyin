@@ -106,6 +106,15 @@ def main() -> int:
     r.clear(); r.key("(", SHIFT_MASK); r.key(")", SHIFT_MASK); s = r.snapshot()
     check("half-width mode: ( ) are ASCII parentheses", s.committed == "()",
           f"committed={s.committed!r}")
+    r.clear()
+    for ch in "?!:":
+        r.key(ch, SHIFT_MASK)
+    s = r.snapshot()
+    check("half-width mode: ? ! : are ASCII and commit at once (no menu)",
+          s.committed == "?!:" and not s.candidates, f"committed={s.committed!r} cands={s.candidates}")
+    r.clear(); r.type("su3cl3"); r.key("?", SHIFT_MASK); s = r.snapshot()
+    check("? while composing commits text then ?", s.committed == "你好?",
+          f"committed={s.committed!r}")
     r.clear(); r.type("su3cl3"); r.key("(", SHIFT_MASK); s = r.snapshot()
     check("( while composing commits text then (", s.committed == "你好(",
           f"committed={s.committed!r}")

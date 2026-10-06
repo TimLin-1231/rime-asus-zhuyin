@@ -53,12 +53,16 @@ engine:
     - lua_filter@*asus_grammar  # 的/得/地, 在/再 context rules
     - lua_filter@*asus_compact  # must stay last
 
-# Half-width mode (the default, as in ASUS Smart Input) types ASCII
-# parentheses; full-width （） stay on Ctrl+Shift+9/0 and the ` keyboard.
-# Patched (replaced) rather than merged: the stock values are scalars.
+# Half-width mode (the default, as in ASUS Smart Input) types ASCII ( ) ? ! :
+# directly, without a menu; full-width （）？！： stay on Ctrl+Shift+9/0, /,
+# 1, ; and the ` keyboard. Patched (replaced) rather than merged: the stock
+# values are scalars or lists.
 __patch:
   - "punctuator/half_shape/(": { commit: "(" }
     "punctuator/half_shape/)": { commit: ")" }
+    "punctuator/half_shape/?": { commit: "?" }
+    "punctuator/half_shape/!": { commit: "!" }
+    "punctuator/half_shape/:": { commit: ":" }
     # Next-word prediction / autocomplete (lua/asus_predict.lua), on by default.
     "switches/+":
       - name: prediction

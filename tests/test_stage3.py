@@ -84,6 +84,20 @@ def main() -> int:
     check("Space after Chinese is still the first-tone key (no commit)",
           s.committed == "", f"committed={s.committed!r}")
 
+    # English autocomplete -----------------------------------------------------
+    s, out = typed("pyth")
+    check("unfinished English word shows ⇥ completion", s.candidates[:1] == [("pyth", "⇥python")],
+          f"{s.candidates[:1]}")
+    r.clear(); r.type("ji3m/4pyth"); r.key("Tab"); s = r.snapshot()
+    check("Tab completes the English word (no space added)", s.committed == "我用python",
+          f"committed={s.committed!r}")
+    s, out = typed("python")
+    check("a complete common word shows no completion hint", s.candidates[:1] == [("python", "")],
+          f"{s.candidates[:1]}")
+    s, out = typed("cl")
+    check("short Zhuyin letter runs are not treated as English prefixes", out == "好",
+          f"got {out!r}")
+
     # Stray keys ------------------------------------------------------------
     s, out = typed("su3xcl3")
     check("stray key x in 你好 is dropped", out == "你好", f"got {out!r}")
