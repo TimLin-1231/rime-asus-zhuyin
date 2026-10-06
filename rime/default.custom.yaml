@@ -1,0 +1,21 @@
+# Global Rime settings for the ASUS-style setup.
+# encoding: utf-8
+
+patch:
+  schema_list:
+    - schema: asus_zhuyin
+
+  menu/page_size: 9
+
+  # Accidental-modifier protection:
+  #   * Single Shift / Ctrl taps do nothing ("noop" drops the binding).
+  #     Mode switching is done by lua/asus_keys.lua: double-tap Shift or Ctrl+Space.
+  #   * Caps Lock commits the converted text before switching instead of the
+  #     stock "clear", which silently discarded the composition.
+  ascii_composer/switch_key:
+    Shift_L: noop
+    Shift_R: noop
+    Control_L: noop
+    Control_R: noop
+    Caps_Lock: commit_text
+    Eisu_toggle: commit_text

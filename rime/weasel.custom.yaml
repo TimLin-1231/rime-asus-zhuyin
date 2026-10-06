@@ -1,0 +1,85 @@
+# Weasel UI settings: ASUS Smart Input look.
+# encoding: utf-8
+#
+# Colors sampled from ASUS Smart Input screenshots:
+#   reading bubble blue #006CE1, suggestion bubble gray #4D4D4D, text #F0EFEC.
+# color_format argb lets us write 0xAARRGGBB instead of Weasel's default BGR.
+
+patch:
+  # Show "中 / 英" when the mode changes, next to the caret.
+  show_notifications: true
+  show_notifications_time: 1200
+
+  style/color_scheme: asus_light
+  style/color_scheme_dark: asus_dark   # follows the Windows app theme
+
+  style/font_face: "Microsoft JhengHei UI"
+  style/label_font_face: "Microsoft JhengHei UI"
+  style/comment_font_face: "Microsoft JhengHei UI"
+  style/font_point: 13
+  style/label_font_point: 10
+  style/comment_font_point: 12
+
+  style/horizontal: true
+  style/inline_preedit: true
+  style/preedit_type: preview          # inline text is the best candidate
+  style/label_format: "%s"
+  style/display_tray_icon: true
+  style/ascii_tip_follow_cursor: true
+  style/hover_type: semi_hilite
+
+  style/layout/min_width: 0            # stock 160 makes the bubble too wide
+  style/layout/min_height: 0
+  style/layout/border_width: 0
+  style/layout/margin_x: 3
+  style/layout/margin_y: 3
+  style/layout/spacing: 6
+  style/layout/candidate_spacing: 8
+  style/layout/hilite_spacing: 4
+  style/layout/hilite_padding_x: 8
+  style/layout/hilite_padding_y: 3
+  style/layout/corner_radius: 7
+  style/layout/round_corner: 5
+  style/layout/shadow_radius: 6
+  style/layout/shadow_offset_x: 0
+  style/layout/shadow_offset_y: 2
+
+  preset_color_schemes/asus_light:
+    name: 華碩淺色／ASUS Light
+    author: TimLin-1231
+    color_format: argb
+    back_color: 0xFFF5F5F5
+    border_color: 0xFFD6D6D6
+    shadow_color: 0x30000000
+    text_color: 0xFF1A1A1A
+    candidate_text_color: 0xFF1A1A1A
+    candidate_back_color: 0x00F5F5F5
+    label_color: 0xFF8A8A8A
+    comment_text_color: 0xFF5F6B7A
+    hilited_text_color: 0xFF1A1A1A
+    hilited_back_color: 0xFFE3E3E3
+    hilited_candidate_text_color: 0xFFFFFFFF
+    hilited_candidate_back_color: 0xFF006CE1
+    hilited_label_color: 0xFF006CE1    # hide the label on the highlighted item
+    hilited_comment_text_color: 0xFFD7E7FB
+    hilited_mark_color: 0x00000000
+
+  preset_color_schemes/asus_dark:
+    name: 華碩深色／ASUS Dark
+    author: TimLin-1231
+    color_format: argb
+    back_color: 0xFF4D4D4D
+    border_color: 0xFF4D4D4D
+    shadow_color: 0x60000000
+    text_color: 0xFFF0EFEC
+    candidate_text_color: 0xFFF0EFEC
+    candidate_back_color: 0x004D4D4D
+    label_color: 0xFFA8A8A8
+    comment_text_color: 0xFFB9C7D8
+    hilited_text_color: 0xFFF0EFEC
+    hilited_back_color: 0xFF3A3A3A
+    hilited_candidate_text_color: 0xFFFFFFFF
+    hilited_candidate_back_color: 0xFF006CE1
+    hilited_label_color: 0xFF006CE1
+    hilited_comment_text_color: 0xFFD7E7FB
+    hilited_mark_color: 0x00000000

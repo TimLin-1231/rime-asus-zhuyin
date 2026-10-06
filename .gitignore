@@ -18,3 +18,16 @@ learning/
 __pycache__/
 *.pyc
 .venv/
+
+# Test harness staging dirs
+.harness/
+
+# Large model files are fetched by tools/fetch_models.py
+*.gram
+
+# Rime runtime state (machine-specific)
+rime/installation.yaml
+rime/user.yaml
+
+# Eval sets derived from personal exports
+tests/eval/private/

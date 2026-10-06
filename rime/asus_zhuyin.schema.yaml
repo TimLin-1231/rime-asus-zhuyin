@@ -1,0 +1,66 @@
+# Rime schema
+# encoding: utf-8
+#
+# ASUS-style Zhuyin, built on the stock bopomofo_tw schema (standard Dachen
+# layout, terra_pinyin dictionary, octagram via grammar:/hant).
+# Using the terra_pinyin dictionary keeps learned data in terra_pinyin.userdb.
+
+__include: bopomofo_tw.schema:/
+
+schema:
+  schema_id: asus_zhuyin
+  name: 華碩風注音
+  version: "0.1.0"
+  author:
+    - TimLin-1231
+  description: |
+    華碩智慧輸入法風格的注音方案（大千式鍵盤、臺灣字形）。
+    行內預覽首選、精簡候選泡泡；↓ 展開候選、1–9 選字。
+    連按兩下 Shift 或 Ctrl+Space 切換中英。
+  dependencies:
+    - stroke
+
+engine:
+  processors:
+    - lua_processor@*asus_keys  # double-Shift / Ctrl+Space, compact menu keys
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - fluency_editor
+  segmentors:
+    - ascii_segmentor
+    - matcher
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - table_translator@custom_phrase
+    - reverse_lookup_translator
+    - script_translator
+  filters:
+    - simplifier@zh_hans
+    - simplifier@zh_hant_tw
+    - uniquifier
+    - lua_filter@*asus_compact  # must stay last
+
+menu:
+  page_size: 9
+  # Digits are Zhuyin keys, so the selector must never consume them; selection
+  # by 1-9 is done in asus_keys.lua only while the menu is expanded. These
+  # non-ASCII placeholders can never match a key, which also stops Shift+letter
+  # from selecting candidates. Labels shown in the candidate window are 1-9.
+  alternative_select_keys: "①②③④⑤⑥⑦⑧⑨"
+  alternative_select_labels: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+translator:
+  prism: asus_zhuyin
+  # librime's keyboard-adjacency corrector stays off: on the eval set it cut
+  # clean-sentence accuracy from 76% to 54% (it "corrects" valid input) while
+  # only lifting typo sentences from 0% to 22%. Typo handling is done in Lua
+  # instead, only when the input is not valid Zhuyin (stage 3).
+  enable_correction: false

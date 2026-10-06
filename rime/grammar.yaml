@@ -1,0 +1,14 @@
+# Rime configuration
+# encoding: utf-8
+#
+# Octagram language model settings, applied by bopomofo.schema.yaml through
+# "__patch: grammar:/hant?". Values follow lotem/rime-octagram-data (master).
+# Model file: zh-hant-t-essay-bgw.gram (fetch with tools/fetch_models.py).
+
+hant:
+  grammar:
+    language: zh-hant-t-essay-bgw
+  # Re-rank candidates using the last committed text as left context.
+  translator/contextual_suggestions: true
+  translator/max_homophones: 7
+  translator/max_homographs: 7
