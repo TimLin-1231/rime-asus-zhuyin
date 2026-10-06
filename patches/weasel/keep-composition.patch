@@ -1,0 +1,105 @@
+diff --git a/WeaselTSF/Composition.cpp b/WeaselTSF/Composition.cpp
+index e94cea0..6531a60 100644
+--- a/WeaselTSF/Composition.cpp
++++ b/WeaselTSF/Composition.cpp
+@@ -395,10 +395,27 @@ STDAPI WeaselTSF::OnCompositionTerminated(TfEditCookie ecWrite,
+   // This will be called when an edit session ended up with an empty composition
+   // string, Even if it is closed normally. Silly M$.
+ 
+-  _AbortComposition();
++  _KeepComposition(_pEditSessionContext);
+   return S_OK;
+ }
+ 
++// Ends a composition the user did not finish: focus moved to another window
++// or document, the caret left the composition, or the application ended it.
++// Stock Weasel deletes the text; here the conversion shown inline stays in
++// the document (as with Microsoft Bopomofo and ASUS Smart Input). Rime's
++// input is cleared rather than committed: the server only hands committed
++// text back with a key event response, so a commit would be inserted again
++// on the next key. Without inline preedit the composition only holds
++// placeholder text, which is still removed.
++void WeaselTSF::_KeepComposition(com_ptr<ITfContext> pContext) {
++  m_client.ClearComposition();
++  if (_IsComposing() && pContext)
++    _EndComposition(pContext, !_inlinePreedit);
++  _inlinePreedit = FALSE;
++  _committed = TRUE;
++  _cand->Destroy();
++}
++
+ void WeaselTSF::_AbortComposition(bool clear) {
+   m_client.ClearComposition();
+   if (_IsComposing()) {
+diff --git a/WeaselTSF/EditSession.cpp b/WeaselTSF/EditSession.cpp
+index 8f4d503..3256457 100644
+--- a/WeaselTSF/EditSession.cpp
++++ b/WeaselTSF/EditSession.cpp
+@@ -35,6 +35,7 @@ STDAPI WeaselTSF::DoEditSession(TfEditCookie ec) {
+     } else if (!_status.composing && _IsComposing()) {
+       _EndComposition(_pEditSessionContext, true);
+     }
++    _inlinePreedit = _IsComposing() && config.inline_preedit;
+     if (_IsComposing() && config.inline_preedit) {
+       _ShowInlinePreedit(_pEditSessionContext, context);
+     }
+diff --git a/WeaselTSF/KeyEventSink.cpp b/WeaselTSF/KeyEventSink.cpp
+index c885ddd..6265be5 100644
+--- a/WeaselTSF/KeyEventSink.cpp
++++ b/WeaselTSF/KeyEventSink.cpp
+@@ -67,7 +67,7 @@ STDAPI WeaselTSF::OnSetFocus(BOOL fForeground) {
+     m_client.FocusIn();
+   else {
+     m_client.FocusOut();
+-    _AbortComposition();
++    _KeepComposition(_pEditSessionContext);
+   }
+ 
+   return S_OK;
+diff --git a/WeaselTSF/TextEditSink.cpp b/WeaselTSF/TextEditSink.cpp
+index a6bc1f0..e82bce1 100644
+--- a/WeaselTSF/TextEditSink.cpp
++++ b/WeaselTSF/TextEditSink.cpp
+@@ -38,7 +38,7 @@ STDAPI WeaselTSF::OnEndEdit(ITfContext* pContext,
+         ITfRange* pRangeComposition;
+         if (_pComposition->GetRange(&pRangeComposition) == S_OK) {
+           if (!IsRangeCovered(ecReadOnly, tfSelection.range, pRangeComposition))
+-            _EndComposition(pContext, true);
++            _KeepComposition(pContext);
+           pRangeComposition->Release();
+         }
+       }
+diff --git a/WeaselTSF/WeaselTSF.cpp b/WeaselTSF/WeaselTSF.cpp
+index 590d3b8..38c429f 100644
+--- a/WeaselTSF/WeaselTSF.cpp
++++ b/WeaselTSF/WeaselTSF.cpp
+@@ -183,7 +183,7 @@ STDMETHODIMP WeaselTSF::OnSetThreadFocus() {
+   return S_OK;
+ }
+ STDMETHODIMP WeaselTSF::OnKillThreadFocus() {
+-  _AbortComposition();
++  _KeepComposition(_pEditSessionContext);
+   return S_OK;
+ }
+ BOOL WeaselTSF::_InitThreadFocusSink() {
+diff --git a/WeaselTSF/WeaselTSF.h b/WeaselTSF/WeaselTSF.h
+index 696d3cc..5c64d9b 100644
+--- a/WeaselTSF/WeaselTSF.h
++++ b/WeaselTSF/WeaselTSF.h
+@@ -122,6 +122,7 @@ class WeaselTSF : public ITfTextInputProcessorEx,
+   BOOL _UpdateCompositionWindow(com_ptr<ITfContext> pContext);
+   void _FinalizeComposition();
+   void _AbortComposition(bool clear = true);
++  void _KeepComposition(com_ptr<ITfContext> pContext);
+ 
+   /* Language bar */
+   HWND _GetFocusedContextWindow();
+@@ -232,5 +233,8 @@ class WeaselTSF : public ITfTextInputProcessorEx,
+   TfGuidAtom _gaDisplayAttributeInput;
+   BOOL _async_edit = false;
+   BOOL _committed = false;
++  // the composition text in the document is the inline preedit (not the
++  // placeholder used when inline preedit is off)
++  BOOL _inlinePreedit = false;
+   BOOL _isToOpenClose = false;
+ };
