@@ -196,13 +196,27 @@ def weasel_root() -> Path:
 
 
 def _link_or_copy(src: Path, dst: Path) -> None:
+    """Copy small files; hard-link large ones from a private cache copy.
+
+    Linking straight to rime/ would make staged links undeletable while the
+    live Weasel server keeps the original memory-mapped.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists():
         dst.unlink()
-    try:
-        os.link(src, dst)  # large .gram files: hard link instead of copying
-    except OSError:
+    if src.stat().st_size < (1 << 20):
         shutil.copy2(src, dst)
+        return
+    cached = HARNESS_DIR / "_cache" / src.name
+    st = src.stat()
+    if not cached.exists() or cached.stat().st_size != st.st_size \
+            or cached.stat().st_mtime < st.st_mtime:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, cached)
+    try:
+        os.link(cached, dst)
+    except OSError:
+        shutil.copy2(cached, dst)
 
 
 def stage_user_dir(name: str, config: str, with_userdb: bool = False,
@@ -213,8 +227,17 @@ def stage_user_dir(name: str, config: str, with_userdb: bool = False,
     extra: additional files to write, {relative path: text}.
     """
     user = HARNESS_DIR / name / "user"
+    trash = HARNESS_DIR / "_trash"
+    if trash.exists():
+        shutil.rmtree(trash, ignore_errors=True)  # best effort
     if user.exists():
-        shutil.rmtree(user)
+        try:
+            shutil.rmtree(user)
+        except PermissionError:
+            # A hard link whose target the live Weasel keeps mapped cannot be
+            # deleted; the directory can still be moved out of the way.
+            trash.mkdir(parents=True, exist_ok=True)
+            user.rename(trash / f"{name}-{time.time_ns()}")
     user.mkdir(parents=True)
     if config == "project":
         for src in RIME_SRC.rglob("*"):

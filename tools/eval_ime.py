@@ -15,9 +15,10 @@ Metrics
   Top1/Top9 word sets: expected word first / anywhere on the first page
   ms/key    mean librime process_key latency
 Sets
-  clean     tests/eval/sentences.tsv as generated (Taiwan MOE readings)
-  typo      same sentences, one adjacent-key substitution per sentence
+  dev       tests/eval/sentences.tsv (Taiwan MOE readings); tune against this
+  dev_typo  dev with one adjacent-key substitution per sentence
             (seeded; never on tone keys)
+  test      tests/eval/sentences_test.tsv, held out: aggregate scores only
   words     tests/eval/private/asus_words.tsv (personal ASUS dictionary), if present
 """
 
@@ -83,9 +84,11 @@ def load_set(path: Path) -> list[tuple[str, str]]:
 
 
 def build_sets() -> dict[str, list[tuple[str, str]]]:
-    clean = load_set(EVAL / "sentences.tsv")
+    dev = load_set(EVAL / "sentences.tsv")
     rng = random.Random(20261006)
-    sets = {"clean": clean, "typo": [(inject_typo(k, rng), t) for k, t in clean]}
+    sets = {"dev": dev,
+            "dev_typo": [(inject_typo(k, rng), t) for k, t in dev],
+            "test": load_set(EVAL / "sentences_test.tsv")}
     words = EVAL / "private" / "asus_words.tsv"
     if words.exists():
         sets["words"] = load_set(words)
@@ -201,7 +204,8 @@ def main() -> None:
         metrics = {name: score(name, sets[name], res[name]) for name in sets}
         records.append({"time": stamp, "rev": rev, "note": args.note, "sets": set_hash,
                         "variant": variant, "metrics": metrics})
-        for (keys, text), r in zip(sets["clean"], res["clean"]):
+        # Failures are reported for the dev set only; the test set stays blind.
+        for (keys, text), r in zip(sets["dev"], res["dev"]):
             if r["preview"] != text:
                 failures.append((variant, text, r["preview"]))
 
@@ -233,8 +237,8 @@ def main() -> None:
         detail = REPORTS / "last_failures.tsv"
         detail.write_text("variant\texpected\tgot\n" + "\n".join(
             "\t".join(x) for x in failures) + "\n", encoding="utf-8")
-        print(f"(saved to {HISTORY.relative_to(ROOT)}; clean-set failures in "
-              f"{detail.relative_to(ROOT)})")
+        print(f"(saved to {HISTORY.relative_to(ROOT)}; dev-set failures in "
+              f"{detail.relative_to(ROOT)}; test-set failures are never shown)")
 
 
 if __name__ == "__main__":

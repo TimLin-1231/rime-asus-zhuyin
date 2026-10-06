@@ -1,6 +1,7 @@
 """Build evaluation sets (keys -> expected text).
 
-  tests/eval/sentences.txt  -> tests/eval/sentences.tsv
+  tests/eval/sentences.txt  -> tests/eval/sentences.tsv       (dev set)
+  tests/eval/sentences_test.txt -> sentences_test.tsv           (held-out test set)
   UserDictionary.txt (ASUS export, personal) -> tests/eval/private/asus_words.tsv
 
 TSV columns: keys, zhuyin (for human review), expected text, category.
@@ -29,10 +30,10 @@ def keys_to_display(keys: str) -> str:
     return " ".join(out + ([syl] if syl else []))
 
 
-def build_sentences() -> int:
+def build_sentences(stem: str = "sentences") -> int:
     """Keys use Taiwan MOE readings; rows where terra_pinyin disagrees are logged."""
     rows, category, diffs = [], "misc", []
-    for line in (EVAL / "sentences.txt").read_text(encoding="utf-8").splitlines():
+    for line in (EVAL / f"{stem}.txt").read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -48,9 +49,10 @@ def build_sentences() -> int:
         if keys != terra:
             diffs.append(f"{text}\n  moe:   {keys_to_display(keys)}\n  terra: {keys_to_display(terra)}")
         rows.append(f"{keys}\t{keys_to_display(keys)}\t{text}\t{category}")
-    (EVAL / "sentences.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
-    (EVAL / "reading_diffs.txt").write_text("\n".join(diffs) + "\n", encoding="utf-8")
-    print(f"MOE vs terra_pinyin reading differs in {len(diffs)}/{len(rows)} sentences")
+    (EVAL / f"{stem}.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    if stem == "sentences":  # never write per-sentence details for the held-out set
+        (EVAL / "reading_diffs.txt").write_text("\n".join(diffs) + "\n", encoding="utf-8")
+    print(f"{stem}: MOE vs terra_pinyin reading differs in {len(diffs)}/{len(rows)} sentences")
     return len(rows)
 
 
@@ -73,5 +75,6 @@ def build_asus_words() -> int:
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
-    print("sentences:", build_sentences())
+    print("dev sentences:", build_sentences("sentences"))
+    print("test sentences (held out):", build_sentences("sentences_test"))
     print("asus words (private):", build_asus_words())
