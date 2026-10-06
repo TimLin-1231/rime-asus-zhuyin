@@ -168,6 +168,8 @@ if __name__ == "__main__":
     print("mixed test (held out):", build_mixed("mixed_test"))
     print("particles dev:", build_particles("particles"))
     print("particles test (held out):", build_particles("particles_test"))
+    print("numbers dev:", build_mixed("numbers"))
+    print("numbers test (held out):", build_mixed("numbers_test"))
     print("learning dev:", build_learn("learn"))
     print("learning test (held out):", build_learn("learn_test"))
     print("asus words (private):", build_asus_words())

@@ -25,6 +25,9 @@ Sets
   mixed / mixed_test      Chinese with English words (tests/eval/mixed*.txt)
   particles / particles_test  的/得/地 (typed ㄉㄜ˙) and 在/再; PartAcc = share
             of those positions converted correctly
+  numbers / numbers_test  Chinese with numbers typed on the top-row digit keys
+  dev_partial  partial inputs of dev sentences ending on a digit key; Digits =
+            share whose preview shows a digit (a number leaking into Chinese)
   words     tests/eval/private/asus_words.tsv (personal ASUS dictionary), if present
   moe_words tests/eval/private/moe_words.tsv: 400 common MOE words (essay >= 1000,
             seed 42) typed with Taiwan readings; held out from lexicon tuning
@@ -158,9 +161,14 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     sets["dev_stray"] = [(inject_stray(k, stray_rng), t) for k, t in dev]
     sets["test_stray"] = [(inject_stray(k, stray_rng), t) for k, t in test]
     for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
-                       ("particles", "particles"), ("particles_test", "particles_test")):
+                       ("particles", "particles"), ("particles_test", "particles_test"),
+                       ("numbers", "numbers"), ("numbers_test", "numbers_test")):
         if (EVAL / f"{stem}.tsv").exists():
             sets[name] = load_set(EVAL / f"{stem}.tsv")
+    # Guard: every partial input of pure-Chinese dev sentences that ends on a
+    # digit key; a digit in the preview is a number leaking into Chinese.
+    sets["dev_partial"] = [(k[:i], "") for k, _ in dev[:50]
+                           for i in range(1, len(k) + 1) if k[i - 1].isdigit()]
     words = EVAL / "private" / "asus_words.tsv"
     if words.exists():
         sets["words"] = load_set(words)
@@ -223,7 +231,7 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
     exact = sum(r["preview"] == t for (_, t), r in zip(cases, res))
     errs = sum(levenshtein(r["preview"], t) for (_, t), r in zip(cases, res))
     total = sum(len(t) for _, t in cases)
-    m = {"n": n, "SentAcc": exact / n, "CharAcc": 1 - errs / total,
+    m = {"n": n, "SentAcc": exact / n, "CharAcc": 1 - errs / max(total, 1),
          "ms/key": statistics.mean(r["ms_per_key"] for r in res)}
     if name.startswith("particles"):
         # PartAcc: share of 的/得/地/在/再 positions that come out right
@@ -239,6 +247,10 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
         # ASCII = share of outputs with Latin letters (English hallucinated
         # into toneless Chinese); lower is better.
         m = {"n": n, "ASCII": sum(bool(re.search(r"[A-Za-z]", r["preview"])) for r in res) / n,
+             "ms/key": m["ms/key"]}
+    if name == "dev_partial":
+        # Digits = share of partial inputs showing a digit; lower is better.
+        m = {"n": n, "Digits": sum(bool(re.search(r"[0-9]", r["preview"])) for r in res) / n,
              "ms/key": m["ms/key"]}
     if name in ("words", "moe_words"):
         m = {"n": n, "Top1": exact / n,
@@ -313,7 +325,7 @@ def main() -> None:
                         "variant": variant, "metrics": metrics})
         # Failures are reported for dev sets only; test sets stay blind.
         for name in sets:
-            if "test" in name or name in ("words", "moe_words", "dev_toneless"):
+            if "test" in name or name in ("words", "moe_words", "dev_toneless", "dev_partial"):
                 continue
             for (keys, text), r in zip(sets[name], res[name]):
                 if r["preview"] != text:
@@ -324,7 +336,7 @@ def main() -> None:
              "(previous run on the same eval sets in parentheses)", ""]
     for name in sets:
         keys = list(records[0]["metrics"][name].keys() - {"n"})
-        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Top1", "Top9", "ms/key"].index)
+        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Digits", "Top1", "Top9", "ms/key"].index)
         lines.append(f"### {name} (n={records[0]['metrics'][name]['n']})")
         lines.append("| variant | " + " | ".join(keys) + " |")
         lines.append("|---|" + "---:|" * len(keys))
