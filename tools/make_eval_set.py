@@ -9,6 +9,7 @@ TSV columns: keys, zhuyin (for human review), expected text, category.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -23,7 +24,7 @@ EVAL = ROOT / "tests" / "eval"
 def keys_to_display(keys: str) -> str:
     out, syl = [], ""
     for k in keys:
-        syl += KEY_TO_SYMBOL[k]
+        syl += KEY_TO_SYMBOL.get(k, k)
         if k in " 6347":
             out.append(syl)
             syl = ""
@@ -56,6 +57,27 @@ def build_sentences(stem: str = "sentences") -> int:
     return len(rows)
 
 
+def build_mixed(stem: str) -> int:
+    """Chinese with [English] words: Chinese -> MOE-reading keys, English typed as-is."""
+    rows = []
+    for line in (EVAL / f"{stem}.txt").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        keys, shown = [], []
+        for zh, en in re.findall(r"([^\[\]]+)|\[([^\]]+)\]", line):
+            if en:
+                keys.append(en)
+                shown.append(f"[{en}]")
+            else:
+                k = "".join(reading_keys(zh)[0])
+                keys.append(k)
+                shown.append(keys_to_display(k))
+        rows.append(f"{''.join(keys)}\t{' '.join(shown)}\t{line.replace('[', '').replace(']', '')}\tmixed")
+    (EVAL / f"{stem}.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return len(rows)
+
+
 def build_asus_words() -> int:
     src = ROOT / "UserDictionary.txt"
     if not src.exists():
@@ -77,4 +99,6 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     print("dev sentences:", build_sentences("sentences"))
     print("test sentences (held out):", build_sentences("sentences_test"))
+    print("mixed dev:", build_mixed("mixed"))
+    print("mixed test (held out):", build_mixed("mixed_test"))
     print("asus words (private):", build_asus_words())

@@ -1,0 +1,44 @@
+# Mixed Chinese/English DEV sentences. [word] = English typed as-is
+# (capitals typed with Shift). Expected output has no spaces.
+# Same optional "<TAB>zhuyin" override as sentences.txt is not supported here.
+
+我用[python]跑實驗
+這個[model]的準確率很高
+幫我開一個[meeting]
+明天要交[report]
+這個[bug]已經修好了
+[GPU]的記憶體不夠
+記得[push]到[GitHub]
+我在看[paper]
+請先[download]這個檔案
+[deadline]是下週五
+這個[function]要重寫
+我們用[Transformer]做翻譯
+先跑一次[baseline]
+資料要做[normalization]
+訓練的[loss]一直下降
+請幫我[review]程式碼
+這個[project]很有趣
+我想學[Rust]
+今天的[seminar]取消了
+幫我[check]一下這個數字
+我們的[team]有五個人
+記得[update]你的軟體
+這個[API]回傳錯誤
+用[Excel]整理資料
+這週要寫[proposal]
+我把[slides]寄給你
+他的[email]是多少
+這個[feature]很實用
+測試[case]要再多一點
+我們開[Zoom]討論
+[server]又當機了
+用[Docker]部署服務
+這個[dataset]很乾淨
+[CPU]使用率太高
+我在[coffee]店等你
+請用[PDF]格式繳交
+我們要做[demo]
+這個[link]打不開
+他在[Google]上班
+晚上一起看[Netflix]
