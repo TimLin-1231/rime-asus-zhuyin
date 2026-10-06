@@ -170,16 +170,24 @@ function processor.func(key, env)
     if code == XK_Tab and key.modifier == 0 and ctx:is_composing()
         and not ctx:get_option("ascii_mode") and ctx.input:sub(1, 1) ~= "`" then
       local last = ctx.composition:back()
-      -- English: complete the unfinished word ("pyth" + Tab -> python).
+      -- English: take the first guess, a completion or a spelling fix
+      -- ("pyth" + Tab -> python, "recieve" + Tab -> receive).
       if last and last:has_tag("asus_en") then
         local typed = ctx.input:sub(last.start + 1, last._end)
-        local rest = require("asus_lang").complete_english(typed)
-        if rest then
-          ctx:commit()
-          env.pending = false
-          ctx:clear()
-          env.engine:commit_text(rest)
-          return kAccepted
+        local word = require("asus_lang").first_guess(typed)
+        if word then
+          for i = 0, 8 do
+            local c = last:get_candidate_at(i)
+            if not c then break end
+            if c.text == word then
+              last.selected_index = i
+              env.pending = false
+              ctx:commit()
+              env.pending = false
+              ctx:clear()
+              return kAccepted
+            end
+          end
         end
         return kNoop
       end

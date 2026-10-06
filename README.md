@@ -32,6 +32,7 @@
 | ( ) | 半形括號（全形用 Ctrl+Shift+9/0） |
 | 注音縮寫，例如 ㄉㄓ | 快捷文字本的展開文字（`rime/shortcuts.txt`） |
 | 直接打英文，例如 `python` | 自動判斷成英文；可以夾在中文之間（我用python跑model） |
+| 打英文時的猜字 | 小框顯示「打的字＋最多 3 個猜字」：沒打完的字會補完（pyth → python），拼錯的字會更正（recieve → receive）；有 ⇥ 的那個按 Tab 就送出（拼錯的整個換掉），↓ 展開後用 1–9 選其他的，空白鍵照打的送出 |
 | Shift＋字母 | 大寫英文（GPU、Python） |
 | 中文模式直接打數字 | 2026、100、3.14 會直接變成數字，可以跟中文混打（2026年、3點、100元）；數字後面的量詞會自動選對（2杯、18歲、第2章）。剛好是完整注音的數字（204＝但、283＝打）照樣是中文，按 ↓ 第二個就是數字；數字鍵盤（numpad）永遠輸出數字 |
 | 英文後按空白 | 送出目前打的內容（不自動加空格） |
@@ -63,6 +64,7 @@
   以及把送出的文字切成詞用的詞表（`rime/opencc/asus_seg.*`，自我學習用）。
 - **語言模型**：`wanxiang-lts-zh-hant.gram`（[RIME-LMDG](https://github.com/amzxyz/RIME-LMDG)，CC-BY-4.0）。
   它是用開發集 A/B 評估選出來的，`rime/grammar.yaml` 裡有改回舊模型的方法。
+- **英文猜字**：`rime/opencc/asus_en_prefix.*`（每個開頭最多 5 個補完）和 `asus_en_fix.*`（前 40,000 個常用字的拼字更正，差一個字母：多、少、錯、前後顛倒），由 `build_lang_data.py` 產生。小狼毫啟動後第一次打字時多花約 0.7 秒載入，只發生一次。
 - **英文詞彙**：來自舊小狼毫的 `easy_en` 詞頻表，加上 `lexicon/english_words.txt`（你自己的英文專有名詞，一行一個）。
   修改後執行 `python tools/build_lang_data.py`，再重新部署。
   詞表放在 OpenCC 字典裡（`rime/opencc/asus_en.*`），不放在 Lua 記憶體，否則每次按鍵會慢約 40 ms。

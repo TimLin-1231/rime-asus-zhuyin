@@ -46,6 +46,8 @@ local C_STRAY = 4.0
 local C_SWITCH = 0.5
 local C_EN_BASE_CTX = 0.3  -- English base cost right after an English commit
 local C_EN_PREFIX = 1.0    -- extra cost of an unfinished word (prefix of a common word)
+local C_EN_FIX = 1.5       -- extra cost of a misspelt word (one letter off a common word)
+local C_FIX_MIN_LEN = 5    -- shortest misspelling taken as English
 local MAX_SYLLABLE = 5
 local C_NUM = 0.2        -- + 2 x C_SWITCH between Chinese: below a toneless syllable
 local C_NUM_DIGIT = 0.05 -- longer numbers cost a little more: 2838 = 打 + 8
@@ -65,6 +67,7 @@ local function load_costs(config)
   C_EN_RANK = get("en_rank", C_EN_RANK)
   C_STRAY = get("stray", C_STRAY)
   C_SWITCH = get("switch", C_SWITCH)
+  C_EN_FIX = get("en_fix", C_EN_FIX)
   C_NUM = get("num", C_NUM)
   C_NUM_DIGIT = get("num_digit", C_NUM_DIGIT)
   C_NUM_END = get("num_end", C_NUM_END)
@@ -93,6 +96,9 @@ local memo, memo_input = {}, nil
 local prefix_cc
 local prefix_memo, prefix_memo_input = {}, nil
 
+local fix_cc
+local fix_memo, guess_memo = {}, {}
+
 local function load_english()
   if english_cc == nil then
     local ok, cc = pcall(Opencc, "asus_en.json")
@@ -101,6 +107,10 @@ local function load_english()
   if prefix_cc == nil then  -- English autocomplete (opencc/asus_en_prefix.json)
     local ok, cc = pcall(Opencc, "asus_en_prefix.json")
     prefix_cc = ok and cc or false
+  end
+  if fix_cc == nil then  -- spelling correction (opencc/asus_en_fix.json)
+    local ok, cc = pcall(Opencc, "asus_en_fix.json")
+    fix_cc = ok and cc or false
   end
 end
 
@@ -145,6 +155,120 @@ local function english(key)
   return entry or nil
 end
 
+-- "rank:word rank:word" forms -> list of {word=, rank=}
+local function ranked(forms)
+  local out = {}
+  for _, value in ipairs(forms or {}) do
+    local rank, word = value:match("^(%d+):(.+)$")
+    if rank then out[#out + 1] = { word = word, rank = tonumber(rank) } end
+  end
+  return out
+end
+
+-- Edit distance with adjacent swaps (optimal string alignment).
+local function edit_distance(a, b)
+  local la, lb = #a, #b
+  if math.abs(la - lb) > 2 then return 3 end
+  local d = {}
+  for i = 0, la do d[i] = { [0] = i } end
+  for j = 0, lb do d[0][j] = j end
+  for i = 1, la do
+    for j = 1, lb do
+      local cost = (a:sub(i, i) == b:sub(j, j)) and 0 or 1
+      local v = math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+      if i > 1 and j > 1 and a:sub(i, i) == b:sub(j - 1, j - 1) and a:sub(i - 1, i - 1) == b:sub(j, j) then
+        v = math.min(v, d[i - 2][j - 2] + 1)
+      end
+      d[i][j] = v
+    end
+  end
+  return d[la][lb]
+end
+
+-- Spelling corrections for key (>= FIX_MIN letters): {word=, rank=, dist=},
+-- best first. Keys of opencc/asus_en_fix are words and their one-letter
+-- deletions, so looking up key and its deletions finds every word one
+-- extra / missing / wrong / swapped letter away.
+local FIX_MIN = 4
+local function corrections(key)
+  if #key < FIX_MIN or not fix_cc or not key:match("^%l+$") then return {} end
+  local hit = fix_memo[key]
+  if hit then return hit end
+  local seen, out = {}, {}
+  local probes = { key }
+  for i = 1, #key do probes[#probes + 1] = key:sub(1, i - 1) .. key:sub(i + 1) end
+  for _, probe in ipairs(probes) do
+    for _, e in ipairs(ranked(fix_cc:convert_word(probe))) do
+      local lw = e.word:lower()
+      if not seen[lw] and lw ~= key then
+        seen[lw] = true
+        local dist = edit_distance(key, lw)
+        if dist <= 2 then
+          e.dist = dist
+          out[#out + 1] = e
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b)
+    if a.dist ~= b.dist then return a.dist < b.dist end
+    return a.rank < b.rank
+  end)
+  fix_memo[key] = out
+  return out
+end
+
+-- Completions of key (>= 3 letters), best first; learned words first.
+local function completions(key)
+  local out = {}
+  local learned = learn.complete_english(key)
+  if learned then out[1] = learned end
+  if #key >= 3 and prefix_cc then
+    for _, e in ipairs(ranked(prefix_cc:convert_word(key))) do
+      if #e.word > #key and (not learned or e.word ~= learned.word) then out[#out + 1] = e end
+    end
+  end
+  return out
+end
+
+local GUESS_MAX = 8
+local COMMON = 20000   -- a completion this common goes before corrections
+local C_FIX_SCORE = 2.5  -- a correction ranks as if 10^2.5 times rarer per edit
+-- Words to suggest for typed English key (lower case): completions of an
+-- unfinished word and corrections of a misspelt one, best first.
+local function guesses(key, entry)
+  local hit = guess_memo[key]
+  if hit then return hit end
+  local comps = completions(key)
+  local fixes = {}
+  if not entry or entry.rank >= 100000 then fixes = corrections(key) end
+  local list
+  if comps[1] and comps[1].rank <= COMMON then
+    list = {}
+    for _, e in ipairs(comps) do list[#list + 1] = e end
+    for _, e in ipairs(fixes) do list[#list + 1] = e end
+  else
+    list = {}
+    for _, e in ipairs(comps) do list[#list + 1] = { e = e, score = math.log(e.rank + 1, 10) } end
+    for _, e in ipairs(fixes) do
+      list[#list + 1] = { e = e, score = math.log(e.rank + 1, 10) + C_FIX_SCORE * e.dist }
+    end
+    table.sort(list, function(a, b) return a.score < b.score end)
+    for i, x in ipairs(list) do list[i] = x.e end
+  end
+  local out, seen = {}, { [key] = true }
+  for _, e in ipairs(list) do
+    local lw = e.word:lower()
+    if not seen[lw] then
+      seen[lw] = true
+      out[#out + 1] = e.word
+      if #out >= GUESS_MAX then break end
+    end
+  end
+  guess_memo[key] = out
+  return out
+end
+
 local function zh_cost(tok, at_end)
   if zy.toned[tok] then return 0 end
   if at_end and zy.prefix[tok] then return C_PREFIX end
@@ -167,6 +291,24 @@ local SHORT_WORDS = {}
 for w in ("a i am an as at be by do go he hi if in is it me my no of oh ok on "
           .. "or so to up us we"):gmatch("%a+") do SHORT_WORDS[w] = true end
 
+-- Can keys be read as toneless Zhuyin syllables averaging >= 1.5 keys each?
+-- (pyhton only splits into one-key syllables, which is not how Chinese is
+-- typed; clgck = ㄏㄠ ㄕ ㄏㄜ is.)
+local function zhuyin_like(keys)
+  local n = #keys
+  local fewest = { [0] = 0 }  -- fewest syllables covering keys[1..i]
+  for i = 1, n do
+    for len = 1, math.min(MAX_SYLLABLE - 1, i) do
+      local prev = fewest[i - len]
+      local syl = keys:sub(i - len + 1, i)
+      if prev and (zy.toneless[syl] or zy.toned[syl]) and (not fewest[i] or prev + 1 < fewest[i]) then
+        fewest[i] = prev + 1
+      end
+    end
+  end
+  return fewest[n] ~= nil and n / fewest[n] >= 1.5
+end
+
 -- en_ctx: the previous commit was English, so English is the expected language.
 local function en_cost(tok, en_ctx)
   local entry = english(tok:lower())
@@ -174,6 +316,14 @@ local function en_cost(tok, en_ctx)
   local best
   if entry then best = base + C_EN_RANK * math.log(entry.rank + 1, 10) end
   if en_ctx and SHORT_WORDS[tok:lower()] then best = math.min(best or math.huge, base) end
+  -- A misspelt word one letter off a common word (recieve) is English too,
+  -- unless the keys read naturally as toneless Zhuyin (clgck = ㄏㄠㄕㄏㄜ).
+  if not best and #tok >= C_FIX_MIN_LEN and tok:match("^%l+$") and not zhuyin_like(tok) then
+    local fix = corrections(tok)[1]
+    if fix and fix.dist == 1 then
+      best = base + C_EN_RANK * math.log(fix.rank + 1, 10) + C_EN_FIX
+    end
+  end
   -- Capitalised tokens (GPU, GPT4, DE-LSTM) are English even if unknown.
   -- Digits double as tone keys, so each one costs extra: "GPU2k7" must
   -- split as GPU + 的, not GPU2 + ㄜ˙.
@@ -293,7 +443,10 @@ local function plan_input(env, input, floor, en_ctx)
   local cache_key = (en_ctx and "e" or "z") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
   if memo_input ~= input then memo, memo_input = {}, input end
-  if prefix_memo_input ~= input then prefix_memo, prefix_memo_input = {}, input end
+  if prefix_memo_input ~= input then
+    prefix_memo, prefix_memo_input = {}, input
+    fix_memo, guess_memo = {}, {}
+  end
   local spans = {}
   -- Shortcut abbreviations (ㄉㄓ) are runs of lone initials by design; leave
   -- them to the stock segmentation so asus_shortcuts.lua can match them.
@@ -491,22 +644,38 @@ function translator.func(input, seg, env)
   if entry and not input:find("%u") and not entry.word:match("^%u%l*$") then
     shown = entry.word
   end
-  -- Unfinished word: show the completion as a hint; Tab accepts it
-  -- (asus_predict.lua calls complete_english).
-  local hint = ""
-  local p = completion_for(input:lower(), entry)
-  if p then hint = "⇥" .. p.word end
-  local cand = Candidate("english", seg.start, seg._end, shown, hint)
+  -- The typed word, then guesses (completions, spelling corrections); the
+  -- first guess is marked ⇥: Tab takes it (asus_predict.lua, english_tab).
+  local cand = Candidate("english", seg.start, seg._end, shown, "")
   cand.quality = 1000
   yield(cand)
-  if entry and entry.word ~= shown then
-    local alt = Candidate("english", seg.start, seg._end, entry.word, "")
-    alt.quality = 999
-    yield(alt)
+  local q = 999
+  local function more(word, comment)
+    local c = Candidate("english", seg.start, seg._end, word, comment)
+    c.quality = q
+    q = q - 1
+    yield(c)
+  end
+  if entry and entry.word ~= shown then more(entry.word, "") end
+  for i, word in ipairs(guesses(input:lower(), entry)) do
+    -- Keep the typed capitalisation: Pyth -> Python.
+    if input:match("^%u") and not word:match("%u") then word = word:sub(1, 1):upper() .. word:sub(2) end
+    if word ~= shown then more(word, i == 1 and "⇥" or "") end
   end
 end
 
 -- Remainder that completes the typed English prefix ("pyth" -> "on"), or nil.
+-- First guess for the typed English word, or nil (what Tab takes).
+local function first_guess(typed)
+  load_english()
+  local key = typed:lower()
+  local word = guesses(key, english(key))[1]
+  if word and typed:match("^%u") and not word:match("%u") then
+    word = word:sub(1, 1):upper() .. word:sub(2)
+  end
+  return word
+end
+
 local function complete_english(typed)
   load_english()
   local p = completion_for(typed:lower(), english(typed:lower()))
@@ -617,4 +786,5 @@ local function digits(input, env)
 end
 
 return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
+         first_guess = first_guess,
          complete_english = complete_english }

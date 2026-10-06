@@ -86,8 +86,18 @@ def main() -> int:
 
     # English autocomplete -----------------------------------------------------
     s, out = typed("pyth")
-    check("unfinished English word shows ⇥ completion", s.candidates[:1] == [("pyth", "⇥python")],
-          f"{s.candidates[:1]}")
+    check("unfinished English word: typed letters, then guesses (⇥ marks Tab's)",
+          s.candidates[:2] == [("pyth", ""), ("python", "⇥")] and len(s.candidates) <= 4,
+          f"{s.candidates}")
+    s, out = typed("recieve")
+    check("misspelt English word: the correction is the first guess",
+          s.preview == "recieve" and s.candidates[1:2] == [("receive", "⇥")], f"{s.candidates}")
+    r.clear(); r.type("ji3m/4recieve"); r.key("Tab"); s = r.snapshot()
+    check("Tab replaces a misspelt word with the correction", s.committed == "我用receive",
+          f"committed={s.committed!r}")
+    r.clear(); r.type("model"); r.key("Down"); r.key("2"); s = r.snapshot()
+    check("Down, then a digit picks a guess", s.committed.startswith("model") and s.committed != "model",
+          f"committed={s.committed!r}")
     r.clear(); r.type("ji3m/4pyth"); r.key("Tab"); s = r.snapshot()
     check("Tab completes the English word (no space added)", s.committed == "我用python",
           f"committed={s.committed!r}")

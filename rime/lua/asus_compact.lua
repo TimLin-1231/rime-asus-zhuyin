@@ -1,6 +1,8 @@
 -- asus_compact.lua
 -- Compact candidate bubble, modelled after ASUS Smart Input.
 --
+-- While typing English, the typed word and up to three guesses are shown
+-- (Tab takes the first, marked ⇥).
 -- While typing, only the best candidate is shown (it is also previewed inline
 -- via style/preedit_type: preview). If the input ends with an unfinished
 -- syllable (no tone key yet), its Zhuyin reading is shown as the comment,
@@ -12,6 +14,7 @@
 -- Must be the last filter.
 
 local EXPANDED = "_asus_expanded"
+local EN_GUESSES = 3
 local complete = require("asus_predict").complete
 
 -- Keyboard key -> Zhuyin symbol, from bopomofo.schema.yaml preedit_format.
@@ -60,8 +63,19 @@ local function func(input, env)
     return
   end
   local reading = pending_reading(ctx.input:sub(1, ctx.caret_pos))
+  -- English: the typed word plus up to EN_GUESSES guesses, like a phone
+  -- keyboard's suggestion bar. (Decided by the candidates themselves: this
+  -- also runs for earlier segments, so composition:back() is not this one.)
+  local english = 0
   for cand in input:iter() do
-    if keep_rare or not is_rare(cand.text) then
+    if english > 0 then
+      if cand.type ~= "english" or english > EN_GUESSES then return end
+      yield(cand)
+      english = english + 1
+    elseif cand.type == "english" then
+      yield(cand)
+      english = 1
+    elseif keep_rare or not is_rare(cand.text) then
       local comment = ""
       if cand.type ~= "english" and cand.comment == "" then
         comment = reading
