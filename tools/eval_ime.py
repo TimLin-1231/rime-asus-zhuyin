@@ -91,11 +91,14 @@ VARIANTS = {
     "asus-mcb": ("project", "asus_zhuyin", (), NO_MCB),       # ablation: no Taiwan frequencies
     "stage3": ("project", "asus_zhuyin", (), {**NO_MCB, **ESSAY_LM}),  # = stage 3 config
     "asus-wx": ("project", "asus_zhuyin", (), ESSAY_LM),      # ablation: previous LM
+    "asus-rules": ("project", "asus_zhuyin", (), {"asus_zhuyin.custom.yaml": (  # ablation: no 的得地/在再 rules
+        "patch:\n  engine/filters: [simplifier@zh_hans, simplifier@zh_hant_tw, uniquifier, "
+        "lua_filter@*asus_compact]\n")}),
     "asus+wx": ("project", "asus_zhuyin", (), WX_RECOMMENDED),  # Wanxiang LM, its settings
     "asus+wx-ours": ("project", "asus_zhuyin", (), WX_OURS),  # Wanxiang LM, our settings
     "asus": ("project", "asus_zhuyin", (), {}),                # current project config
 }
-DEFAULT_VARIANTS = ["stock", "stage3", "asus-wx", "asus"]
+DEFAULT_VARIANTS = ["stock", "stage3", "asus-rules", "asus"]
 
 # QWERTY neighbours for typo injection (letters/digits/punct used by Dachen).
 ROWS = ["1234567890-", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./"]

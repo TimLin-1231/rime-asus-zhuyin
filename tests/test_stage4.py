@@ -1,4 +1,4 @@
-"""Stage 4 behaviour tests: next-word prediction and autocomplete.
+"""Stage 4 behaviour tests: next-word prediction, autocomplete, grammar rules.
 
     python tests/test_stage4.py
 """
@@ -10,9 +10,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from rime_harness import open_rime  # noqa: E402
+from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
 JIQI = "ru fu4"  # ㄐㄧ ㄑㄧˋ -> 機器
+
+
+def marked_keys(marked: str) -> str:
+    """Keys for text where {X} means X is typed as ㄉㄜ˙ (as in particles.txt)."""
+    text = marked.replace("{", "").replace("}", "")
+    keys = reading_keys(text)[0]
+    forced, pos = set(), 0
+    i = 0
+    while i < len(marked):
+        if marked[i] == "{":
+            forced.add(pos); i += 3; pos += 1
+        else:
+            i += 1; pos += 1
+    return "".join("2k7" if j in forced else k for j, k in enumerate(keys))
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
@@ -68,6 +83,23 @@ def main() -> int:
     r.set_option("prediction", False)
     r.clear(); r.type(JIQI); r.key("Return"); s = r.snapshot()
     check("prediction switch off: nothing is predicted", not s.composing, f"cands={s.candidates}")
+    r.set_option("prediction", True)
+
+    # Grammar rules (asus_grammar.lua), incl. cases that must NOT change.
+    # {X}: X typed as ㄉㄜ˙; other characters use their standard readings.
+    r.set_option("prediction", False)
+    for marked, want, label in [
+        ("他跑{得}很快", "他跑得很快", "V + ㄉㄜ˙ + 很 -> 得"),
+        ("他慢慢{地}走", "他慢慢地走", "reduplicated adverb + ㄉㄜ˙ + V -> 地"),
+        ("真{的}很好", "真的很好", "真的 is a word of its own: keeps 的"),
+        ("媽媽{的}書", "媽媽的書", "媽媽的書: no generic AA -> 地 rule"),
+        ("認真{的}人", "認真的人", "adverb set + 的 + noun keeps 的"),
+        ("我在家", "我在家", "在 + 家 -> 在"),
+        ("等一下我再說", "等一下我再說", "等一下…再 -> 再"),
+        ("這塊土地", "這塊土地", "地 typed ㄉㄧˋ is never rewritten"),
+    ]:
+        r.clear(); r.type(marked_keys(marked)); s = r.snapshot()
+        check(f"grammar: {label}", s.preview == want, f"preview={s.preview!r}")
     r.set_option("prediction", True)
 
     r.close()
