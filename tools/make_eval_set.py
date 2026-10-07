@@ -131,7 +131,7 @@ def build_learn(stem: str) -> int:
         if not line or line.startswith("#"):
             continue
         kind, _, body = line.partition(" ")
-        if kind not in "TAEPCQ" or len(kind) != 1:
+        if kind not in "TAEPCQH" or len(kind) != 1:
             raise ValueError(f"bad line {line!r}")
         first = body.split("|")[0]
         if kind == "E":
@@ -174,4 +174,6 @@ if __name__ == "__main__":
     print("edit test (held out):", build_mixed("edit_test"))
     print("learning dev:", build_learn("learn"))
     print("learning test (held out):", build_learn("learn_test"))
+    print("learning with history dev:", build_learn("learn_hist"))
+    print("learning with history test (held out):", build_learn("learn_hist_test"))
     print("asus words (private):", build_asus_words())

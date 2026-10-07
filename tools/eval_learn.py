@@ -12,6 +12,7 @@ against a fresh staged config (no learned data from the live IME):
     python tools/eval_learn.py                     # dev stream, variants asus + rime
     python tools/eval_learn.py --set test          # held out: aggregates only
     python tools/eval_learn.py --variants rime nolearn
+    python tools/eval_learn.py --set hist        # with typing history (H lines)
 
 Metrics (fractions; picks are counts)
   Probe     P lines right (same word, new sentence)       base -> now -> end
@@ -56,13 +57,16 @@ VARIANTS = {
 MAX_PAGES = 12
 
 
+STEMS = {"dev": "learn", "test": "learn_test", "hist": "learn_hist", "hist_test": "learn_hist_test"}
+
+
 def load(set_name: str) -> tuple[list[dict], list[tuple[str, str]]]:
-    stem = "learn" if set_name == "dev" else "learn_test"
+    stem = STEMS[set_name]
     lines = []
     for row in (EVAL / f"{stem}.tsv").read_text(encoding="utf-8").splitlines():
         kind, keys, _, text, group = row.split("\t")
         lines.append({"kind": kind, "keys": keys, "text": text, "group": group})
-    general = "sentences.tsv" if set_name == "dev" else "sentences_test.tsv"
+    general = "sentences_test.tsv" if set_name.endswith("test") else "sentences.tsv"
     sents = []
     for row in (EVAL / general).read_text(encoding="utf-8").splitlines():
         cols = row.split("\t")
@@ -195,7 +199,10 @@ def worker(variant: str, mode: str, set_name: str) -> None:
                 j += 1
             for k in range(i, j):  # teaching lines first, then the probes
                 ln = lines[k]
-                if ln["kind"] == "T":
+                if ln["kind"] == "H":  # earlier typing: committed like any sentence
+                    got, _ = t.enter(ln["keys"], ln["text"])
+                    out["lines"][k] = {"got": got, "picks": 0, "repeat": False}
+                elif ln["kind"] == "T":
                     got, picks = t.enter(ln["keys"], ln["text"])
                     out["lines"][k] = {"got": got, "picks": picks, "repeat": ln["text"] in taught}
                     taught.add(ln["text"])
@@ -288,7 +295,7 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--variants", nargs="+", default=["asus", "rime"], choices=list(VARIANTS))
-    ap.add_argument("--set", default="dev", choices=["dev", "test"])
+    ap.add_argument("--set", default="dev", choices=list(STEMS))
     ap.add_argument("--note", default="")
     ap.add_argument("--worker", nargs=3, help=argparse.SUPPRESS)
     ap.add_argument("--no-save", action="store_true")
@@ -315,7 +322,7 @@ def main() -> None:
             report.append(f"| {name} | {v.get('n', '')} | {fmt(v.get('base', ''))} | "
                           f"{fmt(v.get('now', ''))} | {fmt(v.get('end', ''))} |")
         report.append("")
-        if args.set == "dev":  # held-out results are never shown line by line
+        if not args.set.endswith("test"):  # held-out results are never shown line by line
             for i, ln in enumerate(lines):
                 got = learned["lines"][i]
                 if ln["kind"] in "PC" and got != ln["text"]:
@@ -336,7 +343,7 @@ def main() -> None:
         with HISTORY.open("a", encoding="utf-8") as f:
             for rec in records:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        if args.set == "dev":
+        if not args.set.endswith("test"):
             detail = REPORTS / "learn_failures.tsv"
             detail.write_text("variant\tgroup\tkind\texpected\tgot\tend\n" + "\n".join(
                 "\t".join(map(str, x)) for x in failures) + "\n", encoding="utf-8")

@@ -1,0 +1,62 @@
+# Self-learning with typing history, DEV set (stage 7b). Same format as
+# learn.txt, plus:
+#   H text   history: the user typed and committed this before (corrected
+#            if it converted wrongly), like any ordinary sentence
+# The history uses the rival word, so the contrast lines test whether a
+# word the user types themselves stays safe after a correction elsewhere.
+# Written before the change to the learning rules.
+
+# group 程式 / 城市
+H 我住的城市很熱鬧
+H 這個城市的交通很方便
+T 我把程式碼上傳到伺服器了
+P 請重新啟動應用程式
+P 這個程式跑很慢
+C 這個城市很漂亮
+C 城市裡的房子很貴
+
+# group 中壢 / 中立
+H 法官應該保持中立
+H 他的立場很中立
+T 我在中壢等你
+P 中壢火車站人很多
+C 媒體要保持中立
+
+# group 冠廷 / 關停
+H 這家工廠關停了
+H 政府下令關停污染工廠
+T 我跟冠廷一起去
+P 冠廷說他晚點到
+C 這條產線已經關停了
+
+# group 遞迴 / 遞回
+H 請把文件遞回給我
+T 這個遞迴寫錯了
+P 用遞迴計算階乘
+C 他把表格遞回給老師
+
+# group 竹科 / 竹刻
+H 我很喜歡竹刻藝術
+T 他在竹科上班
+P 竹科的薪水很高
+C 這是一件竹刻作品
+
+# group 捷徑 / 潔淨
+H 廚房要保持潔淨
+T 我在桌面建立捷徑
+P 這條路是捷徑
+C 這間廚房很潔淨
+
+# group 志豪 (name; the history uses 至 elsewhere)
+H 他至少來過三次
+T 我打給志豪
+P 志豪今天沒來上課
+C 我至少要睡七個小時
+
+# group 座標 (no history)
+T 請把圖表的座標軸標清楚
+P 這個點的座標是多少
+
+# group 帳號 (no history)
+T 我的帳號被鎖了
+P 請輸入帳號和密碼

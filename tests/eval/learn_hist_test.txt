@@ -1,0 +1,47 @@
+# Self-learning with typing history, HELD-OUT test set (stage 7b). Same
+# format as learn_hist.txt; only aggregate scores may be looked at.
+
+# group 部署 / 部屬
+H 他對部屬很好
+H 主管要照顧部屬
+T 新版本已經部署了
+P 部署的時候出錯了
+C 他的部屬很聽話
+
+# group 權利 / 權力
+H 他想要更多權力
+T 你有使用的權利
+P 這是我們的權利
+C 權力使人腐化
+
+# group 內湖 / 內鬨
+H 他們內鬨很嚴重
+T 他在內湖上班
+P 內湖科學園區塞車很嚴重
+C 我們不要再內鬨了
+
+# group 期中 / 其中
+H 其中一個人沒來
+T 我們明天期中考
+P 期中報告要交了
+C 其中有一題很難
+
+# group 硬碟 / 影碟
+H 我買了一張影碟
+T 我的硬碟快滿了
+P 外接硬碟壞掉了
+C 這張影碟很舊了
+
+# group 變數 / 變速
+H 這台車是自動變速
+T 這個變數沒有初始化
+P 請把變數名稱改短一點
+C 變速箱壞了
+
+# group 郁婷 (name, no history)
+T 郁婷打電話給我
+P 郁婷的報告寫得很好
+
+# group 汐止 (no history)
+T 我住在汐止
+P 汐止的房價比較便宜
