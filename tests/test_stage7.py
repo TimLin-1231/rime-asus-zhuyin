@@ -47,6 +47,12 @@ def main() -> int:
     # An extra key pressed with the right one (ㄨ + ㄜ).
     extra = good.replace("j03", "jk03", 1)
     check("an extra key inside a syllable is dropped", preview(extra) == sent, f"{extra!r} -> {preview(extra)!r}")
+    # A typo in the last syllable (no right context): a lower margin there.
+    water = "請幫我買一瓶水"
+    end_typo = keys(water).replace("gjo3", "hjo3")  # ㄕ (g) typed as its neighbour h
+    check("a key one off in the last syllable is corrected too", preview(end_typo) == water,
+          f"{end_typo!r} -> {preview(end_typo)!r}")
+
     # Correct input is never changed.
     for text in ("謝謝你的幫忙", "我想要自訂快捷鍵", "請在下週之前交報告", "我用python跑實驗"):
         k = "".join(reading_keys(text)[0]) if "python" not in text else keys("我用") + "python" + keys("跑實驗")

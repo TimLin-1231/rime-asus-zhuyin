@@ -81,6 +81,9 @@ local function init(env)
   local on = config:get_bool("asus_typo/enabled")
   env.enabled = (on == nil) or on
   env.margin = tonumber(config:get_string("asus_typo/margin") or "") or 30.0
+  -- Near the end of the input the window has no right context, so the gain
+  -- a real typo shows there is smaller (喫爛 at the very end).
+  env.end_margin = tonumber(config:get_string("asus_typo/end_margin") or "") or 18.0
   env.debug = config:get_bool("asus_typo/debug") or false
   env.min_window = tonumber(config:get_string("asus_typo/min_window") or "") or 3
   if env.enabled then
@@ -148,6 +151,7 @@ local function correct_syllable(env, syl, i, cs)
   local base = weight(env, before .. syl[i] .. after)
   if not base then return nil end
   local s = syl[i]
+  local margin = (hi - i < WINDOW) and env.end_margin or env.margin
   local best, best_w
   for p = 1, #s do
     local k = s:sub(p, p)
@@ -156,7 +160,7 @@ local function correct_syllable(env, syl, i, cs)
         local v = s:sub(1, p - 1) .. n .. s:sub(p + 1)
         if zy.toned[v] then
           local w = weight(env, before .. v .. after)
-          if w and w > base + env.margin and (not best_w or w > best_w) then
+          if w and w > base + margin and (not best_w or w > best_w) then
             best, best_w = v, w
           end
         end
@@ -167,7 +171,7 @@ local function correct_syllable(env, syl, i, cs)
     log.info(string.format("asus_typo cand i=%d n=%d %s->%s base=%.2f gain=%.2f win=%d keys=%s",
       i, #syl, s, best, base, best_w - base, hi - lo + 1, table.concat(syl)))
   end
-  return best, best_w and (best_w - base)
+  return best, best_w and (best_w - base), margin
 end
 
 -- Corrected keys for a segment whose conversion is `text`, or nil.
@@ -179,8 +183,8 @@ local function corrected(env, keys, text)
   if #cs ~= #syl then cs = nil end
   local fixes = {}
   for i = 1, #syl do
-    local v, gain = correct_syllable(env, syl, i, cs)
-    if v then fixes[#fixes + 1] = { i = i, v = v, gain = gain } end
+    local v, gain, margin = correct_syllable(env, syl, i, cs)
+    if v then fixes[#fixes + 1] = { i = i, v = v, gain = gain, margin = margin } end
   end
   if #fixes == 0 then return nil end
   -- One typo can make a neighbour look fixable too: within a window keep
@@ -195,11 +199,12 @@ local function corrected(env, keys, text)
     if not clash then taken[#taken + 1] = f end
   end
   for i, s in ipairs(syl) do out[i] = s end
-  for _, t in ipairs(taken) do out[t.i] = t.v end
+  local need = 0
+  for _, t in ipairs(taken) do out[t.i] = t.v; need = math.max(need, t.margin) end
   local new = table.concat(out)
   -- The whole segment must read better too.
   local w0, w1 = weight(env, keys), weight(env, new)
-  if not (w0 and w1 and w1 > w0 + env.margin) then return nil end
+  if not (w0 and w1 and w1 > w0 + need) then return nil end
   return new
 end
 
