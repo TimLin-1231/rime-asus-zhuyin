@@ -30,8 +30,8 @@ def main() -> int:
           f"{s.candidates} preview={s.preview}")
 
     r.clear(); r.type("cj8"); s = r.snapshot()
-    check("compact: pending syllable reading as comment",
-          s.candidates and s.candidates[0][1] == "ㄏㄨㄚ", f"{s.candidates}")
+    check("compact: pending syllable reading as comment, then the typed keys",
+          s.candidates and s.candidates[0][1] == "ㄏㄨㄚ　cj8", f"{s.candidates}")
 
     r.clear(); r.type("su3cl3"); s = r.snapshot()
     check("compact: no reading once syllable has a tone (an ⇥ autocomplete hint may show)",

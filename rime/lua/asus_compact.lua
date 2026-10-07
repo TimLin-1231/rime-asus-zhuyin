@@ -11,6 +11,10 @@
 -- this filter then passes the full candidate list through untouched. The `
 -- symbol keyboard (asus_symbols.lua) is always shown in full.
 --
+-- The keys typed so far follow the comment ("你好　su3cl3", Space shown as
+-- ␣), so a key pressed wrongly can be spotted; asus_compact/show_keys: false
+-- hides them.
+--
 -- Must be the last filter.
 
 local EXPANDED = "_asus_expanded"
@@ -52,6 +56,22 @@ local function is_rare(text)
   return false
 end
 
+local MAX_KEYS = 24
+
+local function init(env)
+  local v = env.engine.schema.config:get_bool("asus_compact/show_keys")
+  env.show_keys = (v == nil) or v
+end
+
+-- Typed keys for the bubble (the last MAX_KEYS of them).
+local function typed(input)
+  local s = input:gsub(" ", "␣")
+  if #input > MAX_KEYS then
+    s = "…" .. input:sub(-MAX_KEYS):gsub(" ", "␣")
+  end
+  return s
+end
+
 local function func(input, env)
   local ctx = env.engine.context
   local seg = ctx.composition:back()
@@ -83,6 +103,10 @@ local function func(input, env)
         local cont = reading == "" and ctx:get_option("prediction") and complete(cand.text)
         if cont then comment = "⇥" .. cont end
       end
+      if env.show_keys and cand._end == #ctx.input and ctx.input ~= "" then
+        comment = ((comment ~= "") and comment or cand.comment)
+        comment = (comment ~= "" and (comment .. "　") or "") .. typed(ctx.input)
+      end
       if comment ~= "" then
         yield(ShadowCandidate(cand, cand.type, cand.text, comment))
       else
@@ -93,4 +117,4 @@ local function func(input, env)
   end
 end
 
-return { func = func }
+return { init = init, func = func }
