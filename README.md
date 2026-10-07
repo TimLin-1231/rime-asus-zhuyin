@@ -156,6 +156,7 @@
 1. 修改 `rime/` 裡的檔案。
 2. 系統匣的小狼毫圖示按右鍵 →「**重新部署**」。
 3. 如果是改了 `RimeUserDir`，或是第一次在新電腦上使用：先跑 `python tools/fetch_models.py`、`python tools/build_lexicon.py` 和 `python tools/build_lang_data.py`，再重新啟動小狼毫服務（重開機最簡單），然後重新部署。
+4. 詞表的快速格式（選用，但建議）：`build_lang_data.py` 若找到 `third_party/opencc-build/src/tools/Release/opencc_dict.exe`，會把 `rime/opencc/` 的詞表轉成二進位的 ocd2，小狼毫啟動後第一次打字的載入時間從約 1.8 秒降到約 0.5 秒。編譯方法（需要 Visual Studio 2022 Build Tools）：下載 [OpenCC 1.1.9](https://github.com/BYVoid/OpenCC/archive/refs/tags/ver.1.1.9.tar.gz) 解壓到 `third_party/`，用 VS 內附的 cmake 執行 `cmake -S third_party/OpenCC-ver.1.1.9 -B third_party/opencc-build -G "Visual Studio 17 2022" -A x64 -DBUILD_DOCUMENTATION=OFF -DENABLE_GTEST=OFF -DPYTHON_EXECUTABLE=<python.exe>`，再 `cmake --build third_party/opencc-build --config Release --target opencc_dict`。沒有這個工具時照常用文字詞表。
 
 ## 測試
 ```
