@@ -21,6 +21,7 @@ Sets
   dev_typo  dev with one adjacent-key substitution per sentence
             (seeded; never on tone keys)
   test_typo test with one adjacent-key substitution per sentence (held out)
+  dev_typo_end / test_typo_end  the substitution is in the last syllable
   test      tests/eval/sentences_test.tsv, held out: aggregate scores only
   dev_stray / test_stray  one extra neighbouring key inserted per sentence (seed 3)
   mixed / mixed_test      Chinese with English words (tests/eval/mixed*.txt)
@@ -135,6 +136,19 @@ def inject_typo(keys: str, rng: random.Random) -> str:
     return keys[:i] + rng.choice(nb[keys[i]]) + keys[i + 1:]
 
 
+def inject_typo_end(keys: str, rng: random.Random) -> str:
+    """One adjacent-key substitution in the last syllable (no right context)."""
+    nb = _neighbours()
+    tail = len(keys) - 1
+    while tail > 0 and keys[tail - 1] not in TONE_KEYS:
+        tail -= 1  # start of the last syllable
+    idx = [i for i in range(tail, len(keys)) if keys[i] not in TONE_KEYS and nb.get(keys[i])]
+    if not idx:
+        return inject_typo(keys, rng)
+    i = rng.choice(idx)
+    return keys[:i] + rng.choice(nb[keys[i]]) + keys[i + 1:]
+
+
 def inject_stray(keys: str, rng: random.Random) -> str:
     """Insert one extra key next to a neighbouring key (fat finger), never at the ends."""
     nb = _neighbours()
@@ -162,6 +176,9 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     # Held-out typos (stage 7): same injection, its own seed.
     sets["test_typo"] = [(inject_typo(k, random.Random(20261007 + i)), t)
                          for i, (k, t) in enumerate(test)]
+    # Typos in the last syllable, where only left context exists.
+    sets["dev_typo_end"] = [(inject_typo_end(k, random.Random(1007 + i)), t) for i, (k, t) in enumerate(dev)]
+    sets["test_typo_end"] = [(inject_typo_end(k, random.Random(2007 + i)), t) for i, (k, t) in enumerate(test)]
     # Guard: dev typed with no tone keys at all; English must not leak in.
     sets["dev_toneless"] = [(re.sub(r"[ 6347]", "", k), t) for k, t in dev]
     stray_rng = random.Random(3)
