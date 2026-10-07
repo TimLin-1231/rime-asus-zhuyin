@@ -20,6 +20,7 @@ Sets
             Latin letters (English leaking into Chinese), lower is better
   dev_typo  dev with one adjacent-key substitution per sentence
             (seeded; never on tone keys)
+  test_typo test with one adjacent-key substitution per sentence (held out)
   test      tests/eval/sentences_test.tsv, held out: aggregate scores only
   dev_stray / test_stray  one extra neighbouring key inserted per sentence (seed 3)
   mixed / mixed_test      Chinese with English words (tests/eval/mixed*.txt)
@@ -158,6 +159,9 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     sets = {"dev": dev,
             "dev_typo": [(inject_typo(k, rng), t) for k, t in dev],
             "test": test}
+    # Held-out typos (stage 7): same injection, its own seed.
+    sets["test_typo"] = [(inject_typo(k, random.Random(20261007 + i)), t)
+                         for i, (k, t) in enumerate(test)]
     # Guard: dev typed with no tone keys at all; English must not leak in.
     sets["dev_toneless"] = [(re.sub(r"[ 6347]", "", k), t) for k, t in dev]
     stray_rng = random.Random(3)
