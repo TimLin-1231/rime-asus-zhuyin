@@ -256,6 +256,7 @@ end
 
 local function learn_pair(k, x, c, l, r, w, now)
   bump("c\t" .. k .. "\t" .. x, c, w, now)
+  db:update("r\t" .. k .. "\t" .. c, "1")  -- the user chose c for keys k (asus_typo.lua)
   local key = "x\t" .. k .. "\t" .. x .. "\t" .. c
   local map = fetch(key, now)
   if context_only(x, c) then
@@ -460,6 +461,7 @@ local function forget_chosen(text, now)
 end
 
 local function forget_pair(k, x, c, now)
+  db:erase("r\t" .. k .. "\t" .. c)
   local key = "c\t" .. k .. "\t" .. x
   local map = fetch(key, now)
   map[c] = nil
@@ -631,6 +633,12 @@ local function complete_english(prefix)
   return best and { word = best.word, rank = 0 } or nil
 end
 
-return { processor = processor, filter = filter, predict = predict, banned = banned,
+-- Has the user ever picked `text` for `keys`? (Such text is never treated
+-- as a typo by asus_typo.lua.)
+local function chosen(keys, text)
+  return enabled and db and db:fetch("r\t" .. keys .. "\t" .. text) ~= nil or false
+end
+
+return { processor = processor, filter = filter, predict = predict, banned = banned, chosen = chosen,
          accepted = accepted, english = english, complete_english = complete_english,
          syllables = syllables }

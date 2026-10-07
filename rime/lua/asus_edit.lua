@@ -170,7 +170,8 @@ local function select_fixed(ctx, s, e, text)
     for i = 0, 300 do
       local c = seg:get_candidate_at(i)
       if not c then break end
-      if c.type == "fixed" then ctx:select(i); done = true; break end
+      -- (Matched by span and text: a later uniquifier may re-wrap it.)
+      if c.start == s and c._end == e and c.text == text then ctx:select(i); done = true; break end
     end
   end
   ctx:set_property(FIX, "")
@@ -495,6 +496,7 @@ local function filter(input, env)
           synthetic.quality = 2000
         end
       end
+      if fs and fs == a then yield(Candidate("fixed", fs, fe, ftext, "")) end
       if synthetic then yield(synthetic) end
       -- The list at a number / English word: its own forms first.
       local unit_end = tonumber((ctx:get_property(OPEN_END) or ""):match("^(%d+)"))
@@ -519,7 +521,6 @@ local function filter(input, env)
         cand, buffer = rest[1], { table.unpack(rest, 2) }
       end
       if cand then yield(cand) end
-      if fs and fs == a then yield(Candidate("fixed", fs, fe, ftext, "")) end
       for _, c in ipairs(buffer) do yield(c) end
     else
       yield(cand)

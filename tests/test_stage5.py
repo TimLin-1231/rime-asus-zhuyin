@@ -29,13 +29,13 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def decay_case() -> None:
-    """Run in a subprocess: weights halve every second here."""
-    extra = {"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/half_life_days: 0.0000116\n"}
+    """Run in a subprocess: weights halve every 40 seconds here."""
+    extra = {"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/half_life_days: 0.000463\n"}
     r = open_rime("stage5-decay", extra=extra)
     t = Typist(r, SHIFT_MASK, CONTROL_MASK)
     t.enter(keys("我把程式碼上傳到伺服器了"), "我把程式碼上傳到伺服器了")
     fresh = t.preview(keys("請重新啟動應用程式"))
-    time.sleep(5)  # 1 -> 1/32 of the weight
+    time.sleep(40)  # one half-life: below the 0.9 a correction needs to apply everywhere
     old = t.preview(keys("請重新啟動應用程式"))
     r.close()
     print(f"{fresh}\t{old}")

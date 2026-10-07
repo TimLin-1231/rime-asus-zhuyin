@@ -8,6 +8,10 @@
 --   English word     C_EN_BASE + C_EN_RANK * log10(rank + 1)  (rank 0 = personal)
 --   typed with caps  C_CAPS + C_DIGIT per digit (uppercase can never be Zhuyin)
 --   stray key        C_STRAY (dropped from the output)
+--   typo syllable    C_FIX: not a syllable, but one key changed to a key next
+--                    to it on the keyboard makes it one (ㄒㄧㄝ˙ typed with a
+--                    neighbour key); asus_typo.lua picks the replacement with
+--                    the language model (segment tag asus_fix)
 --   number           C_NUM + C_NUM_DIGIT per character (digits, optionally
 --                    one decimal point), plus C_NUM_END when it ends the input
 --                    in what could still be an unfinished syllable (typing ㄅㄢˋ
@@ -49,6 +53,7 @@ local C_EN_PREFIX = 1.0    -- extra cost of an unfinished word (prefix of a comm
 local C_EN_FIX = 1.5       -- extra cost of a misspelt word (one letter off a common word)
 local C_FIX_MIN_LEN = 5    -- shortest misspelling taken as English
 local MAX_SYLLABLE = 5
+local C_FIX = 2.5        -- below toneless + stray, above any real syllable
 local C_NUM = 0.2        -- + 2 x C_SWITCH between Chinese: below a toneless syllable
 local C_NUM_DIGIT = 0.05 -- longer numbers cost a little more: 2838 = 打 + 8
 local C_NUM_END = 1.0
@@ -69,6 +74,7 @@ local function load_costs(config)
   C_SWITCH = get("switch", C_SWITCH)
   C_EN_FIX = get("en_fix", C_EN_FIX)
   C_NUM = get("num", C_NUM)
+  C_FIX = get("fix", C_FIX)
   C_NUM_DIGIT = get("num_digit", C_NUM_DIGIT)
   C_NUM_END = get("num_end", C_NUM_END)
   C_NUM_OPEN = get("num_open", C_NUM_OPEN)
@@ -269,6 +275,17 @@ local function guesses(key, entry)
   return out
 end
 
+-- Can one key of tok, changed to a neighbouring key, make it a syllable?
+local typo_memo = {}
+local function has_typo_fix(tok)
+  local hit = typo_memo[tok]
+  if hit == nil then
+    hit = #require("asus_typo").variants(tok) > 0
+    typo_memo[tok] = hit
+  end
+  return hit
+end
+
 local function zh_cost(tok, at_end)
   if zy.toned[tok] then return 0 end
   if at_end and zy.prefix[tok] then return C_PREFIX end
@@ -362,7 +379,11 @@ local function plan_run(run, en_ctx)
         for j = i, math.min(n, i + MAX_SYLLABLE - 1) do
           local tok = run:sub(i, j)
           if tok:find("%u") then break end
-          relax(i, from, j, "zh", zh_cost(tok, j == n), "zh")
+          local c = zh_cost(tok, j == n)
+          relax(i, from, j, "zh", c, "zh")
+          if c == nil and #tok >= 2 and TONE_KEYS[tok:sub(-1)] and has_typo_fix(tok) then
+            relax(i, from, j, "zh", C_FIX, "fix")
+          end
         end
         -- English words / capitalised runs
         local caps = is_upper(run:sub(i, i))
@@ -425,15 +446,19 @@ local function plan_run(run, en_ctx)
     if b.kind ~= "zh" then special = true end
     j, lang = b.i, b.from
   end
-  -- merge adjacent Zhuyin syllables into one span
+  -- merge adjacent Zhuyin syllables into one span (typo syllables included,
+  -- remembered in .fixes)
   local merged = {}
   for _, t in ipairs(tokens) do
+    local kind = (t.kind == "fix") and "zh" or t.kind
     local last = merged[#merged]
-    if last and last.kind == "zh" and t.kind == "zh" then
+    if last and last.kind == "zh" and kind == "zh" then
       last.j = t.j
     else
-      merged[#merged + 1] = { kind = t.kind, i = t.i, j = t.j }
+      last = { kind = kind, i = t.i, j = t.j, fixes = {} }
+      merged[#merged + 1] = last
     end
+    if t.kind == "fix" then last.fixes[#last.fixes + 1] = { i = t.i, j = t.j } end
   end
   return merged, special, cost
 end
@@ -469,7 +494,11 @@ local function plan_input(env, input, floor, en_ctx)
       end
       if toks and special then
         for _, t in ipairs(toks) do
-          spans[#spans + 1] = { kind = t.kind, s = pos - 1 + t.i - 1, e = pos - 1 + t.j }
+          local fixes = {}
+          for _, f in ipairs(t.fixes or {}) do
+            fixes[#fixes + 1] = (pos - 1 + f.i - 1) .. ":" .. (pos - 1 + f.j)
+          end
+          spans[#spans + 1] = { kind = t.kind, s = pos - 1 + t.i - 1, e = pos - 1 + t.j, fixes = fixes }
         end
       end
       pos = e + 1
@@ -562,6 +591,12 @@ function segmentor.func(segmentation, env)
     spans = { { kind = kind == "num" and "open_num" or kind == "en" and "open_en" or "zh",
                 s = edit_span, e = #input } }
   end
+  -- Typo syllables for asus_typo.lua: "start:end" key ranges.
+  local fixes = {}
+  for _, sp in ipairs(spans) do
+    for _, f in ipairs(sp.fixes or {}) do fixes[#fixes + 1] = f end
+  end
+  ctx:set_property("asus_typo_fix", table.concat(fixes, ","))
   local new_input = env.seg_input ~= input
   env.seg_input = input
   local call_start = start
@@ -602,6 +637,8 @@ function segmentor.func(segmentation, env)
         seg.tags = Set({ "asus_num", "abc" })
       elseif span.kind == "stray" then
         seg.tags = Set({ "asus_stray" })
+      elseif span.fixes and #span.fixes > 0 then
+        seg.tags = Set({ "abc", "asus_fix" })
       else
         seg.tags = Set({ "abc" })
       end
