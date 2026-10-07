@@ -562,7 +562,8 @@ local function filter(input, env)
             applied = nil
           end
         end
-        if seg.start == 0 and seg._end == #ctx.input then  -- the only segment
+        -- (Not while asus_edit.lua rebuilds the composition around its cursor.)
+        if seg.start == 0 and seg._end == #ctx.input and (ctx:get_property("asus_edit") or "") == "" then
           orig = { input = ctx.input, text = out.text }
         end
       end

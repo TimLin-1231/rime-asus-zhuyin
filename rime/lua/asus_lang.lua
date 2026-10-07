@@ -551,8 +551,17 @@ function segmentor.func(segmentation, env)
   local input = segmentation.input
   if type(input) == "function" then input = segmentation:input() end
   local start = segmentation:get_current_start_position()
-  local en_ctx = env.engine.context:get_property("asus_en_ctx") == "1"
+  local ctx = env.engine.context
+  local en_ctx = ctx:get_property("asus_en_ctx") == "1"
   local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx)
+  -- Editing inside the composition (asus_edit.lua): one segment from the
+  -- cursor to the end, so the menu lists what starts at the cursor.
+  local edit_span = tonumber(ctx:get_property("asus_edit_span") or "")
+  if edit_span and edit_span == start and edit_span < #input then
+    local kind = (ctx:get_property("asus_edit_unit_end") or ""):match("(%a+)$")  -- "<unit end><sep><kind>"
+    spans = { { kind = kind == "num" and "open_num" or kind == "en" and "open_en" or "zh",
+                s = edit_span, e = #input } }
+  end
   local new_input = env.seg_input ~= input
   env.seg_input = input
   local call_start = start
@@ -583,7 +592,11 @@ function segmentor.func(segmentation, env)
         end
       end
       local seg = Segment(span.s, span.e)
-      if span.kind == "en" then
+      if span.kind == "open_num" then
+        seg.tags = Set({ "asus_num", "asus_open", "abc" })
+      elseif span.kind == "open_en" then
+        seg.tags = Set({ "asus_en", "asus_open", "abc" })
+      elseif span.kind == "en" then
         seg.tags = Set({ "asus_en", "abc" })
       elseif span.kind == "num" then
         seg.tags = Set({ "asus_num", "abc" })
@@ -623,14 +636,24 @@ function translator.init(env)
 end
 
 function translator.func(input, seg, env)
+  -- A number / English word at the editing cursor (asus_edit.lua): the
+  -- segment runs to the end of the input, its candidates end with the word.
+  local s, e = seg.start, seg._end
+  if seg:has_tag("asus_open") then
+    local unit_end = tonumber((env.engine.context:get_property("asus_edit_unit_end") or ""):match("^(%d+)"))
+    if unit_end and unit_end > s and unit_end <= e then
+      e = unit_end
+      input = input:sub(1, e - s)
+    end
+  end
   if seg:has_tag("asus_stray") then
-    local cand = Candidate("stray", seg.start, seg._end, "", "〔略過贅字 " .. input .. "〕")
+    local cand = Candidate("stray", s, e, "", "〔略過贅字 " .. input .. "〕")
     cand.quality = 1000
     yield(cand)
     return
   end
   if seg:has_tag("asus_num") then
-    local cand = Candidate("number", seg.start, seg._end, input, "")
+    local cand = Candidate("number", s, e, input, "")
     cand.quality = 1000
     yield(cand)
     return
@@ -646,12 +669,12 @@ function translator.func(input, seg, env)
   end
   -- The typed word, then guesses (completions, spelling corrections); the
   -- first guess is marked ⇥: Tab takes it (asus_predict.lua, english_tab).
-  local cand = Candidate("english", seg.start, seg._end, shown, "")
+  local cand = Candidate("english", s, e, shown, "")
   cand.quality = 1000
   yield(cand)
   local q = 999
   local function more(word, comment)
-    local c = Candidate("english", seg.start, seg._end, word, comment)
+    local c = Candidate("english", s, e, word, comment)
     c.quality = q
     q = q - 1
     yield(c)
@@ -760,7 +783,7 @@ end
 
 local function digits(input, env)
   local ctx = env.engine.context
-  local n = 0
+  local n, fw = 0, false
   for cand in input:iter() do
     n = n + 1
     if n == 1 then
@@ -774,6 +797,7 @@ local function digits(input, env)
       end
       if plain then
         if cand.type == "number" then
+          fw = true
           yield(Candidate("number", cand.start, cand._end, (keys:gsub(".", FULL)), "全形"))
         else
           yield(Candidate("number", cand.start, cand._end, keys, "數字"))
@@ -781,6 +805,14 @@ local function digits(input, env)
       end
     else
       yield(cand)
+      -- A number further down (the editing cursor's list, asus_edit.lua).
+      if cand.type == "number" and not fw then
+        local keys = ctx.input:sub(cand.start + 1, cand._end)
+        if keys:match("^%d+%.?%d*$") and keys:match("%d$") then
+          fw = true
+          yield(Candidate("number", cand.start, cand._end, (keys:gsub(".", FULL)), "全形"))
+        end
+      end
     end
   end
 end

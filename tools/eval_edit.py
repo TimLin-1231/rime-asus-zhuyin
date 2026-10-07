@@ -7,8 +7,9 @@ before committing, in two ways:
   old     Down, then pick candidates from the start of the input (the longest
           one matching the wanted text), page by page, until done
   cursor  move the cursor with Left/Right to the first wrong character
-          (a number or English word is one step), Down, pick the longest
-          candidate matching the wanted text from there; repeat
+          (a number or English word is one step), or Home then Right when
+          that is fewer keys; Down, pick the longest candidate matching the
+          wanted text from there; repeat
 
     python tools/eval_edit.py                 # dev set
     python tools/eval_edit.py --set test      # held out: aggregates only
@@ -117,6 +118,9 @@ class User:
             d = next((i for i, (a, b) in enumerate(zip(shown, want)) if a != b),
                      min(len(shown), len(want)))
             here = len(shown) if caret is None else caret
+            if 1 + d < abs(here - d):
+                self.press("Home")
+                here = 0
             for _ in range(here - d):
                 self.press("Left")
             for _ in range(d - here):

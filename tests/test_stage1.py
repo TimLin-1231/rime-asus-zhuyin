@@ -81,9 +81,11 @@ def main() -> int:
         check("expanded: picking a partial word does not commit", False, f"page={page}")
 
     r.clear(); r.type("su3cl3"); r.key("Left"); s = r.snapshot()
-    check("compact: Left moves the caret (editing), not the highlight",
-          r.caret() < len("su3cl3") and len(s.candidates) == 1,
-          f"caret={r.caret()} n={len(s.candidates)}")
+    # Since stage 6 Left moves an editing cursor by character (asus_edit.lua,
+    # tested in test_stage6.py) instead of librime's caret by key.
+    check("compact: Left starts the editing cursor, not the highlight",
+          s.preview == "你好" and len(s.candidates) == 1 and "｜" in s.candidates[0][1],
+          f"preview={s.preview!r} cands={s.candidates}")
 
     r.clear(); r.type("su3cl3"); r.key("space"); s = r.snapshot()
     check("compact: Space after a toned syllable does not commit",
