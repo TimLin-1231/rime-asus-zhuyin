@@ -8,7 +8,10 @@
 --     then rewrites later conversions that contain the rejected text:
 --       - same left or right neighbour as when learned: right away
 --       - anywhere: corrected twice, or once and never the other way round
---         (asus_learn/global_after: 2 drops the "once" case)
+--         (asus_learn/global_after: 2 drops the "once" case) -- but never
+--         when the rejected word is one the user types themselves (seen in
+--         their commits, "w" entries): 城市 stays 城市 after learning 程式
+--     A rewritten conversion is marked 學 in the bubble.
 --     A single character, or a pair differing only in 在/再/的/得/地, only
 --     changes when both neighbours match. Correcting a rewrite back counts
 --     against it; the unrewritten conversion stays second in the menu.
@@ -37,6 +40,7 @@ local MAX_RUN = 8         -- longest changed run learned as a whole
 local PRUNE = 0.05        -- weights below this are dropped
 local KEEP_NEXT = 8       -- next words kept per previous word
 local NEXT_SHOW = 1.5     -- weight a next word needs to be predicted
+local OWN_WORD = 1.0      -- commits that make a word the user's own
 local EN_SHOW = 0.9       -- weight an English word needs to be preferred
 local MAX_EN = 2000       -- learned English words kept in memory
 
@@ -195,14 +199,24 @@ local function context_only(x, c)
 end
 
 -- Should text x (keys k, between characters l and r) become something else?
+-- Does the user type x themselves (a word of their recent commits)?
+local function own_word(x, now)
+  return (fetch("w\t" .. x, now).n or 0) >= OWN_WORD
+end
+
 local function decide(k, x, l, r, now)
   local cands = fetch("c\t" .. k .. "\t" .. x, now)
+  local own = nil  -- looked up once, only when needed
   local best, best_score
   for c, wf in pairs(cands) do
     local wr = fetch("c\t" .. k .. "\t" .. c, now)[x] or 0
     local strict = context_only(x, c)
     local ok = not strict and ((wf >= 1.5 and wf > wr + 1)
                                or (global_after <= 1 and wf >= 0.9 and wr < PRUNE))
+    if ok then
+      if own == nil then own = own_word(x, now) end
+      ok = not own
+    end
     if not ok then
       local f = fetch("x\t" .. k .. "\t" .. x .. "\t" .. c, now)
       local b = fetch("x\t" .. k .. "\t" .. c .. "\t" .. x, now)
@@ -221,6 +235,17 @@ local function decide(k, x, l, r, now)
   return best
 end
 
+-- x was learned for keys k instead of the user's own word w (Rime's own
+-- user dictionary then prefers x everywhere: 竹科 in 竹刻作品). Back to w
+-- unless this context is one where x was chosen.
+local function revert(k, x, l, r, now)
+  local w = db:fetch("r\t" .. k .. "\t" .. x)
+  if not w or w == "1" or w == x or not own_word(w, now) or context_only(w, x) then return nil end
+  local f = fetch("x\t" .. k .. "\t" .. w .. "\t" .. x, now)
+  if (f["L" .. l] or 0) > 0.1 or (f["R" .. r] or 0) > 0.1 then return nil end
+  return w
+end
+
 -- Rewrite text (one character per syllable) with the learned pairs; returns
 -- the new text and the pairs used, or nil.
 local function rewrite(text, syl, left)
@@ -237,6 +262,7 @@ local function rewrite(text, syl, left)
       local x = table.concat(cs, "", i, i + len - 1)
       local l = out[#out] or left
       local c = decide(k, x, l, cs[i + len] or "", now)
+      if not c and len >= 2 then c = revert(k, x, l, cs[i + len] or "", now) end
       if c then
         for _, ch in ipairs(chars(c)) do out[#out + 1] = ch end
         used[#used + 1] = { k, x, c }
@@ -256,7 +282,8 @@ end
 
 local function learn_pair(k, x, c, l, r, w, now)
   bump("c\t" .. k .. "\t" .. x, c, w, now)
-  db:update("r\t" .. k .. "\t" .. c, "1")  -- the user chose c for keys k (asus_typo.lua)
+  -- The user chose c for keys k instead of x (asus_typo.lua, and below).
+  db:update("r\t" .. k .. "\t" .. c, x)
   local key = "x\t" .. k .. "\t" .. x .. "\t" .. c
   local map = fetch(key, now)
   if context_only(x, c) then
@@ -417,6 +444,18 @@ function processor.init(env)
     learn_corrections(c, text, now, picks)
     local words = words_of(text)
     if words then
+      -- Every 2-4 character piece counts as typed by the user (word lists
+      -- split some words: 關停 = 關 + 停).
+      local cs = chars(text)
+      local seen = {}
+      for i = 1, #cs do
+        for j = i + 1, math.min(#cs, i + 3) do
+          local w = table.concat(cs, "", i, j)
+          if not seen[w] then seen[w] = true; bump("w\t" .. w, "n", 1, now) end
+        end
+      end
+    end
+    if words then
       local prev = env.prev_word
       for _, w in ipairs(words) do
         if prev then learn_next(prev, w, 1, now) end
@@ -557,7 +596,7 @@ local function filter(input, env)
           end
           local text, used = rewrite(cand.text, syl, left)
           if text then
-            out = ShadowCandidate(cand, cand.type, text, cand.comment)
+            out = ShadowCandidate(cand, cand.type, text, cand.comment ~= "" and cand.comment or "學")
             top = text
             if seg.start == 0 then applied = { input = ctx.input, list = used } end
           elseif seg.start == 0 then
