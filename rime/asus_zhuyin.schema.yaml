@@ -54,6 +54,7 @@ engine:
     - simplifier@zh_hant_tw
     - uniquifier
     - lua_filter@*asus_typo*filter  # a key typed one key off (ㄈ->ㄌ), by sentence weight
+    - lua_filter@*asus_tw  # Taiwan spellings: 宕機 -> 當機, 坐標 -> 座標
     - lua_filter@*asus_grammar  # 的/得/地, 在/再 context rules
     - lua_filter@*asus_learn*filter  # learned corrections (after the rules)
     - lua_filter@*asus_lang*digits  # 204 -> 但, digits second

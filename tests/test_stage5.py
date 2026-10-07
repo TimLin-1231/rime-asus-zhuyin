@@ -87,10 +87,11 @@ def main() -> int:
     check("a name picked character by character is learned", t.preview(keys(probe)) == probe,
           t.preview(keys(probe)))
     # (Rime itself learned 志豪 from the two picks; the rewrite below is ours.)
-    axis = "請把圖表的座標軸標清楚"
-    t.enter(keys(axis), axis)
-    probe = "這個點的座標是多少"
-    check("a corrected word is used in a new sentence (座標)", t.preview(keys(probe)) == probe,
+    # (座標 is now Taiwan's spelling anyway, lua/asus_tw.lua; 配戴 is not.)
+    mask = "疫情期間請配戴口罩"
+    t.enter(keys(mask), mask)
+    probe = "騎車要配戴安全帽"
+    check("a corrected word is used in a new sentence (配戴)", t.preview(keys(probe)) == probe,
           t.preview(keys(probe)))
     t.reset_context(); t.type(keys(probe))
     handled = r.key("Delete", SHIFT_MASK); s = r.snapshot()
