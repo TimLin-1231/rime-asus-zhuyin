@@ -1,0 +1,37 @@
+# In-composition editing DEV set (stage 6). Each line is the text the user
+# wants; its MOE reading is typed in one go, and whatever converts wrongly is
+# then fixed inside the composition. Many lines use the less common of two
+# homophones, so the conversion is often wrong somewhere in the middle or at
+# the end. [digits] / [english] are typed as-is. Written before the editing
+# code.
+
+但感覺沒有那麼著急或許要
+她今天沒有來上課
+我想再試一次看看
+這件事你做得很好
+請記得戴安全帽
+報告已經寄給教授了
+妳明天幾點下班
+他的作品得了第一名
+我們改到下禮拜再討論
+這份資料需要重新整理
+我對這個結果很滿意
+他把車停在公司樓下
+這部影片我已經看過了
+那家店的牛肉麵很有名
+你哪天有空可以來我家
+麻煩幫我訂[3]個便當
+我[2026]年要出國念書
+這個程式用[python]寫的
+我把[slides]傳給你了
+他一直在練習彈鋼琴
+學校附近新開了一間咖啡廳
+我覺得這個想法不錯
+請你幫我確認一下帳號
+我們班的導師很嚴格
+她的頭髮又長又直
+下午的會議改成線上
+我需要一點時間考慮
+這個問題沒有標準答案
+天氣變冷了記得多穿衣服
+這條路晚上很暗要小心

@@ -1,0 +1,2 @@
+{"time": "2026-10-06T22:42:32", "rev": "c449e0b", "note": "baseline before stage 6", "set": "dev", "metrics": {"n": 30, "Wrong": 0.36666666666666664, "old": {"Fixed": 0.7272727272727273, "Keys": 5.909090909090909}, "cursor": {"Fixed": 0.2727272727272727, "Keys": 10.545454545454545}}}
+{"time": "2026-10-06T22:42:41", "rev": "c449e0b", "note": "baseline before stage 6", "set": "test", "metrics": {"n": 29, "Wrong": 0.20689655172413793, "old": {"Fixed": 0.8333333333333334, "Keys": 5.666666666666667}, "cursor": {"Fixed": 0.5, "Keys": 9.0}}}
