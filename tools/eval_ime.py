@@ -24,6 +24,8 @@ Sets
   dev_typo_end / test_typo_end  the substitution is in the last syllable
   test      tests/eval/sentences_test.tsv, held out: aggregate scores only
   dev_stray / test_stray  one extra neighbouring key inserted per sentence (seed 3)
+  dev_omit / test_omit    one key left out per sentence (any key but the last)
+  dev_swap / test_swap    two neighbouring keys typed in the wrong order
   mixed / mixed_test      Chinese with English words (tests/eval/mixed*.txt)
   particles / particles_test  的/得/地 (typed ㄉㄜ˙) and 在/再; PartAcc = share
             of those positions converted correctly
@@ -157,6 +159,20 @@ def inject_stray(keys: str, rng: random.Random) -> str:
     return keys[:i] + rng.choice(nb[keys[i - 1]]) + keys[i:]
 
 
+def inject_omit(keys: str, rng: random.Random) -> str:
+    """One key not pressed (any key, tone keys included; never the last one,
+    which would just be an unfinished input)."""
+    i = rng.randrange(len(keys) - 1)
+    return keys[:i] + keys[i + 1:]
+
+
+def inject_swap(keys: str, rng: random.Random) -> str:
+    """Two neighbouring keys pressed in the wrong order."""
+    idx = [i for i in range(len(keys) - 1) if keys[i] != keys[i + 1]]
+    i = rng.choice(idx)
+    return keys[:i] + keys[i + 1] + keys[i] + keys[i + 2:]
+
+
 def load_set(path: Path) -> list[tuple[str, str]]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -184,6 +200,11 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     stray_rng = random.Random(3)
     sets["dev_stray"] = [(inject_stray(k, stray_rng), t) for k, t in dev]
     sets["test_stray"] = [(inject_stray(k, stray_rng), t) for k, t in test]
+    # A key left out, and two keys in the wrong order (stage 10).
+    sets["dev_omit"] = [(inject_omit(k, random.Random(4007 + i)), t) for i, (k, t) in enumerate(dev)]
+    sets["test_omit"] = [(inject_omit(k, random.Random(5007 + i)), t) for i, (k, t) in enumerate(test)]
+    sets["dev_swap"] = [(inject_swap(k, random.Random(6007 + i)), t) for i, (k, t) in enumerate(dev)]
+    sets["test_swap"] = [(inject_swap(k, random.Random(7007 + i)), t) for i, (k, t) in enumerate(test)]
     for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
                        ("particles", "particles"), ("particles_test", "particles_test"),
                        ("numbers", "numbers"), ("numbers_test", "numbers_test")):
