@@ -48,6 +48,7 @@ local C_CAPS = 0.5
 local C_DIGIT = 1.0
 local C_STRAY = 4.0
 local C_SWITCH = 0.5
+local C_EN_JOIN = 1.5   -- two English words with nothing between them (CP + Ujp)
 local C_EN_BASE_CTX = 0.3  -- English base cost right after an English commit
 local C_EN_PREFIX = 1.0    -- extra cost of an unfinished word (prefix of a common word)
 local C_EN_FIX = 1.5       -- extra cost of a misspelt word (one letter off a common word)
@@ -90,6 +91,16 @@ local TONE_KEYS = { [" "] = true, ["6"] = true, ["3"] = true, ["4"] = true, ["7"
 
 local function is_upper(c) return c:match("%u") ~= nil end
 local function in_run(c) return IS_KEY[c] or is_upper(c) end
+-- Key k of input belongs to a run. So do, right after a letter or digit:
+-- an apostrophe (I'm, don't, user's), + and # (C++, C#), @ and _ (email
+-- addresses).
+local JOINS = { ["'"] = "%a", ["+"] = "[%w+]", ["#"] = "%w", ["@"] = "[%w._%-]", ["_"] = "%w" }
+local function in_run_at(input, k)
+  local c = input:sub(k, k)
+  if in_run(c) then return true end
+  local after = JOINS[c]
+  return after ~= nil and k > 1 and input:sub(k - 1, k - 1):match(after) ~= nil
+end
 
 -- English lexicon ------------------------------------------------------------
 -- Kept in an OpenCC text dictionary (opencc/asus_en.json), i.e. in C++ memory:
@@ -237,6 +248,34 @@ local function completions(key)
   return out
 end
 
+-- Contractions (the lexicon has letters only). Typed without the apostrophe
+-- (dont, im) they are offered as the first guess.
+local CONTRACTIONS = {}
+local CONTRACTION_OF = {}  -- "dont" -> "don't"
+for w in ("i'm i'll i've i'd you're you'll you've you'd he's he'll he'd she's she'll "
+          .. "she'd it's it'll we're we'll we've we'd they're they'll they've they'd "
+          .. "that's that'll there's here's what's where's who's how's let's "
+          .. "don't doesn't didn't can't couldn't won't wouldn't shouldn't isn't "
+          .. "aren't wasn't weren't haven't hasn't hadn't mustn't needn't ain't "
+          .. "y'all o'clock"):gmatch("%S+") do
+  CONTRACTIONS[w] = true
+  local bare = w:gsub("'", "")
+  -- (well, were, shell, hell, ill... are words themselves)
+  if bare ~= "well" and bare ~= "were" and bare ~= "shell" and bare ~= "hell" and bare ~= "ill"
+      and bare ~= "id" and bare ~= "its" and bare ~= "lets" and bare ~= "wed" and bare ~= "hed"
+      and bare ~= "shed" and bare ~= "wont" and bare ~= "cant" and bare ~= "whos" then
+    CONTRACTION_OF[bare] = w
+  end
+end
+CONTRACTION_OF["cant"] = "can't"  -- "cant" is a word, but rarely the one meant
+CONTRACTION_OF["wont"] = "won't"
+
+-- Typed form of a contraction: I'm keeps the capital I.
+local function contraction_form(w)
+  if w:sub(1, 2) == "i'" then return "I" .. w:sub(2) end
+  return w
+end
+
 local GUESS_MAX = 8
 local COMMON = 20000   -- a completion this common goes before corrections
 local C_FIX_SCORE = 2.5  -- a correction ranks as if 10^2.5 times rarer per edit
@@ -245,6 +284,24 @@ local C_FIX_SCORE = 2.5  -- a correction ranks as if 10^2.5 times rarer per edit
 local function guesses(key, entry)
   local hit = guess_memo[key]
   if hit then return hit end
+  -- Remembered email addresses starting with what was typed come first.
+  local mails = (#key >= 3) and learn.emails_for(key, 3) or {}
+  if key:find("@", 1, true) or key:find("%.%a+$") then
+    guess_memo[key] = mails
+    return mails
+  end
+  if key:find("'", 1, true) then
+    -- don' -> don't; user' -> user's
+    local out = {}
+    for w in pairs(CONTRACTIONS) do
+      if #w > #key and w:sub(1, #key) == key then out[#out + 1] = contraction_form(w) end
+    end
+    table.sort(out, function(a, b) return #a < #b or (#a == #b and a < b) end)
+    if key:match("^%a+'$") and english(key:sub(1, -2)) and #out == 0 then out[1] = key .. "s" end
+    while #out > GUESS_MAX do table.remove(out) end
+    guess_memo[key] = out
+    return out
+  end
   local comps = completions(key)
   local fixes = {}
   if not entry or entry.rank >= 100000 then fixes = corrections(key) end
@@ -263,6 +320,10 @@ local function guesses(key, entry)
     for i, x in ipairs(list) do list[i] = x.e end
   end
   local out, seen = {}, { [key] = true }
+  for _, m in ipairs(mails) do out[#out + 1] = m end
+  if CONTRACTION_OF[key] then  -- dont -> don't
+    out[#out + 1] = contraction_form(CONTRACTION_OF[key])
+  end
   for _, e in ipairs(list) do
     local lw = e.word:lower()
     if not seen[lw] then
@@ -327,12 +388,32 @@ local function zhuyin_like(keys)
 end
 
 -- en_ctx: the previous commit was English, so English is the expected language.
-local function en_cost(tok, en_ctx)
-  local entry = english(tok:lower())
+local function word_cost(tok, en_ctx, at_end)
   local base = en_ctx and C_EN_BASE_CTX or C_EN_BASE
+  if tok:find("'", 1, true) then
+    -- I'm, don't; user's (an English word + 's); don' while still typing.
+    local low = tok:lower()
+    if CONTRACTIONS[low] then return base + C_EN_RANK * 2 end
+    local stem, tail = low:match("^(%a+)'(%a*)$")
+    local e = stem and english(stem)
+    if not e and stem and (#stem >= 3 or SHORT_WORDS[stem]) and not zhuyin_like(stem) then
+      e = english_prefix(stem)
+    end
+    if not stem or (tail ~= "s" and not (tail == "" and at_end)) then return nil end
+    if tail == "" then
+      for w in pairs(CONTRACTIONS) do
+        if w:sub(1, #low) == low then return base + C_EN_RANK * 2 + C_EN_PREFIX end
+      end
+    end
+    if not e then return nil end
+    return base + C_EN_RANK * math.log(e.rank + 1, 10) + (tail == "" and C_EN_PREFIX or 0)
+  end
+  local entry = english(tok:lower())
   local best
   if entry then best = base + C_EN_RANK * math.log(entry.rank + 1, 10) end
   if en_ctx and SHORT_WORDS[tok:lower()] then best = math.min(best or math.huge, base) end
+  -- dont, doesnt, im: a contraction typed without its apostrophe (Tab adds it)
+  if CONTRACTION_OF[tok:lower()] then best = math.min(best or math.huge, base + C_EN_RANK * 2) end
   -- A misspelt word one letter off a common word (recieve) is English too,
   -- unless the keys read naturally as toneless Zhuyin (clgck = ㄏㄠㄕㄏㄜ).
   if not best and #tok >= C_FIX_MIN_LEN and tok:match("^%l+$") and not zhuyin_like(tok) then
@@ -344,11 +425,82 @@ local function en_cost(tok, en_ctx)
   -- Capitalised tokens (GPU, GPT4, DE-LSTM) are English even if unknown.
   -- Digits double as tone keys, so each one costs extra: "GPU2k7" must
   -- split as GPU + 的, not GPU2 + ㄜ˙.
-  if tok:match("^%u[%w%-]*$") then
+  -- (Capitals then small letters is an acronym and then Zhuyin, CPU + jp
+  -- = CPU溫, unless it is a plural: GPUs, APIs.)
+  local caps_tail = tok:match("^%u%u+(%l[%w%-]*)$")
+  if tok:match("^%u[%w%-]*$") and (not caps_tail or caps_tail == "s" or caps_tail == "es") then
     local _, digits = tok:gsub("%d", "")
     best = math.min(best or math.huge, C_CAPS + C_DIGIT * digits)
   end
+  -- C++, C#, F#
+  if tok:match("^%u%w*[+#]+$") and #tok <= 4 then
+    best = math.min(best or math.huge, C_CAPS)
+  end
   return best
+end
+
+-- Endings of names with a dot: domains and file names (node.js, google.com).
+local DOT_ENDS = {}
+for w in ("com org net edu gov tw io ai dev app me co uk jp cn hk us de fr kr sg cc tv info biz "
+          .. "js ts py md txt pdf html htm css json xml yaml yml csv lua sh cpp hpp h c java go rs "
+          .. "exe dll zip png jpg jpeg gif svg mp3 mp4 doc docx xls xlsx ppt pptx ipynb log ini cfg "
+          .. "toml sql db"):gmatch("%S+") do DOT_ENDS[w] = true end
+
+local C_EN_PUNCT = 0.2  -- a comma / full stop typed right after an English word
+local C_DOTTED = 1.5    -- node.js, www.google.com
+local C_EMAIL = 0.5     -- name@host
+local C_EMAIL_CHAR = 0.1  -- per character before the @ (where the address starts)
+
+-- Cost of tok as English: a word, or words joined by - (e-mail), a name with
+-- dots (node.js), an email address, or any of these plus , or . after it.
+local function en_cost(tok, en_ctx, at_end)
+  local base = en_ctx and C_EN_BASE_CTX or C_EN_BASE
+  if tok:find("@", 1, true) then
+    local user = tok:match("^(%w[%w._%%+%-]*)@[%w.%-]*$")
+    if not user then return nil end
+    -- A known address starting here wins over reading its start as Zhuyin.
+    local known = #learn.emails_for(tok, 1) > 0 and 0 or C_EMAIL_CHAR * #user
+    return C_EMAIL + known
+  end
+  local stem = tok:match("^(.*[%w'+#])[.,]$")
+  if stem then
+    local c = en_cost(stem, en_ctx, false)
+    return c and c + C_EN_PUNCT
+  end
+  if tok:find(".", 1, true) then
+    local first, last = tok:match("^(%a[%w%-]*)%..-(%w*)$")
+    if not first or tok:find("..", 1, true) then return nil end
+    if DOT_ENDS[last:lower()] then return base + C_DOTTED end
+    -- Still typing it: www.goo, github.c
+    local fl = first:lower()
+    if at_end and (fl == "www" or (#fl >= 3 and english(fl))) and last:match("^%a*$") then
+      return base + C_DOTTED + C_EN_PREFIX
+    end
+    return nil
+  end
+  if tok:find("-", 1, true) and not tok:match("^%u") then
+    -- e-mail, x-ray, real-time: every part a word (or one letter), one of
+    -- them a real word; the last may be unfinished at the end of the input.
+    if tok:find("^%-") or tok:find("%-%-") or tok:find("%-$") then return nil end
+    local parts = {}
+    for part in tok:gmatch("[^%-]+") do parts[#parts + 1] = part:lower() end
+    local worst, real = 0, false
+    for k, part in ipairs(parts) do
+      if not part:match("^%a+$") then return nil end
+      local e = english(part)
+      local extra = 0
+      if not e and k == #parts and at_end then e = english_prefix(part); extra = C_EN_PREFIX end
+      if e then
+        real = real or #part >= 2
+        worst = math.max(worst, C_EN_RANK * math.log(e.rank + 1, 10) + extra)
+      elseif #part > 1 and not SHORT_WORDS[part] then
+        return nil
+      end
+    end
+    if not real then return nil end
+    return base + worst
+  end
+  return word_cost(tok, en_ctx, at_end)
 end
 
 -- Cheapest segmentation of run (a string of keys). Returns a list of
@@ -365,11 +517,13 @@ local function plan_run(run, en_ctx)
     local base = best[i][from_lang]
     if base == INF or cost == nil then return end
     local switch = (from_lang ~= "none" and lang ~= "none" and from_lang ~= lang) and C_SWITCH or 0
+    if from_lang == "en" and kind == "en" and best[i].en_word then switch = C_EN_JOIN end
     local total = base + cost + switch
     local to_lang = (lang == "none") and from_lang or lang
     if total < best[j + 1][to_lang] then
       best[j + 1][to_lang] = total
       back[j + 1][to_lang] = { i = i, from = from_lang, kind = kind }
+      if to_lang == "en" then best[j + 1].en_word = (kind == "en") end
     end
   end
   for i = 1, n do
@@ -378,7 +532,7 @@ local function plan_run(run, en_ctx)
         -- Zhuyin syllables
         for j = i, math.min(n, i + MAX_SYLLABLE - 1) do
           local tok = run:sub(i, j)
-          if tok:find("%u") then break end
+          if tok:find("[%u'+#@_]") then break end
           local c = zh_cost(tok, j == n)
           relax(i, from, j, "zh", c, "zh")
           if c == nil and #tok >= 2 and TONE_KEYS[tok:sub(-1)] and has_typo_fix(tok) then
@@ -389,10 +543,11 @@ local function plan_run(run, en_ctx)
         local caps = is_upper(run:sub(i, i))
         for j = i + 1, math.min(n, i + math.max(max_en_len, 32) - 1) do
           local tok = run:sub(i, j)
-          if not (tok:match("^[%a][%a%-']*$") or (caps and tok:match("^%u[%w%-]*$"))) then
+          if not (tok:match("^%a[%a%-'.,]*$") or (caps and tok:match("^%u[%w%-]*[+#]*[.,]?$"))
+                  or tok:match("^%a[%w%-]*%.[%w.%-]*$") or tok:match("^%a[%a+#]*[.,]?$")) then
             break
           end
-          local cost = en_cost(tok, en_ctx)
+          local cost = en_cost(tok, en_ctx, j == n)
           if not cost and j == n and tok:match("^%l+$") then
             -- Unfinished English word at the end ("pyth" -> python).
             local p = english_prefix(tok)
@@ -402,6 +557,16 @@ local function plan_run(run, en_ctx)
             end
           end
           relax(i, from, j, "en", cost, "en")
+        end
+        -- email addresses (s108@gmail.com): the @ decides where it starts
+        if run:find("@", i, true) and run:sub(i, i):match("%w") then
+          for j = (run:find("@", i, true)), n do
+            local tok = run:sub(i, j)
+            if not tok:match("^%w[%w._%%+%-]*@[%w.%-]*$") then break end
+            if j == n or not run:sub(j + 1, j + 1):match("[%w.%-]") then
+              relax(i, from, j, "en", en_cost(tok, en_ctx, j == n), "en")
+            end
+          end
         end
         if is_upper(run:sub(i, i)) then
           relax(i, from, i, "en", C_CAPS, "en")  -- single capital letter
@@ -429,8 +594,12 @@ local function plan_run(run, en_ctx)
             end
           end
         end
-        -- stray key
-        relax(i, from, i, "none", C_STRAY, "stray")
+        -- stray key; an apostrophe (+ # @ _) no word takes is kept as it is
+        if JOINS[run:sub(i, i)] then
+          relax(i, from, i, "en", C_STRAY, "lit")
+        else
+          relax(i, from, i, "none", C_STRAY, "stray")
+        end
       end
     end
   end
@@ -450,7 +619,7 @@ local function plan_run(run, en_ctx)
   -- remembered in .fixes)
   local merged = {}
   for _, t in ipairs(tokens) do
-    local kind = (t.kind == "fix") and "zh" or t.kind
+    local kind = (t.kind == "fix") and "zh" or (t.kind == "lit") and "en" or t.kind
     local last = merged[#merged]
     if last and last.kind == "zh" and kind == "zh" then
       last.j = t.j
@@ -481,9 +650,9 @@ local function plan_input(env, input, floor, en_ctx)
   end
   local pos = floor + 1
   while pos <= #input do
-    if in_run(input:sub(pos, pos)) then
+    if in_run_at(input, pos) then
       local e = pos
-      while e < #input and in_run(input:sub(e + 1, e + 1)) do e = e + 1 end
+      while e < #input and in_run_at(input, e + 1) do e = e + 1 end
       -- English context only applies to the run the composition starts with.
       local toks, special, cost = plan_run(input:sub(pos, e), en_ctx and pos == 1)
       if env.debug then
@@ -540,13 +709,20 @@ local function kept_matches(segmentation, spans, start, new_input, input)
     if not is_fixed(seg) then
       local special = seg:has_tag("asus_en") or seg:has_tag("asus_stray") or seg:has_tag("asus_num")
       local sp = by_start[seg.start]
-      if #spans == 0 then
+      local in_keys = false  -- does the segment cover keys of a run?
+      for k = seg.start + 1, seg._end do
+        if in_run_at(input, k) then in_keys = true; break end
+      end
+      if not in_keys and not special then
+        -- Punctuation between runs is librime's own (I'm before the fix
+        -- for apostrophes looped forever: rewind, re-add, mismatch again).
+      elseif #spans == 0 then
         -- A plain Chinese plan is one stock segment per run of keys: a kept
         -- boundary inside a run (left by a number at "283" before 打電話)
         -- would split the sentence and hide context from the language model
         -- and rules. Boundaries at punctuation are librime's own.
         local e = seg._end
-        if special or (e < #input and in_run(input:sub(e, e)) and in_run(input:sub(e + 1, e + 1))) then
+        if special or (e < #input and in_run_at(input, e) and in_run_at(input, e + 1)) then
           return false
         end
       elseif not sp or sp.e ~= seg._end or (sp.kind ~= "zh") ~= special then
@@ -708,8 +884,12 @@ function translator.func(input, seg, env)
   -- only for acronyms / inner capitals (API, PINN, iPhone), not for plain
   -- capitalisation (lexicon "Demo" -> demo).
   local shown = input
-  if entry and not input:find("%u") and not entry.word:match("^%u%l*$") then
+  if seg:has_tag("asus_ascii") then
+    -- English mode (asus_english.lua): exactly as typed; forms are guesses.
+  elseif entry and not input:find("%u") and not entry.word:match("^%u%l*$") then
     shown = entry.word
+  elseif CONTRACTIONS[input] then
+    shown = contraction_form(input)  -- i'm -> I'm
   end
   -- The typed word, then guesses (completions, spelling corrections); the
   -- first guess is marked ⇥: Tab takes it (asus_predict.lua, english_tab).

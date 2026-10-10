@@ -23,6 +23,8 @@ schema:
 engine:
   processors:
     - lua_processor@*asus_learn*processor  # Shift/Ctrl+Delete forgets; learns on commit
+    - lua_processor@*asus_english*processor  # English mode: words with guesses
+    - lua_processor@*asus_email*processor  # Tab types a remembered email address
     - lua_processor@*asus_predict*processor  # next-word prediction, Tab autocomplete
     - lua_processor@*asus_symbols*processor  # ` symbol keyboard, Ctrl+punctuation
     - lua_processor@*asus_edit*processor  # Left/Right cursor, Down at cursor, edit inside
@@ -36,6 +38,7 @@ engine:
     - navigator
     - fluency_editor
   segmentors:
+    - lua_segmentor@*asus_english*segmentor  # English mode: one English segment
     - ascii_segmentor
     - matcher
     - lua_segmentor@*asus_lang*segmentor  # Chinese/English/stray-key spans

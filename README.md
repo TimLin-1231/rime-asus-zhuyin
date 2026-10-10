@@ -13,6 +13,8 @@
 | `rime/lua/asus_learn.lua` | 自我學習：改過的字詞、英文詞、常接的下一個詞；Shift+Del 忘記 |
 | `rime/lua/asus_edit.lua` | 句中改字：←/→ 游標、↓ 選游標處的詞、句中刪字插字 |
 | `rime/lua/asus_typo.lua` | 打錯鍵自動更正：按到旁邊的鍵、多按一個鍵 |
+| `rime/lua/asus_english.lua` | 英文模式的組字與猜字（補完、拼字更正、email） |
+| `rime/lua/asus_email.lua` | Email 提示：打前幾個字就出現完整的 email，Tab 送出 |
 | `tools/eval_edit.py` | 改字評估：句子打錯時改到對要按幾個鍵、能不能改好 |
 | `tools/rime_harness.py` | 用 Python 驅動 `rime.dll`，在 `.harness/` 的複本上測試，不會碰到正在使用的設定 |
 | `tools/eval_ime.py` | 量化評估（整句正確率、字正確率、個人詞 Top1／Top9、每鍵延遲） |
@@ -27,17 +29,18 @@
 | 操作 | 效果 |
 |---|---|
 | 打注音 | 首選直接出現在行內；小框只顯示首選，還沒打聲調時顯示注音，最後面附上你按過的鍵（空白鍵顯示成 ␣，太長只顯示最後 24 個）；不想看到按鍵：`patch:` 加上 `asus_compact/show_keys: false` |
-| ↓ | 展開候選（1–9 選字、空白鍵選反白、Esc 收合） |
+| ↓ | 展開候選（1–9 選字、空白鍵選反白、Esc 收合）；一長串打完才按 ↓，列的是**最後一個詞**的候選，選了只換那個詞，Esc 原樣還原 |
 | 打字中按 ← / → | 游標一次移一個字（數字、英文字算一格），小框顯示「前面的字｜後面的字　注音」；Home 跳到開頭、End 回到結尾 |
 | 游標在句中按 ↓ | 列出從游標開始的詞，第一個是現在的字；選了只換那一段，前後的字不變。游標在數字／英文上：數字、全形、中文讀音或英文猜字 |
 | 游標在句中按 Backspace／打注音 | 刪掉游標前一個字／在游標處插入，其他字不變；Esc 離開游標（字不變） |
-| 連按兩下 Shift／Ctrl+Space | 切換中英（會先送出已打好的中文） |
+| 連按兩下 Shift／Ctrl+Space | 切換中英（會先送出已經打好的字） |
 | `` ` `` | 符號小鍵盤：按對應的鍵輸出符號；Tab 切換一般／數學／特殊 |
 | Ctrl+, . ' ; | ， 。 、 ； |
 | Ctrl+Shift+; / 1 [ ] 9 0 | ： ？ ！ 『 』 （ ） |
 | ( ) | 半形括號（全形用 Ctrl+Shift+9/0） |
 | 注音縮寫，例如 ㄉㄓ | 快捷文字本的展開文字（`rime/shortcuts.txt`） |
-| 直接打英文，例如 `python` | 自動判斷成英文；可以夾在中文之間（我用python跑model） |
+| 直接打英文，例如 `python` | 自動判斷成英文；可以夾在中文之間（我用python跑model）。`I'm`、`don't`、`e-mail`、`node.js`、`C++`、`www.google.com`、email 地址也都是英文；英文字後面的 `,` `.` 是半形標點（Hello, world.）；英文後面的數字按空白會照打送出（iPhone 15 Pro） |
+| 打 email 的前幾個字（至少 3 個） | 小框出現「⇥完整的 email」，按 Tab 送出；中文、英文模式都可以。用過的 email 會自動記住，也可以寫在 `rime/emails.txt`（一行一個） |
 | 打英文時的猜字 | 小框顯示「打的字＋最多 3 個猜字」：沒打完的字會補完（pyth → python），拼錯的字會更正（recieve → receive）；有 ⇥ 的那個按 Tab 就送出（拼錯的整個換掉），↓ 展開後用 1–9 選其他的，空白鍵照打的送出 |
 | Shift＋字母 | 大寫英文（GPU、Python） |
 | 中文模式直接打數字 | 2026、100、3.14 會直接變成數字，可以跟中文混打（2026年、3點、100元）；數字後面的量詞會自動選對（2杯、18歲、第2章）。剛好是完整注音的數字（204＝但、283＝打）照樣是中文，按 ↓ 第二個就是數字；數字鍵盤（numpad）永遠輸出數字 |
@@ -50,6 +53,29 @@
 | 改過一次的字詞 | 之後在別的句子也會用你改過的（例如改過一次「程式」，「應用程式」也會對） |
 | 英文詞被拆成注音 | 按 **Ctrl+Enter**（或 Shift+Enter）照打的字母送出，之後這個詞就會被認成英文、Tab 也能補完 |
 | 學錯了 | 在展開的候選清單選到那個字詞（或預測的詞）按 **Shift+Del**（或 Ctrl+Del）忘掉它 |
+
+## 英文模式
+連按兩下 Shift 進入英文模式後，打的字會先組起來（行內有底線），小框顯示「打的字＋最多 3 個猜字」，跟手機鍵盤一樣：
+
+| 按鍵 | 效果 |
+|---|---|
+| 空白 | 照打的送出，再打一個空格 |
+| Tab | 送出 ⇥ 的猜字：補完（pyth → python）、拼字更正（recieve → receive）、縮寫（dont → don't）、用過的 email（tim → tim.lin@…）；沒有猜字時 Tab 照常送給程式 |
+| ↓ | 展開猜字，1–9 選字，空白鍵選反白的字（再加空格） |
+| Backspace | 刪掉最後一個字母 |
+| Enter、標點、方向鍵、Ctrl 快捷鍵 | 先把打的字送出，按鍵再照常送給程式（Enter 一次就能送出聊天訊息） |
+
+- 終端機（Windows Terminal、cmd、PowerShell、Git Bash）維持「直接輸出」：按鍵直接送進程式，沒有小框。
+  其他想要直接輸出的程式（例如遊戲）：在 `rime/weasel.custom.yaml` 照樣加一行 `app_options/程式.exe: { asus_en_direct: true }`（小寫檔名），重新部署。
+- 全部改回直接輸出：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_english/compose: false`。
+- 英文模式**只記 email 地址**，其他打的字都不記（見「隱私」）。
+
+## Email
+- 打過一次的 email（中文模式裡打的，或英文模式打完送出的）會記在 `rime/asus_learn.userdb`。
+- 也可以自己列在 `rime/emails.txt`（一行一個，`#` 開頭是註解，不進 git），改完重新部署。
+- 打前 3 個字以上，小框就會出現最常用的那個；就算前幾個字剛好也是注音（s108 → 你不安啊），Tab 送出的還是 email。
+- 不要的 email：展開候選選到它，按 Shift+Del。
+- 至少要打幾個字才提示：`patch:` 加上 `asus_email/min_prefix: 4`。
 
 ## 台灣用語優先
 語言模型有時會把兩個單字拼成大陸的寫法（宕機、坐標、賬號），`lua/asus_tw.lua` 會換成同音的台灣寫法（當機、座標、帳號）：
@@ -86,6 +112,8 @@
 | 保留測試集：平均按鍵 | 5.7 | 4.3 |
 
 舊方法改不好的多半是句子裡有數字或英文的情況（↓ 只能選最後一段）。用游標選的字也會被自我學習記住。
+
+打完直接按 ↓ 現在列的是最後一個詞：錯在最後一個詞（剛打完就發現）時只要 2 個鍵（游標要 4 個）；錯在前面時先 ↓ 再 Esc 改用游標，會多按 2 個鍵（開發集平均 6.4 鍵、保留測試集 5.7 鍵，全部改得好）。
 
 ## 數字
 大千式鍵盤的每個數字鍵也是注音（1 ㄅ、2 ㄉ、5 ㄓ、8 ㄚ、9 ㄞ、0 ㄢ，3 4 6 7 是聲調），所以只在「當注音不合理」時才判斷成數字：
@@ -165,6 +193,9 @@ C:\Users\User\anaconda3\python.exe tests\test_stage2.py
 C:\Users\User\anaconda3\python.exe tests\test_stage3.py
 C:\Users\User\anaconda3\python.exe tests\test_stage4.py
 C:\Users\User\anaconda3\python.exe tests\test_stage5.py
+C:\Users\User\anaconda3\python.exe tests\test_stage6.py
+C:\Users\User\anaconda3\python.exe tests\test_stage7.py
+C:\Users\User\anaconda3\python.exe tests\test_stage8.py
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
 C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改了什麼"
@@ -181,5 +212,6 @@ C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改�
 
 ## 隱私
 - 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
-- 英文學習只從透過輸入法送出的文字學，不會記錄英文模式（直接輸出）下打的字，所以不會碰到密碼之類的內容。
+- 英文詞的學習只從中文模式送出的文字學。英文模式雖然會組字，但只記長得像 email 地址的字（name@host.com），其他打的字一律不記，所以就算某個程式的密碼欄位沒有關掉輸入法，密碼也不會被存下來（除非它長得像 email）。終端機是直接輸出，完全不經過組字。
+- 記住的 email 存在 `rime/asus_learn.userdb`（只在本機），`rime/emails.txt` 不進 git。
 - 沒有設定任何雲端同步目錄。舊設定裡的 Google Drive 同步路徑沒有沿用。

@@ -36,6 +36,7 @@ tests/eval/private/
 lexicon/personal_words.txt
 lexicon/english_words.txt
 rime/shortcuts.txt
+rime/emails.txt
 rime/terra_pinyin.personal.dict.yaml
 rime/terra_pinyin.tw.dict.yaml
 

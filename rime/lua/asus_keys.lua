@@ -59,7 +59,9 @@ end
 
 local function toggle_ascii(ctx)
   local to_ascii = not ctx:get_option("ascii_mode")
-  if to_ascii and ctx:is_composing() then
+  -- Either way what is typed is committed first (Chinese as converted,
+  -- English mode's word as typed, asus_english.lua).
+  if ctx:is_composing() then
     ctx:commit()
   end
   ctx:set_option("ascii_mode", to_ascii)
@@ -162,7 +164,9 @@ local function func(key, env)
     return kAccepted
   end
 
-  if ctx:get_option("ascii_mode") then
+  -- English mode: only its composed word (asus_english.lua) is handled here
+  -- (the expanded list of guesses).
+  if ctx:get_option("ascii_mode") and not ctx:is_composing() then
     return kNoop
   end
 
@@ -211,6 +215,21 @@ local function func(key, env)
       ctx:commit()
       env.engine:commit_text(" ")
       return kAccepted
+    end
+    -- A number in English text (iPhone 15 Pro): after an English word in
+    -- the input, or as the whole input right after English was committed.
+    if seg and seg:has_tag("asus_num") and cand and cand.type == "number" then
+      local prev = nil
+      for _, s in ipairs(ctx.composition:toSegmentation():get_segments()) do
+        if s._end == seg.start and s._end > s.start then prev = s end
+      end
+      local english_before = prev and prev:has_tag("asus_en")
+          or (seg.start == 0 and ctx:get_property("asus_en_ctx") == "1")
+      if english_before then
+        ctx:commit()
+        env.engine:commit_text(" ")
+        return kAccepted
+      end
     end
   end
 

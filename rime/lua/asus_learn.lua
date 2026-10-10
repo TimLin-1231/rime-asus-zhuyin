@@ -21,6 +21,9 @@
 --   * Next words: commits are split into words (opencc/asus_seg); a word pair
 --     seen twice, or a prediction accepted once, is predicted first by
 --     asus_predict.lua.
+--   * Email addresses: every address committed (or typed in English mode,
+--     lua/asus_email.lua) is remembered, together with rime/emails.txt, so
+--     typing the first few characters offers the whole address.
 --   * Shift+Delete / Ctrl+Delete on the highlighted candidate (or prediction)
 --     forgets what was learned about it, including Rime's own user phrase.
 -- Weights halve every half_life_days (asus_learn/half_life_days, default 90).
@@ -43,6 +46,8 @@ local NEXT_SHOW = 1.5     -- weight a next word needs to be predicted
 local OWN_WORD = 0.9      -- commits that make a word the user's own (one, slightly decayed)
 local EN_SHOW = 0.9       -- weight an English word needs to be preferred
 local MAX_EN = 2000       -- learned English words kept in memory
+local MAX_EMAIL = 500     -- learned email addresses kept in memory
+local EMAIL_LIST_W = 100  -- weight of an address listed in rime/emails.txt
 
 -- Shared by all sessions (librime-lua runs one Lua state per process).
 local db
@@ -51,6 +56,7 @@ local enabled = true
 local half_life = 90 * 86400
 local global_after = 1   -- corrections before a pair applies everywhere (if never undone)
 local en_words           -- lower-case key -> {word=, w=, t=}
+local emails             -- lower-case address -> {text=, w=}
 local orig = nil         -- last top conversion of a whole input: {input=, text=}
 local applied = nil      -- rewrites in the current top: {input=, list of {k,x,c}}
 
@@ -164,6 +170,77 @@ local function load_english()
   collectgarbage()  -- release the LevelDB iterator now, not at some later GC
 end
 
+-- Email addresses ------------------------------------------------------------
+local EMAIL = "^[%w][%w._%%+%-]*@[%w%-]+%.[%w.%-]*%a$"
+local function is_email(s)
+  return #s <= 254 and s:match(EMAIL) ~= nil and not s:find("..", 1, true)
+end
+
+local function load_emails()
+  emails = {}
+  local f = io.open(rime_api.get_user_data_dir() .. "/emails.txt", "r")
+  if f then
+    for line in f:lines() do
+      local e = line:gsub("^%s+", ""):gsub("%s+$", "")
+      if e:sub(1, 1) ~= "#" and is_email(e) then
+        emails[e:lower()] = { text = e, w = EMAIL_LIST_W }
+      end
+    end
+    f:close()
+  end
+  if not db then return end
+  local now = os.time()
+  local q = db:query("m\t")
+  if not q then return end
+  local n = 0
+  for k, v in q:iter() do
+    if k:sub(1, 2) ~= "m\t" then break end
+    for text, w in pairs(parse(v, now)) do
+      local key = k:sub(3)
+      local cur = emails[key]
+      emails[key] = { text = cur and cur.text or text, w = w + (cur and cur.w or 0) }
+      n = n + 1
+    end
+    if n >= MAX_EMAIL then break end
+  end
+  q = nil
+  collectgarbage()  -- release the LevelDB iterator now
+end
+
+-- Remember an address the user typed (w: how much this use counts).
+local function learn_email(text, w)
+  if not enabled or not db or not emails or not is_email(text) then return end
+  local now = os.time()
+  local key = text:lower()
+  bump("m\t" .. key, text, w or 1, now, 1)
+  local cur = emails[key]
+  local learned = fetch("m\t" .. key, now)[text] or 0
+  emails[key] = { text = text, w = learned + ((cur and cur.w >= EMAIL_LIST_W) and EMAIL_LIST_W or 0) }
+end
+
+-- Addresses starting with `prefix` (any case), most used first.
+local function emails_for(prefix, limit)
+  if not enabled or not emails or prefix == "" then return {} end
+  local p = prefix:lower()
+  local list = {}
+  for k, e in pairs(emails) do
+    if #k > #p and k:sub(1, #p) == p then list[#list + 1] = e end
+  end
+  table.sort(list, function(a, b)
+    if a.w ~= b.w then return a.w > b.w end
+    return a.text < b.text
+  end)
+  local out = {}
+  for i = 1, math.min(limit or 3, #list) do out[i] = list[i].text end
+  return out
+end
+
+local function forget_email(text)
+  if not db or not emails then return end
+  db:erase("m\t" .. text:lower())
+  emails[text:lower()] = nil
+end
+
 -- The database stays open for the life of the process (all sessions share
 -- it); every update is written to LevelDB's log right away.
 local function open(config)
@@ -177,6 +254,7 @@ local function open(config)
     local ok, d = pcall(UserDb, "asus_learn", "userdb")
     if ok and d and d:open() then db = d else db = false end
     load_english()
+    load_emails()
   end
   if seg_cc == nil then
     local ok, cc = pcall(Opencc, "asus_seg.json")
@@ -426,6 +504,14 @@ function processor.init(env)
     local now = os.time()
     local text = c:get_commit_text() or ""
     local input = c.input
+    for e in text:gmatch("[%w._%%+%-]+@[%w.%-]+") do
+      learn_email((e:gsub("%.+$", "")), 1)  -- (a full stop after it is not part of it)
+    end
+    -- English mode (asus_english.lua): nothing but email addresses.
+    if c:get_option("ascii_mode") then
+      env.prev_word = nil
+      return
+    end
     -- Raw letters committed as typed (Ctrl+Enter / Shift+Enter).
     if text == input and #input >= 3 and input:match("^%a[%a%-]*$") then
       learn_english(input, 1, now)
@@ -555,6 +641,11 @@ function processor.func(key, env)
   end
   local cand = ctx:get_selected_candidate()
   if not cand then return kAccepted end
+  if cand.type == "email" or (cand.type == "english" and is_email(cand.text)) then
+    forget_email(cand.text)
+    ctx:refresh_non_confirmed_composition()
+    return kAccepted
+  end
   if cand.type == "english" then
     local k = cand.text:lower()
     db:erase("e\t" .. k)
@@ -682,4 +773,6 @@ end
 
 return { processor = processor, filter = filter, predict = predict, banned = banned, chosen = chosen,
          accepted = accepted, english = english, complete_english = complete_english,
-         syllables = syllables }
+         syllables = syllables, is_email = is_email, learn_email = learn_email,
+         emails_for = emails_for, forget_email = forget_email,
+         open = function(config) open(config) end }

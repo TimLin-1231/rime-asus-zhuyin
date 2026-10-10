@@ -20,6 +20,7 @@
 local EXPANDED = "_asus_expanded"
 local EN_GUESSES = 3
 local complete = require("asus_predict").complete
+local email_match = require("asus_email").match
 
 -- Keyboard key -> Zhuyin symbol, from bopomofo.schema.yaml preedit_format.
 local KEYS = "1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/-"
@@ -103,6 +104,10 @@ local function func(input, env)
         local cont = reading == "" and ctx:get_option("prediction") and complete(cand.text)
         if cont then comment = "⇥" .. cont end
       end
+      -- A remembered email address starting with the keys typed (Tab types
+      -- it, asus_email.lua).
+      local mail = cand._end == #ctx.input and email_match(ctx.input)[1]
+      if mail then comment = "⇥" .. mail end
       if env.show_keys and cand._end == #ctx.input and ctx.input ~= "" then
         comment = ((comment ~= "") and comment or cand.comment)
         comment = (comment ~= "" and (comment .. "　") or "") .. typed(ctx.input)
