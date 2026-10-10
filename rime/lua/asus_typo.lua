@@ -31,20 +31,22 @@ local MAX_CACHE = 4000
 
 -- Keys next to each key (same or adjacent row, at most one column away),
 -- never a tone key.
+-- (Built in keyboard order, not pairs(): ties between variants must not
+-- depend on Lua's hash order.)
 local NEAR = {}
 do
-  local pos = {}
+  local keys = {}
   for r, row in ipairs(ROWS) do
-    for i = 1, #row do pos[row:sub(i, i)] = { r, i } end
+    for i = 1, #row do keys[#keys + 1] = { row:sub(i, i), r, i } end
   end
-  for c, p in pairs(pos) do
+  for _, a in ipairs(keys) do
     local list = {}
-    for d, q in pairs(pos) do
-      if d ~= c and math.abs(p[1] - q[1]) <= 1 and math.abs(p[2] - q[2]) <= 1 and not TONE[d] then
-        list[#list + 1] = d
+    for _, b in ipairs(keys) do
+      if b[1] ~= a[1] and math.abs(a[2] - b[2]) <= 1 and math.abs(a[3] - b[3]) <= 1 and not TONE[b[1]] then
+        list[#list + 1] = b[1]
       end
     end
-    NEAR[c] = list
+    NEAR[a[1]] = list
   end
 end
 

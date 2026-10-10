@@ -588,8 +588,15 @@ function segmentor.func(segmentation, env)
   local edit_span = tonumber(ctx:get_property("asus_edit_span") or "")
   if edit_span and edit_span == start and edit_span < #input then
     local kind = (ctx:get_property("asus_edit_unit_end") or ""):match("(%a+)$")  -- "<unit end><sep><kind>"
-    spans = { { kind = kind == "num" and "open_num" or kind == "en" and "open_en" or "zh",
-                s = edit_span, e = #input } }
+    -- The plan before the cursor stays: an English word kept there must
+    -- still match it, or segmentation is rewound and redone forever.
+    local before = {}
+    for _, sp in ipairs(spans) do
+      if sp.e <= edit_span then before[#before + 1] = sp end
+    end
+    before[#before + 1] = { kind = kind == "num" and "open_num" or kind == "en" and "open_en" or "zh",
+                            s = edit_span, e = #input }
+    spans = before
   end
   -- Typo syllables for asus_typo.lua: "start:end" key ranges.
   local fixes = {}

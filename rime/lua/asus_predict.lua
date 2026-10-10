@@ -56,17 +56,19 @@ end
 
 -- Continuations for text: the longest suffix (<= MAX_PREFIX chars) that is a
 -- known prefix wins; shorter suffixes fill up the list.
-local function predict(text, limit)
+-- min_len: shortest suffix of text used as the key (1 by default).
+local function predict(text, limit, min_len)
+  min_len = min_len or 1
   local out, seen = {}, {}
   -- Learned next words (lua/asus_learn.lua) come first.
-  for _, w in ipairs(learn.predict(text, limit)) do
+  for _, w in ipairs(learn.predict(text, limit, min_len)) do
     seen[w] = true
     out[#out + 1] = w
   end
   if #out >= limit then return out end
   local cps = {}
   for _, cp in utf8.codes(text) do cps[#cps + 1] = cp end
-  for len = math.min(MAX_PREFIX, #cps), 1, -1 do
+  for len = math.min(MAX_PREFIX, #cps), min_len, -1 do
     local key = utf8.char(table.unpack(cps, #cps - len + 1, #cps))
     for _, w in ipairs(lookup(key) or {}) do
       if not seen[w] and not learn.banned(w) then
@@ -154,9 +156,11 @@ function processor.fini(env)
 end
 
 -- Autocomplete: best continuation of a conversion of >= 2 characters.
+-- Only from the last two or more characters: a single one is too little to
+-- go on (一點嗎 + ⇥啡 from 嗎啡).
 local function complete(text)
   if not is_cjk_text(text) or utf8.len(text) < 2 then return nil end
-  return predict(text, 1)[1]
+  return predict(text, 1, 2)[1]
 end
 
 function processor.func(key, env)

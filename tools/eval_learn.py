@@ -117,6 +117,9 @@ class Typist:
                 self.r.clear()
             return out, 0
         done, picks = "", 0
+        # From the start: Home, then Down lists the words at the cursor
+        # (Down alone lists the last word since stage 6b).
+        self.r.key("Home")
         for _ in range(40):
             if done == target or not self.r.snapshot().input:
                 break

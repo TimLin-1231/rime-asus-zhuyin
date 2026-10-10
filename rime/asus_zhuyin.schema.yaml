@@ -48,6 +48,7 @@ engine:
     - lua_translator@*asus_shortcuts  # rime/shortcuts.txt
     - lua_translator@*asus_lang*translator  # English words, dropped stray keys
     - lua_translator@*asus_typo*translator  # keys that are no syllable (typo)
+    - lua_translator@*asus_edit*translator  # locks the text before the editing cursor
     - script_translator
   filters:
     - simplifier@zh_hans

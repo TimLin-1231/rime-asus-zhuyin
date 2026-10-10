@@ -40,7 +40,7 @@ local MAX_RUN = 8         -- longest changed run learned as a whole
 local PRUNE = 0.05        -- weights below this are dropped
 local KEEP_NEXT = 8       -- next words kept per previous word
 local NEXT_SHOW = 1.5     -- weight a next word needs to be predicted
-local OWN_WORD = 1.0      -- commits that make a word the user's own
+local OWN_WORD = 0.9      -- commits that make a word the user's own (one, slightly decayed)
 local EN_SHOW = 0.9       -- weight an English word needs to be preferred
 local MAX_EN = 2000       -- learned English words kept in memory
 
@@ -228,7 +228,8 @@ local function decide(k, x, l, r, now)
              > math.max(b["L" .. l] or 0, b["R" .. r] or 0) + 0.1
       end
     end
-    if ok and (best_score == nil or wf - wr > best_score) then
+    if ok and (best_score == nil or wf - wr > best_score
+               or (wf - wr == best_score and c < best)) then  -- ties: stable order
       best, best_score = c, wf - wr
     end
   end
@@ -619,13 +620,14 @@ end
 
 -- API for asus_predict.lua / asus_lang.lua -------------------------------------
 -- Learned next words for committed text (best first, at most limit).
-local function predict(text, limit)
+local function predict(text, limit, min_len)
   if not enabled or not db then return {} end
+  min_len = min_len or 1
   local now = os.time()
   local cps = {}
   for _, cp in utf8.codes(text) do cps[#cps + 1] = cp end
   local scored, seen = {}, {}
-  for len = math.min(4, #cps), 1, -1 do
+  for len = math.min(4, #cps), min_len, -1 do
     local prev = utf8.char(table.unpack(cps, #cps - len + 1, #cps))
     for w, weight in pairs(fetch("n\t" .. prev, now)) do
       if weight >= NEXT_SHOW and not seen[w] and not db:fetch("b\t" .. w) then

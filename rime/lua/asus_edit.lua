@@ -227,6 +227,7 @@ end
 
 local function leave(ctx)
   save(ctx, nil)
+  ctx:set_property("asus_edit_auto", "")
   ctx:set_property(SPAN, "")
   ctx:set_property(OPEN_END, "")
 end
@@ -237,16 +238,56 @@ local processor = {}
 function processor.init(env)
   local ctx = env.engine.context
   env.conn = ctx.commit_notifier:connect(function(c) leave(c) end)
+  -- A composition can also end without a commit (Esc, cleared when the
+  -- focus moves); a stale state would keep the other filters waiting.
+  env.update_conn = ctx.update_notifier:connect(function(c)
+    if c.input == "" and (c:get_property(STATE) or "") ~= "" then leave(c) end
+  end)
 end
 
 function processor.fini(env)
   if env.conn then env.conn:disconnect() end
+  if env.update_conn then env.update_conn:disconnect() end
 end
 
 local function is_key_char(code)
   if code < 0x21 or code > 0x7e then return false end
   local ch = string.char(code)
   return ZHUYIN[ch] ~= nil or TONES[ch] ~= nil or ch:match("%a") ~= nil
+end
+
+-- Words of the language model's sentence behind cand. Filters wrap it in
+-- several ShadowCandidates and get_genuine() removes one layer at a time.
+local function sentence_entries(cand)
+  local c = cand
+  for _ = 1, 8 do
+    local ok, sen = pcall(function() return c:to_sentence() end)
+    if ok and sen then return sen.entrys end
+    local ok2, g = pcall(function() return c:get_genuine() end)
+    if not (ok2 and g) then return nil end
+    c = g
+  end
+  return nil
+end
+
+-- Index of the unit where the last word starts: the language model's last
+-- word for Chinese (the entries of its sentence), the last unit for a number
+-- or an English word.
+local function last_word_start(ctx, units)
+  if #units == 0 then return nil end
+  local seg = ctx.composition:back()
+  if not seg or seg._end ~= #ctx.input then return nil end
+  local first = nil  -- first unit of the last segment
+  for i, u in ipairs(units) do
+    if u.s >= seg.start then first = i; break end
+  end
+  if not first then return nil end
+  if units[#units].kind ~= "zh" or units[#units].s == seg.start then return math.max(first, #units) end
+  local cand = seg:get_selected_candidate()
+  local entries = cand and sentence_entries(cand)
+  if not (entries and #entries > 0) then return first end
+  local n = utf8.len(entries[#entries].text) or 1
+  return math.max(first, #units - n + 1)
 end
 
 local function open_list(ctx, st)
@@ -337,6 +378,12 @@ function processor.func(key, env)
     end
     if code == XK_Escape then
       close_list(ctx)
+      if ctx:get_property("asus_edit_auto") == "1" then
+        -- Opened by Down at the end: Esc puts everything back as it was
+        -- (nothing selected, as before Down).
+        lock_to(ctx, st, 0)
+        leave(ctx)
+      end
       return kAccepted
     end
     return kNoop  -- arrows / paging browse the list (asus_keys, librime)
@@ -361,6 +408,19 @@ function processor.func(key, env)
     end
     apply(ctx, st)
     return kAccepted
+  end
+  -- Down at the end of the input: the list for the last word, the one just
+  -- typed, instead of a list that starts at the beginning of a long input.
+  if code == XK_Down and not st and ctx:has_menu() then
+    local units = units_of(ctx)
+    local caret = last_word_start(ctx, units)
+    if caret and caret > 1 then
+      st = { input = ctx.input, caret = caret, units = units }
+      open_list(ctx, st)
+      ctx:set_property("asus_edit_auto", "1")
+      return kAccepted
+    end
+    return kNoop  -- a single word: the ordinary list (asus_keys)
   end
   if not st then return kNoop end
 
@@ -458,6 +518,13 @@ local function filter(input, env)
     return
   end
   local first, buffer = nil, {}
+  -- No candidate twice (the current text, the sentence and the phrase are
+  -- often the same word).
+  local seen = {}
+  local function out(c)
+    local key = c.start .. ":" .. c._end .. ":" .. c.text
+    if not seen[key] then seen[key] = true; yield(c) end
+  end
   for cand in input:iter() do
     if not first then
       first = cand
@@ -496,8 +563,8 @@ local function filter(input, env)
           synthetic.quality = 2000
         end
       end
-      if fs and fs == a then yield(Candidate("fixed", fs, fe, ftext, "")) end
-      if synthetic then yield(synthetic) end
+      if fs and fs == a then out(Candidate("fixed", fs, fe, ftext, "")) end
+      if synthetic then out(synthetic) end
       -- The list at a number / English word: its own forms first.
       local unit_end = tonumber((ctx:get_property(OPEN_END) or ""):match("^(%d+)"))
       if unit_end and st and a == caret_offset(st) then
@@ -517,15 +584,28 @@ local function filter(input, env)
           end
           if #rest > 60 then break end
         end
-        for _, c in ipairs(front) do yield(c) end
+        for _, c in ipairs(front) do out(c) end
         cand, buffer = rest[1], { table.unpack(rest, 2) }
       end
-      if cand then yield(cand) end
-      for _, c in ipairs(buffer) do yield(c) end
+      if cand then out(cand) end
+      for _, c in ipairs(buffer) do out(c) end
     else
-      yield(cand)
+      out(cand)
     end
   end
 end
 
-return { processor = processor, filter = filter }
+-- The "fixed" candidate for select_fixed() also comes from a translator: the
+-- filter only runs when something translates the span, and nothing does for
+-- some (an English word typed in capitals, API).
+local function translator(input, seg, env)
+  local fix = env.engine.context:get_property(FIX) or ""
+  local fs, fe, ftext = fix:match("^(%d+)" .. FS .. "(%d+)" .. FS .. "(.*)$")
+  if fs and tonumber(fs) == seg.start then
+    local c = Candidate("fixed", seg.start, tonumber(fe), ftext, "")
+    c.quality = 3000
+    yield(c)
+  end
+end
+
+return { processor = processor, filter = filter, translator = translator }

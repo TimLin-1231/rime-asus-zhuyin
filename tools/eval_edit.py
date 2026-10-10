@@ -2,10 +2,12 @@
 
 Each line of tests/eval/edit*.tsv is the text the user wants. Its reading is
 typed in one go; when the conversion is wrong, a simulated user fixes it
-before committing, in two ways:
+before committing, in two ways (before stage 6b Down listed from the start
+of the input; that method, "old", is in reports/edit_history.jsonl):
 
-  old     Down, then pick candidates from the start of the input (the longest
-          one matching the wanted text), page by page, until done
+  down    Down at the end lists the last word (stage 6b): pick there when the
+          first wrong character is in that word, otherwise Esc and use the
+          cursor as below
   cursor  move the cursor with Left/Right to the first wrong character
           (a number or English word is one step), or Home then Right when
           that is fewer keys; Down, pick the longest candidate matching the
@@ -96,21 +98,23 @@ class User:
         self.r.clear()
         return out
 
-    def fix_old(self, target: str) -> str:
-        done = ""
-        for _ in range(40):
-            if done == target or not self.r.snapshot().input:
-                break
-            self.press("Down")
-            got = self.pick(target[len(done):])
-            if got is None:
-                break
-            done += got
-        return self.finish()
-
-    def fix_cursor(self, target: str) -> str:
+    def fix_down(self, target: str) -> str:
         want = units(target)
-        caret = None  # in units; None = at the end
+        shown = units(self.r.snapshot().preview)
+        d = next((i for i, (a, b) in enumerate(zip(shown, want)) if a != b), min(len(shown), len(want)))
+        self.press("Down")
+        cands = self.r.snapshot().candidates
+        start = len(shown) - len(units(cands[0][0])) if cands else len(shown)
+        if start == d:  # the list starts at the wrong character
+            got = self.pick("".join(want[d:]))
+            if got is not None and units(self.r.snapshot().preview) == want:
+                return self.finish()
+            return self.fix_cursor(target, caret=None if got is None else d + len(units(got)))
+        self.press("Escape")
+        return self.fix_cursor(target)
+
+    def fix_cursor(self, target: str, caret: int | None = None) -> str:
+        want = units(target)
         for _ in range(20):
             shown = units(self.r.snapshot().preview)
             if shown == want or not self.r.snapshot().input:
@@ -146,7 +150,7 @@ def worker(set_name: str) -> None:
         first = u.start(keys)
         res = {"first": first}
         if first != text:
-            for method in ("old", "cursor"):
+            for method in ("down", "cursor"):
                 u.start(keys)
                 got = getattr(u, f"fix_{method}")(text)
                 res[method] = {"got": got, "keys": u.keys}
@@ -173,9 +177,9 @@ def main() -> None:
     if proc.returncode:
         raise SystemExit(proc.stderr.decode("utf-8", "replace"))
     res = json.loads(proc.stdout.decode("utf-8"))
-    wrong = [(row, r) for row, r in zip(rows, res) if "old" in r]
+    wrong = [(row, r) for row, r in zip(rows, res) if "down" in r]
     m = {"n": len(rows), "Wrong": len(wrong) / len(rows)}
-    for method in ("old", "cursor"):
+    for method in ("down", "cursor"):
         ok = [r[method]["got"] == text for (_, text), r in wrong]
         m[method] = {"Fixed": sum(ok) / max(len(wrong), 1),
                      "Keys": sum(r[method]["keys"] for _, r in wrong) / max(len(wrong), 1)}
@@ -185,11 +189,12 @@ def main() -> None:
     print(f"## Edit eval {stamp} @ {rev} set={args.set} {args.note}".rstrip())
     print(f"lines {m['n']}, converted wrongly {m['Wrong']:.0%} ({len(wrong)})")
     print("| method | Fixed | Keys |\n|---|---:|---:|")
-    for method in ("old", "cursor"):
+    for method in ("down", "cursor"):
         print(f"| {method} | {m[method]['Fixed']:.1%} | {m[method]['Keys']:.1f} |")
     if args.set == "dev":  # held-out lines are never shown one by one
         for (_, text), r in wrong:
-            print(f"  {text}: first={r['first']} old={r['old']['got']}({r['old']['keys']}) "
+            print(f"  {text}: first={r['first']} "
+                  f"down={r['down']['got']}({r['down']['keys']}) "
                   f"cursor={r['cursor']['got']}({r['cursor']['keys']})")
     if not args.no_save:
         REPORTS.mkdir(exist_ok=True)

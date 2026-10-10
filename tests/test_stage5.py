@@ -60,7 +60,7 @@ def main() -> int:
     after = t.preview(keys(app))
     check("one correction generalises to a new sentence", after == app, after)
 
-    t.reset_context(); t.type(keys(app)); r.key("Down"); s = r.snapshot(); r.clear()
+    t.reset_context(); t.type(keys(app)); r.key("Home"); r.key("Down"); s = r.snapshot(); r.clear()
     check("the unrewritten conversion stays one pick away",
           len(s.candidates) > 1 and s.candidates[1][0] == before, f"{s.candidates[:2]}")
 

@@ -33,8 +33,16 @@ end
 -- to replace must not cross one: 晚上|一起 has no 上一).
 local function boundaries(cand, n)
   local at = { [0] = true, [n] = true }
-  local ok, entries = pcall(function() return cand:get_genuine():to_sentence().entrys end)
-  if ok and entries then
+  -- (Unwrap every ShadowCandidate layer; get_genuine() removes one.)
+  local c, entries = cand, nil
+  for _ = 1, 8 do
+    local ok, sen = pcall(function() return c:to_sentence() end)
+    if ok and sen then entries = sen.entrys; break end
+    local ok2, g = pcall(function() return c:get_genuine() end)
+    if not (ok2 and g) then break end
+    c = g
+  end
+  if entries then
     local pos = 0
     for _, e in ipairs(entries) do
       pos = pos + utf8.len(e.text)

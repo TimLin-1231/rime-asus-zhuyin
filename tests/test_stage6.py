@@ -67,6 +67,24 @@ def main() -> int:
     r.key("Return"); s = r.snapshot()
     check("Enter commits the edited sentence", s.committed == "但感覺沒有那麼著急貨許要", f"{s.committed!r}")
 
+    # Down at the end of a long input: the list for the last word.
+    start(keys(sent))
+    r.key("Down"); c = cands()
+    check("Down at the end lists the last word, not the start", c[:1] == ["要"] and "藥" in c, f"{c[:6]}")
+    r.key("Escape"); s = r.snapshot()
+    check("Esc after Down at the end puts everything back", s.preview == sent and s.composing,
+          f"{s.preview!r}")
+    r.key("Down"); c = cands()
+    if "藥" in c:
+        r.key(str(c.index("藥") + 1))
+    s = r.snapshot()
+    check("picking from it replaces only the last word", s.preview == sent[:-1] + "藥" and not s.committed,
+          f"{s.preview!r} committed={s.committed!r}")
+    r.clear()
+    short = "你好"
+    start(keys(short)); r.key("Down"); c = cands(); r.clear()
+    check("a single word: Down shows its whole list as before", c[:2] == ["你好", "妳好"], f"{c[:4]}")
+
     # Home, BackSpace in the middle, insertion, Esc.
     start(keys(sent))
     r.key("Home"); r.key("Right"); r.key("Right"); r.key("BackSpace"); s = r.snapshot()
