@@ -374,6 +374,8 @@ function processor.func(key, env)
     end
     if mods == 0 and (code == XK_space or code == 0xff0d) then
       picked(ctx, st, ctx.composition:back().selected_index)
+      -- Enter also commits the whole input, as in the plain list.
+      if code == 0xff0d and ctx:is_composing() then ctx:commit() end
       return kAccepted
     end
     if code == XK_Escape then

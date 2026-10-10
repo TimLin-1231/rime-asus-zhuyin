@@ -100,6 +100,24 @@ def main() -> int:
     c = [x for x, _ in r.snapshot().candidates]; r.clear()
     check("Down after an acronym + Chinese lists the last word", bool(c) and c[0].endswith("用法"), f"{c[:3]}")
 
+    # -- Enter in the expanded list picks the highlighted candidate -------------
+    for word in ("你", "時間"):
+        r.clear(); type_text(keys(word)); press("Down"); press("Right")
+        want = r.snapshot().candidates[1][0]; press("Return")
+        out = "".join(r.committed); r.clear()
+        check(f"Down, Right, Enter commits the highlighted word ({want})", out == want, f"{out!r}")
+    sent = "我今天很忙"
+    r.clear(); type_text(keys(sent)); press("Home"); press("Right"); press("Down")
+    c = [x for x, _ in r.snapshot().candidates]
+    alt = next((x for x in c[1:] if x and x[0] != "今"), None)
+    if alt:
+        for _ in range(c.index(alt)):
+            press("Right")
+        press("Return")
+    out = "".join(r.committed); s = r.snapshot(); r.clear()
+    check("Enter in the list at the cursor picks the highlighted word and commits",
+          alt is not None and out.startswith("我" + alt) and not s.composing, f"{alt!r} -> {out!r}")
+
     # -- Email addresses --------------------------------------------------------
     r.clear(); type_text("s108"); s = r.snapshot()
     check("first keys of a listed address: shown in the bubble",
