@@ -215,6 +215,24 @@ C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改�
   3. 重新部署。
 - **改回華碩輸入法**：在 Windows 的語言設定切換輸入法就好，這個專案不會改到華碩的任何東西。
 
+## 學習資料備份
+學到的東西（`rime/*.userdb`、`emails.txt`、`shortcuts.txt`、`*.custom.yaml`、`lexicon/*_words.txt`）每天自動備份一份到 `backups/learn/<日期-時間>/`，只在本機、不進 git。
+
+- **排程**：Windows 工作排程器的 `RimeLearnBackup`（只屬於你的帳號）。每 2 小時檢查一次，當天還沒備份、而且鍵盤滑鼠已經 2 分鐘沒動，才會備份；當天已有備份就什麼都不做。
+- **為什麼要等閒置**：小狼毫執行時會把資料庫最新的部分鎖住，別的程式讀不到，所以備份時要把小狼毫服務停掉約 1–3 秒再啟動，那幾秒打不出中文。
+- **會驗證**：每份備份都會實際打開讀一次、數裡面有幾筆（改字、下一個詞、英文詞、email…），結果寫在 `backup.json`；打不開的備份標成 BAD，不會被拿來還原。筆數比上一份少一半以上時不刪任何舊備份。
+- **保留**：最近 14 個有備份的日子各留最新一份，再加最近 12 個月每月最新一份。
+- 指令（都在專案資料夾執行）：
+
+```
+C:\Users\User\anaconda3\python.exe tools\backup_learn.py              現在備份一次（會停 1–3 秒）
+C:\Users\User\anaconda3\python.exe tools\backup_learn.py --list       列出備份
+C:\Users\User\anaconda3\python.exe tools\backup_learn.py --restore latest         看看會還原什麼（不會動）
+C:\Users\User\anaconda3\python.exe tools\backup_learn.py --restore latest --yes   真的還原；現有資料先移到 backups\learn\_before-restore-…
+C:\Users\User\anaconda3\python.exe tools\backup_learn.py --uninstall  取消每日排程（--install 重新註冊）
+```
+- 排程每次執行的結果記在 `backups/learn/backup.log`。
+
 ## 隱私
 - 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
 - 英文詞的學習只從中文模式送出的文字學。英文模式雖然會組字，但只記長得像 email 地址的字（name@host.com），其他打的字一律不記，所以就算某個程式的密碼欄位沒有關掉輸入法，密碼也不會被存下來（除非它長得像 email）。終端機是直接輸出，完全不經過組字。
