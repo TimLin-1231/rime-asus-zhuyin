@@ -311,7 +311,9 @@ class Rime:
         t.distribution_code_name = b"harness"
         t.distribution_version = b"0.1"
         t.app_name = f"rime.{log_name}".encode()
-        t.min_log_level = 0
+        # WARNING and up: the tests only look for errors, and INFO logs of a
+        # long eval grew to hundreds of GB under %TEMP%.
+        t.min_log_level = 1
         self.traits = t
         self.api.setup(C.byref(t))
         self.api.initialize(C.byref(t))
