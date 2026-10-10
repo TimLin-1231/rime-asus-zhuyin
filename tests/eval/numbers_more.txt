@@ -1,0 +1,56 @@
+# More numbers typed with the top-row digit keys in Chinese mode (second DEV
+# set, written for stage 10 before cheaper typo correction was allowed to
+# compete with numbers). [digits] are typed as-is. Patterns: a number at the
+# end, a single digit before a word that is no measure word, a digit right
+# after a syllable it could be swapped into, decimals, long numbers.
+
+他是[8]月生的
+我住在[5]樓
+我排第[2]
+這是第[1]集
+第[3]季的營收成長
+買[1]送[1]
+我有[3]隻貓
+這[2]者不一樣
+他今年大[1]
+我讀高[3]
+全書共[6]冊
+約[9]成的人同意
+一天[3]餐
+有[4]成的機率
+密碼是[1234]
+我的分數是[95]
+電話是[0912]
+他考了[100]分
+房號是[502]
+今年是[2026]
+一共花了[250]
+圓周率是[3.14]
+身高[1.75]公尺
+體溫[36.5]度
+成長了[0.5]倍
+版本是[2.0]
+比[0]還小
+是[0]還是[1]
+要[9]個
+在[10]樓
+到[20]歲
+用[5]分鐘
+每[2]小時
+第[10]名
+這[5]年來
+近[3]年
+前[10]大
+有[8]成把握
+才[1]歲
+共[12]人參加
+等了[30]分鐘
+走了[5]公里
+還有[7]天
+只剩[2]個
+[3]個人
+[2026]年[10]月[10]日
+[9]點[30]分開會
+下午[2]點
+星期[5]晚上
+[100]多個

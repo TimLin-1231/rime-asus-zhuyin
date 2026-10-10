@@ -10,7 +10,8 @@ as a Markdown table, side by side with the previous run of each variant.
     python tools/eval_ime.py --note "after stage 1"
 
 Metrics
-  SentAcc   whole input converts exactly to the expected text (top candidate)
+  SentAcc   whole input converts exactly to the expected text (top candidate,
+            as committed with Enter since stage 10; before, as previewed)
   CharAcc   1 - CER(top candidate, expected), CER by Levenshtein distance
   Top1/Top9 word sets: expected word first / anywhere on the first page
   ms/key    mean librime process_key latency
@@ -46,6 +47,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import random
 import re
 import statistics
@@ -207,7 +209,8 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     sets["test_swap"] = [(inject_swap(k, random.Random(7007 + i)), t) for i, (k, t) in enumerate(test)]
     for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
                        ("particles", "particles"), ("particles_test", "particles_test"),
-                       ("numbers", "numbers"), ("numbers_test", "numbers_test")):
+                       ("numbers", "numbers"), ("numbers_test", "numbers_test"),
+                       ("numbers_more", "numbers_more")):
         if (EVAL / f"{stem}.tsv").exists():
             sets[name] = load_set(EVAL / f"{stem}.tsv")
     # Guard: every partial input of pure-Chinese dev sentences that ends on a
@@ -240,6 +243,10 @@ def worker(variant: str, sets_json: str) -> None:
     custom = f"{schema}.custom.yaml"
     extra[custom] = ((extra.get(custom) or "patch:\n") + "  translator/enable_user_dict: false\n"
                      + "  asus_learn/enabled: false\n")
+    # Tuning: EVAL_PATCH="asus_lang/costs/fix=1.4;asus_typo/margin=25" (never saved).
+    for item in filter(None, os.environ.get("EVAL_PATCH", "").split(";")):
+        key, _, value = item.partition("=")
+        extra[custom] += f'  {key}: "{value}"\n'
     rime = open_rime(f"eval-{variant}", config, schema, exclude=exclude, extra=extra)
     sets = json.loads(sets_json)
     out: dict[str, list] = {}
@@ -257,10 +264,17 @@ def worker(variant: str, sets_json: str) -> None:
             dt_ms = (time.perf_counter() - t0) * 1000 / max(len(keys), 1)
             snap = rime.snapshot()
             preview = snap.committed + snap.preview
-            if schema == "asus_zhuyin":
-                rime.key("Down")  # expand the compact bubble to a full page
-            page = [c for c, _ in rime.snapshot().candidates]
-            res.append({"preview": preview, "page": page, "ms_per_key": dt_ms})
+            page, final = [], preview
+            if name.startswith("english") or name in ("words", "moe_words"):
+                if schema == "asus_zhuyin":
+                    rime.key("Down")  # expand the compact bubble to a full page
+                page = [c for c, _ in rime.snapshot().candidates]
+            elif name not in ("dev_partial", "dev_toneless"):
+                # What the user gets: Enter commits (and decides what digit
+                # keys at the very end were, asus_lang.finalize).
+                rime.key("Return")
+                final = "".join(rime.committed)
+            res.append({"preview": preview, "final": final, "page": page, "ms_per_key": dt_ms})
         out[name] = res
     rime.close()
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
@@ -279,8 +293,8 @@ def levenshtein(a: str, b: str) -> int:
 
 def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
     n = len(cases)
-    exact = sum(r["preview"] == t for (_, t), r in zip(cases, res))
-    errs = sum(levenshtein(r["preview"], t) for (_, t), r in zip(cases, res))
+    exact = sum(r["final"] == t for (_, t), r in zip(cases, res))
+    errs = sum(levenshtein(r["final"], t) for (_, t), r in zip(cases, res))
     total = sum(len(t) for _, t in cases)
     m = {"n": n, "SentAcc": exact / n, "CharAcc": 1 - errs / max(total, 1),
          "ms/key": statistics.mean(r["ms_per_key"] for r in res)}
@@ -292,7 +306,7 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
             for i, ch in enumerate(t):
                 if ch in PARTICLES:
                     tot += 1
-                    hit += len(r["preview"]) == len(t) and r["preview"][i] == ch
+                    hit += len(r["final"]) == len(t) and r["final"][i] == ch
         m["PartAcc"] = hit / tot if tot else 0.0
     if name == "dev_toneless":
         # ASCII = share of outputs with Latin letters (English hallucinated
@@ -398,8 +412,8 @@ def main() -> None:
             if "test" in name or name in ("words", "moe_words", "dev_toneless", "dev_partial"):
                 continue
             for (keys, text), r in zip(sets[name], res[name]):
-                if r["preview"] != text:
-                    failures.append((variant, name, text, r["preview"]))
+                if r["final"] != text:
+                    failures.append((variant, name, text, r["final"]))
 
     # Markdown report: one table per set, previous run in parentheses.
     lines = [f"## Eval {stamp} @ {rev} sets={set_hash} {args.note}".rstrip(),
@@ -421,7 +435,7 @@ def main() -> None:
     report = "\n".join(lines)
     print(report)
 
-    if not args.no_save:
+    if not args.no_save and not os.environ.get("EVAL_PATCH"):
         REPORTS.mkdir(exist_ok=True)
         with HISTORY.open("a", encoding="utf-8") as f:
             for rec in records:

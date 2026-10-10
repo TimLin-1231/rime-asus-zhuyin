@@ -54,28 +54,80 @@ local function syllables(keys)
   return require("asus_learn").syllables(keys)
 end
 
--- Syllables tok can become by changing one non-tone key to a neighbour, or
--- by dropping one non-tone key (an extra key pressed with the right one).
--- None when only the tone is unusual (ㄍㄟ˙): librime converts those itself.
+local TONES = { " ", "6", "3", "4", "7" }
+local KEYS = {}  -- every non-tone key, in keyboard order
+for _, row in ipairs(ROWS) do
+  for i = 1, #row do
+    if not TONE[row:sub(i, i)] then KEYS[#KEYS + 1] = row:sub(i, i) end
+  end
+end
+
+-- Syllables tok can become by undoing one slip:
+--   a non-tone key changed to a neighbour      (pressed the key next to it)
+--   one non-tone key dropped                   (an extra key pressed)
+--   two neighbouring keys swapped              (pressed in the wrong order)
+--   one key added, for a tok ending in a tone  (a key not pressed)
+--   another tone for the same keys             (ㄗㄚˋ: ㄗㄚˊ, or one of the above)
 local function variants(tok)
   local out, seen = {}, {}
-  local body = tok:sub(1, -2)
-  if TONE[tok:sub(-1)] and #body > 0 then
-    for t in pairs(TONE) do
-      if zy.toned[body .. t] then return out end
-    end
-  end
   local function add(v)
     if zy.toned[v] and not seen[v] then seen[v] = true; out[#out + 1] = v end
   end
-  for p = 1, #tok do
+  local n = #tok
+  for p = 1, n do
     local k = tok:sub(p, p)
     if not TONE[k] then
-      for _, n in ipairs(NEAR[k] or {}) do add(tok:sub(1, p - 1) .. n .. tok:sub(p + 1)) end
+      for _, nb in ipairs(NEAR[k] or {}) do add(tok:sub(1, p - 1) .. nb .. tok:sub(p + 1)) end
       add(tok:sub(1, p - 1) .. tok:sub(p + 1))
     end
   end
+  for p = 1, n - 2 do
+    local a, b = tok:sub(p, p), tok:sub(p + 1, p + 1)
+    if a ~= b then add(tok:sub(1, p - 1) .. b .. a .. tok:sub(p + 2)) end
+  end
+  if n >= 3 and TONE[tok:sub(-2, -2)] and not TONE[tok:sub(-1)] then
+    -- the tone key pressed one key early; or the last key is the extra one
+    add(tok:sub(1, -3) .. tok:sub(-1) .. tok:sub(-2, -2))
+    add(tok:sub(1, -2))
+  end
+  if TONE[tok:sub(-1)] then
+    local body = tok:sub(1, -2)
+    if #body > 0 then
+      for _, t in ipairs(TONES) do add(body .. t) end
+    end
+    if n <= 4 then
+      for p = 1, n do
+        for _, k in ipairs(KEYS) do add(tok:sub(1, p - 1) .. k .. tok:sub(p)) end
+      end
+    end
+  end
   return out
+end
+
+-- Other syllables a correctly spelt syllable may have been meant as:
+-- { v = keys, kind = "sub" (a neighbouring key) | "ins" (a key not pressed) }.
+local silent_memo = {}
+local function silent_variants(s)
+  local list = silent_memo[s]
+  if list then return list end
+  list = {}
+  local seen = { [s] = true }
+  local function add(v, kind)
+    if zy.toned[v] and not seen[v] then seen[v] = true; list[#list + 1] = { v = v, kind = kind } end
+  end
+  for p = 1, #s do
+    local k = s:sub(p, p)
+    if not TONE[k] then
+      for _, nb in ipairs(NEAR[k] or {}) do add(s:sub(1, p - 1) .. nb .. s:sub(p + 1), "sub") end
+    end
+  end
+  if #s <= 4 then
+    for p = 1, #s do
+      for _, k in ipairs(KEYS) do add(s:sub(1, p - 1) .. k .. s:sub(p), "ins") end
+    end
+  end
+  silent_memo[s] = list
+  return list
 end
 
 local function init(env)
@@ -83,6 +135,15 @@ local function init(env)
   local on = config:get_bool("asus_typo/enabled")
   env.enabled = (on == nil) or on
   env.margin = tonumber(config:get_string("asus_typo/margin") or "") or 30.0
+  -- A key left out: many more syllables to choose from. (20 corrected 8
+  -- more of 100 dev sentences, and one correct held-out sentence wrongly.)
+  env.ins_margin = tonumber(config:get_string("asus_typo/ins_margin") or "") or 30.0
+  -- The first syllable has no left context (as the last has no right one).
+  env.start_margin = tonumber(config:get_string("asus_typo/start_margin") or "") or 30.0
+  -- A correction that joins words (the language model makes fewer words of
+  -- the window: 我|機|天 -> 我|今天) is the mark of a real slip; among the
+  -- wrong corrections of correct dev sentences none that did gained over 14.
+  env.merge_margin = tonumber(config:get_string("asus_typo/merge_margin") or "") or 18.0
   -- Near the end of the input the window has no right context, so the gain
   -- a real typo shows there is smaller (喫爛 at the very end).
   env.end_margin = tonumber(config:get_string("asus_typo/end_margin") or "") or 18.0
@@ -94,10 +155,10 @@ local function init(env)
     end)
     env.tr = ok and tr or nil
   end
-  env.cache, env.cached = {}, 0
+  env.cache, env.words, env.cached = {}, {}, 0
   -- Commits change Rime's user dictionary (and so the weights): start over.
   env.conn = env.engine.context.commit_notifier:connect(function()
-    env.cache, env.cached = {}, 0
+    env.cache, env.words, env.cached = {}, {}, 0
   end)
 end
 
@@ -105,27 +166,33 @@ local function fini(env)
   if env.conn then env.conn:disconnect() end
 end
 
--- Log weight of the best conversion of keys (nil if nothing covers them).
+-- Log weight of the best conversion of keys (nil if nothing covers them),
+-- and the number of words the language model made of it (1 for a phrase).
 local function weight(env, keys)
   local w = env.cache[keys]
-  if w ~= nil then return w or nil end
+  if w ~= nil then return w or nil, env.words[keys] end
   w = false
+  local n = 1
   local seg = Segment(0, #keys)
   seg.tags = Set({ "abc" })
   local t = env.tr:query(keys, seg)
   if t then
     for c in t:iter() do
       if c._end == #keys then
-        local ok, ph = pcall(function() return c:get_genuine():to_phrase() end)
+        local g = c:get_genuine()
+        local ok, ph = pcall(function() return g:to_phrase() end)
         if ok and ph then w = ph.weight end
+        local ok2, sen = pcall(function() return g:to_sentence() end)
+        if ok2 and sen then n = #sen.entrys end
       end
       break
     end
   end
-  if env.cached >= MAX_CACHE then env.cache, env.cached = {}, 0 end
+  if env.cached >= MAX_CACHE then env.cache, env.words, env.cached = {}, {}, 0 end
   env.cache[keys] = w
+  env.words[keys] = n
   env.cached = env.cached + 1
-  return w or nil
+  return w or nil, n
 end
 
 -- Did the user pick any of the shown text in syllables lo..hi before (a name
@@ -150,30 +217,35 @@ local function correct_syllable(env, syl, i, cs)
   if picked_nearby(syl, cs, lo, hi) then return nil end
   local before = table.concat(syl, "", lo, i - 1)
   local after = table.concat(syl, "", i + 1, hi)
-  local base = weight(env, before .. syl[i] .. after)
+  local base, base_n = weight(env, before .. syl[i] .. after)
   if not base then return nil end
   local s = syl[i]
-  local margin = (hi - i < WINDOW) and env.end_margin or env.margin
-  local best, best_w
-  for p = 1, #s do
-    local k = s:sub(p, p)
-    if not TONE[k] then
-      for _, n in ipairs(NEAR[k] or {}) do
-        local v = s:sub(1, p - 1) .. n .. s:sub(p + 1)
-        if zy.toned[v] then
-          local w = weight(env, before .. v .. after)
-          if w and w > base + margin and (not best_w or w > best_w) then
-            best, best_w = v, w
-          end
-        end
+  local place = (hi - i < WINDOW) and env.end_margin or (i == 1) and env.start_margin or env.margin
+  local margins = { sub = place, ins = place + env.ins_margin - env.margin }
+  -- The best-scoring variant among those that clear their margin.
+  local best, best_over, best_w, best_kind
+  local top = {}  -- per kind, for the debug log
+  for _, c in ipairs(silent_variants(s)) do
+    local w, wn = weight(env, before .. c.v .. after)
+    if w then
+      if env.debug and (not top[c.kind] or w > top[c.kind].w) then top[c.kind] = { v = c.v, w = w, n = wn } end
+      local need = margins[c.kind]
+      if wn < base_n then need = math.min(need, env.merge_margin) end
+      local over = w - base - need
+      if over > 0 and (not best_w or w > best_w) then
+        best, best_over, best_w, best_kind = c.v, over, w, need
       end
     end
   end
-  if env.debug and best then
-    log.info(string.format("asus_typo cand i=%d n=%d %s->%s base=%.2f gain=%.2f win=%d keys=%s",
-      i, #syl, s, best, base, best_w - base, hi - lo + 1, table.concat(syl)))
+  if env.debug then
+    for kind, t in pairs(top) do
+      if t.w > base then
+        log.info(string.format("asus_typo cand i=%d n=%d %s->%s base=%.2f gain=%.2f win=%d kind=%s words=%d>%d keys=%s",
+          i, #syl, s, t.v, base, t.w - base, hi - lo + 1, kind, base_n, t.n, table.concat(syl)))
+      end
+    end
   end
-  return best, best_w and (best_w - base), margin
+  return best, best_w and (best_w - base), best and best_kind
 end
 
 -- Corrected keys for a segment whose conversion is `text`, or nil.
@@ -210,27 +282,88 @@ local function corrected(env, keys, text)
   return new
 end
 
+-- Keys around keys[s..e] (1-based, inclusive): up to WINDOW syllables before
+-- it and up to WINDOW finished syllables after it. An unfinished syllable at
+-- the end is left out, so the window (and its cached weights) only changes
+-- when a syllable is completed.
+local function around(keys, s, e)
+  local l, n, p = s, 0, s - 1
+  while p >= 1 and n < WINDOW do
+    local q = p - 1
+    while q >= 1 and not TONE[keys:sub(q, q)] do q = q - 1 end
+    l, n, p = q + 1, n + 1, q
+  end
+  local r, q = e, e + 1
+  n = 0
+  while q <= #keys and n < WINDOW do
+    local t = q
+    while t <= #keys and not TONE[keys:sub(t, t)] do t = t + 1 end
+    if t > #keys then break end
+    r, n, q = t, n + 1, t + 1
+  end
+  return keys:sub(l, s - 1), keys:sub(e + 1, r)
+end
+
 -- Keys of segment [a, b) with each typo syllable (asus_lang.lua, property
--- asus_typo_fix) replaced by its best-scoring variant, or nil.
+-- asus_typo_fix) replaced by its best-scoring variant, or nil. Variants are
+-- scored on the syllables around them, left to right.
 local function repaired(env, ctx, a, b)
   local prop = ctx:get_property("asus_typo_fix") or ""
   if prop == "" then return nil end
   local keys = ctx.input:sub(a + 1, b)
-  local any = false
+  local any, shift = false, 0  -- shift: how much longer keys has become
+  local done = a               -- input position up to which keys are replaced
+  local digit                  -- a number to put back at the end (see below)
   for s, e in prop:gmatch("(%d+):(%d+)") do
     s, e = tonumber(s), tonumber(e)
-    if s >= a and e <= b then
-      local tok = keys:sub(s - a + 1, e - a)
-      local best, best_w
-      for _, v in ipairs(variants(tok)) do
-        local k2 = keys:sub(1, s - a) .. v .. keys:sub(e - a + 1)
-        local w = weight(env, k2)
-        if w and (not best_w or w > best_w) then best, best_w = k2, w end
+    if s >= a and e <= b and s >= done then
+      local i, j = s - a + 1 + shift, e - a + shift
+      local tok = keys:sub(i, j)
+      local list = variants(tok)
+      -- A key of the next syllable pressed before this one's tone key
+      -- (ㄋㄧㄏˇㄠˇ for 你好): the extra key here is the first key there.
+      -- Such variants replace both syllables, so all are scored with the
+      -- next syllable included.
+      local nj = j + 1
+      while nj <= #keys and not TONE[keys:sub(nj, nj)] do nj = nj + 1 end
+      local nxt = (nj <= #keys and nj > j) and keys:sub(j + 1, nj) or ""
+      local moved = {}
+      if nxt ~= "" and #nxt <= 4 then
+        for p = 1, #tok - 1 do
+          local k = tok:sub(p, p)
+          local rest = tok:sub(1, p - 1) .. tok:sub(p + 1)
+          if not TONE[k] and zy.toned[rest] and zy.toned[k .. nxt] then
+            moved[#moved + 1] = rest .. k .. nxt
+          end
+        end
       end
-      if best then keys, any = best, true end
+      local stop = (#moved > 0) and nj or j  -- last key that is replaced
+      local tail = keys:sub(j + 1, stop)
+      local before, after = around(keys, i, stop)
+      local best, best_w
+      for _, v in ipairs(list) do
+        local w = weight(env, before .. v .. tail .. after)
+        if w and (not best_w or w > best_w) then best, best_w = v .. tail, w end
+      end
+      for _, v in ipairs(moved) do
+        local w = weight(env, before .. v .. after)
+        if w and (not best_w or w > best_w) then best, best_w = v, w end
+      end
+      best = best or (list[1] and list[1] .. tail)  -- nothing converts around it: any syllable
+      -- A syllable and then a digit key, and the syllable alone reads best:
+      -- the digit was a number (是9), it stays as typed after the syllable.
+      if best and tok:match("%d$") and best == tok:sub(1, -2) .. tail then
+        digit = tok:sub(-1)
+      end
+      if best then
+        keys = keys:sub(1, i - 1) .. best .. keys:sub(stop + 1)
+        shift = shift + #best - (stop - i + 1)
+        done = e + (stop - j)
+        any = true
+      end
     end
   end
-  return any and keys or nil
+  return any and keys or nil, digit
 end
 
 local function func(input, env)
@@ -280,8 +413,9 @@ translator.fini = fini
 function translator.func(input, seg, env)
   if not env.enabled or not env.tr or not seg:has_tag("asus_fix") then return end
   local ctx = env.engine.context
-  local fixed = repaired(env, ctx, seg.start, seg._end)
+  local fixed, digit = repaired(env, ctx, seg.start, seg._end)
   if not fixed then return end
+  digit = digit or ""
   local s = Segment(0, #fixed)
   s.tags = Set({ "abc" })
   local t = env.tr:query(fixed, s)
@@ -289,7 +423,7 @@ function translator.func(input, seg, env)
   local n = 0
   for c in t:iter() do
     if c._end == #fixed then
-      local cand = Candidate("typo", seg.start, seg._end, c.text, n == 0 and "更正" or "")
+      local cand = Candidate("typo", seg.start, seg._end, c.text .. digit, n == 0 and "更正" or "")
       cand.quality = 100 - n
       yield(cand)
       n = n + 1

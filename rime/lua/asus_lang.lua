@@ -54,7 +54,9 @@ local C_EN_PREFIX = 1.0    -- extra cost of an unfinished word (prefix of a comm
 local C_EN_FIX = 1.5       -- extra cost of a misspelt word (one letter off a common word)
 local C_FIX_MIN_LEN = 5    -- shortest misspelling taken as English
 local MAX_SYLLABLE = 5
-local C_FIX = 2.5        -- below toneless + stray, above any real syllable
+local C_FIX = 1.2        -- below a toneless syllable (1.5), above any real syllable
+local C_FIX_DIGIT = 2.5  -- the same for a digit key + a whole syllable: above a number
+local C_FIX_FINAL = 0.5  -- tone key before the last key, at the end when committing: below a number
 local C_NUM = 0.2        -- + 2 x C_SWITCH between Chinese: below a toneless syllable
 local C_NUM_DIGIT = 0.05 -- longer numbers cost a little more: 2838 = 打 + 8
 local C_NUM_END = 1.0
@@ -76,6 +78,7 @@ local function load_costs(config)
   C_EN_FIX = get("en_fix", C_EN_FIX)
   C_NUM = get("num", C_NUM)
   C_FIX = get("fix", C_FIX)
+  C_FIX_DIGIT = get("fix_digit", C_FIX_DIGIT)
   C_NUM_DIGIT = get("num_digit", C_NUM_DIGIT)
   C_NUM_END = get("num_end", C_NUM_END)
   C_NUM_OPEN = get("num_open", C_NUM_OPEN)
@@ -336,6 +339,44 @@ local function guesses(key, entry)
   return out
 end
 
+-- Dachen keys (MOE readings) -> measure word. 隻/支 (both ㄓ) are left to
+-- the language model.
+local MEASURE = {
+  ["ek4"] = "個", ["1o "] = "杯", ["5; "] = "張", ["njo4"] = "歲", ["m06"] = "元",
+  ["dj94"] = "塊", ["2u03"] = "點", ["zp "] = "分", ["aul3"] = "秒", ["h4"] = "次",
+  ["wu0 "] = "天", ["su06"] = "年", ["m,4"] = "月", ["b4"] = "日", ["cl4"] = "號",
+  ["x.6"] = "樓", ["1p3"] = "本", ["ru04"] = "件", ["zp4"] = "份", ["u,4"] = "頁",
+  ["2j4"] = "度", ["au/6"] = "名", ["jo4"] = "位", ["bp6"] = "人", ["ru8 "] = "家",
+  ["ru0 "] = "間", ["xu;4"] = "輛", ["1j4"] = "部", ["gj; "] = "雙", ["wul6"] = "條",
+  ["qu04"] = "片", ["j03"] = "碗", ["qu/6"] = "瓶", ["1l "] = "包", ["g.3"] = "首",
+  ["qu0 "] = "篇", ["5k6"] = "折", ["1o4"] = "倍", ["h/6"] = "層", ["t;3"] = "場",
+  ["5. "] = "週", ["5j/3"] = "種", ["wu6"] = "題", ["rm4"] = "句", ["dk "] = "顆",
+  ["vu; "] = "箱", ["ck6"] = "盒", ["rup "] = "斤", ["j04"] = "萬", ["fu0 "] = "千",
+  ["193"] = "百",
+  -- (stage 10; left out where another word is as likely after a number:
+  -- 3比2, 第3課, 3例, 1跟2, 3隊)
+  ["hk4"] = "冊", ["ru4"] = "季", ["t/6"] = "成", ["ru6"] = "級", ["2j/4"] = "棟",
+  ["w96"] = "台", ["z/ "] = "封", ["vu;4"] = "項", ["yk6"] = "則", ["wl4"] = "套",
+  ["yj3"] = "組", ["ru,6"] = "節", ["w;6"] = "堂", ["ap6"] = "門", ["183"] = "把",
+  ["2ji3"] = "朵", ["yji4"] = "座", ["q96"] = "排", ["fmp6"] = "群", ["qu "] = "批",
+  ["dj03"] = "款", ["xo4"] = "類", ["ru,4"] = "屆", ["cjo6"] = "回", ["w;4"] = "趟",
+  ["1u04"] = "遍", ["fm0 "] = "圈", ["2j04"] = "段", ["504"] = "站", ["ek6"] = "格",
+  ["x06"] = "欄", ["xjp6"] = "輪", ["rm6"] = "局", ["q06"] = "盤", ["zj4"] = "副",
+  ["tj04"] = "串", ["zj6"] = "幅", ["5ji "] = "桌", ["eji "] = "鍋", ["ej04"] = "罐",
+  ["u4"] = "億", ["5l4"] = "兆", ["10 "] = "班",
+}
+local MEASURE2 = {
+  ["ej/ xu3"] = "公里", ["ej/ rup "] = "公斤", ["ej/ zp "] = "公分", ["ej/ t3"] = "公尺",
+  ["vul3g6"] = "小時", ["zp 5j/ "] = "分鐘", ["ek4m,4"] = "個月",
+}
+local DI, ZHANG = "2u4", "5; "
+local MEASURE_START = {}  -- first syllables of the two-syllable measure words
+for k in pairs(MEASURE2) do
+  for len = 2, 5 do
+    if zy.toned[k:sub(1, len)] then MEASURE_START[k:sub(1, len)] = true; break end
+  end
+end
+
 -- Can one key of tok, changed to a neighbouring key, make it a syllable?
 local typo_memo = {}
 local function has_typo_fix(tok)
@@ -506,7 +547,9 @@ end
 -- Cheapest segmentation of run (a string of keys). Returns a list of
 -- {kind = "zh"|"en"|"stray", i, j} with 1-based inclusive i..j, and whether
 -- the plan is "special" (contains en or stray tokens).
-local function plan_run(run, en_ctx)
+-- final: the input is being committed, so digit keys at its end are not
+-- the start of a syllable still being typed (see finalize()).
+local function plan_run(run, en_ctx, final)
   local n = #run
   local INF = math.huge
   -- best[i][lang]: cost of covering run[1..i-1]; lang of last token
@@ -533,10 +576,27 @@ local function plan_run(run, en_ctx)
         for j = i, math.min(n, i + MAX_SYLLABLE - 1) do
           local tok = run:sub(i, j)
           if tok:find("[%u'+#@_]") then break end
-          local c = zh_cost(tok, j == n)
+          local c = zh_cost(tok, j == n and not (final and tok:match("^[125890]+$")))
           relax(i, from, j, "zh", c, "zh")
-          if c == nil and #tok >= 2 and TONE_KEYS[tok:sub(-1)] and has_typo_fix(tok) then
-            relax(i, from, j, "zh", C_FIX, "fix")
+          -- (Also where tok could be a lone initial with a tone key, C_ABBR.)
+          if not zy.toned[tok] and #tok >= 2 and TONE_KEYS[tok:sub(-1)] and has_typo_fix(tok) then
+            -- Digits alone (13 is not ㄅ + a missing key + ˇ), or digits and
+            -- then a whole syllable (3點, 10日), are first of all a number:
+            -- a number the user typed must never be taken for a slip.
+            local rest = tok:match("^%d+(.*)$")
+            local digit = rest and (rest == "" or zy.toned[rest])
+            relax(i, from, j, "zh", digit and C_FIX_DIGIT or C_FIX, "fix")
+          elseif #tok >= 3 and TONE_KEYS[tok:sub(-2, -2)] and not TONE_KEYS[tok:sub(-1)]
+              and zy.toned[tok:sub(1, -3) .. tok:sub(-1) .. tok:sub(-2, -2)] then
+            -- The tone key pressed before the syllable's last key (ㄨˇㄛ for
+            -- 我). A syllable and then a digit is a number here too (是8月),
+            -- except at the very end, where asus_typo.lua lets the language
+            -- model choose between 見面 and 見密0 and keeps the digit if it
+            -- was one.
+            local digit = j < n and tok:match("%d$") and zy.toned[tok:sub(1, -2)]
+            local cost = digit and C_FIX_DIGIT or C_FIX - 0.05
+            if final and j == n then cost = C_FIX_FINAL end
+            relax(i, from, j, "zh", cost, "fix")
           end
         end
         -- English words / capitalised runs
@@ -582,7 +642,7 @@ local function plan_run(run, en_ctx)
             if not tok:match("^%d+%.?%d*$") then break end
             if tok:match("%d$") then
               local cost = C_NUM + C_NUM_DIGIT * #tok
-              if j == n then
+              if j == n and not final then
                 -- Still typing a syllable? (10 -> 辦, 2832 -> 打 + ㄉ...)
                 for k = 1, math.min(3, #tok) do
                   local tail = tok:sub(-k)
@@ -633,8 +693,8 @@ local function plan_run(run, en_ctx)
 end
 
 -- Plan for input[floor:], cached; positions are 0-based [start, end) in input.
-local function plan_input(env, input, floor, en_ctx)
-  local cache_key = (en_ctx and "e" or "z") .. floor .. ":" .. input
+local function plan_input(env, input, floor, en_ctx, final)
+  local cache_key = (en_ctx and "e" or "z") .. (final and "f" or "") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
   if memo_input ~= input then memo, memo_input = {}, input end
   if prefix_memo_input ~= input then
@@ -654,7 +714,7 @@ local function plan_input(env, input, floor, en_ctx)
       local e = pos
       while e < #input and in_run_at(input, e + 1) do e = e + 1 end
       -- English context only applies to the run the composition starts with.
-      local toks, special, cost = plan_run(input:sub(pos, e), en_ctx and pos == 1)
+      local toks, special, cost = plan_run(input:sub(pos, e), en_ctx and pos == 1, final and e == #input)
       if env.debug then
         local parts = {}
         for _, t in ipairs(toks or {}) do parts[#parts + 1] = t.kind .. ":" .. input:sub(pos + t.i - 1, pos + t.j - 1) end
@@ -783,7 +843,8 @@ function segmentor.func(segmentation, env)
   local ctx = env.engine.context
   local en_ctx = ctx:get_property("asus_en_ctx") == "1"
   if env.guard_off and env.guard_input == input then return true end  -- see guard_tripped
-  local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx)
+  local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx,
+                           ctx:get_property("asus_final") == input)
   -- Editing inside the composition (asus_edit.lua): one segment from the
   -- cursor to the end, so the menu lists what starts at the cursor.
   local edit_span = tonumber(ctx:get_property("asus_edit_span") or "")
@@ -949,6 +1010,40 @@ local function first_guess(typed)
   return word
 end
 
+-- Space after typed, shown as an English word: is it rather the first-tone
+-- key of a syllable typed one slip off (gui␣ for ㄕㄨㄛ, ril␣ for ㄐㄧㄠ)? Yes
+-- when reading it as such a syllable costs less than reading it as English.
+local function space_is_tone(typed, after_other, en_ctx)
+  if en_ctx or #typed + 1 > MAX_SYLLABLE or not typed:match("^%l+$") then return false end
+  load_english()
+  local tok = typed .. " "
+  if not (zy.toned[tok] or has_typo_fix(tok)) then return false end
+  local cost = en_cost(typed, false, true)
+  if not cost then
+    local p = english_prefix(typed)
+    cost = p and (C_EN_BASE + C_EN_RANK * math.log(p.rank + 1, 10) + C_EN_PREFIX) or math.huge
+  end
+  return cost + (after_other and C_SWITCH or 0) > C_FIX
+end
+
+-- Called right before the input is committed. Digit keys after the last
+-- tone key were read as a syllable still being typed (買1送1: 送 + ㄅ...);
+-- now they are either a number, or the last key of a syllable whose tone key
+-- came one key early (見面 typed ㄇㄧˋㄢ). The input is planned again as
+-- final: shortening it and putting it back makes librime segment it anew.
+local function finalize(ctx)
+  local input = ctx.input
+  if ctx.caret_pos ~= #input or ctx:get_option("ascii_mode") or input:sub(1, 1) == "`"
+      or (ctx:get_property("asus_edit") or "") ~= "" then
+    return
+  end
+  local tail = input:match("([^ 6347]*)$")
+  if tail == "" or #tail >= #input or not tail:match("^[125890]+$") then return end
+  ctx:set_property("asus_final", input)
+  ctx.input = input:sub(1, #input - 1)
+  ctx.input = input
+end
+
 local function complete_english(typed)
   load_english()
   local p = completion_for(typed:lower(), english(typed:lower()))
@@ -968,26 +1063,6 @@ end
 local FULL = { ["0"] = "０", ["1"] = "１", ["2"] = "２", ["3"] = "３", ["4"] = "４",
   ["5"] = "５", ["6"] = "６", ["7"] = "７", ["8"] = "８", ["9"] = "９", ["."] = "．" }
 
--- Dachen keys (MOE readings) -> measure word. 隻/支 (both ㄓ) are left to
--- the language model.
-local MEASURE = {
-  ["ek4"] = "個", ["1o "] = "杯", ["5; "] = "張", ["njo4"] = "歲", ["m06"] = "元",
-  ["dj94"] = "塊", ["2u03"] = "點", ["zp "] = "分", ["aul3"] = "秒", ["h4"] = "次",
-  ["wu0 "] = "天", ["su06"] = "年", ["m,4"] = "月", ["b4"] = "日", ["cl4"] = "號",
-  ["x.6"] = "樓", ["1p3"] = "本", ["ru04"] = "件", ["zp4"] = "份", ["u,4"] = "頁",
-  ["2j4"] = "度", ["au/6"] = "名", ["jo4"] = "位", ["bp6"] = "人", ["ru8 "] = "家",
-  ["ru0 "] = "間", ["xu;4"] = "輛", ["1j4"] = "部", ["gj; "] = "雙", ["wul6"] = "條",
-  ["qu04"] = "片", ["j03"] = "碗", ["qu/6"] = "瓶", ["1l "] = "包", ["g.3"] = "首",
-  ["qu0 "] = "篇", ["5k6"] = "折", ["1o4"] = "倍", ["h/6"] = "層", ["t;3"] = "場",
-  ["5. "] = "週", ["5j/3"] = "種", ["wu6"] = "題", ["rm4"] = "句", ["dk "] = "顆",
-  ["vu; "] = "箱", ["ck6"] = "盒", ["rup "] = "斤", ["j04"] = "萬", ["fu0 "] = "千",
-  ["193"] = "百",
-}
-local MEASURE2 = {
-  ["ej/ xu3"] = "公里", ["ej/ rup "] = "公斤", ["ej/ zp "] = "公分", ["ej/ t3"] = "公尺",
-  ["vul3g6"] = "小時", ["zp 5j/ "] = "分鐘", ["ek4m,4"] = "個月",
-}
-local DI, ZHANG = "2u4", "5; "
 
 local function chars(s)
   local out = {}
@@ -1020,7 +1095,9 @@ local function measure_words(ctx, cand, keys)
     else
       local w = MEASURE[syl[1]]
       local before = ctx.input:sub(1, num.start)
-      if syl[1] == ZHANG and before:sub(-#DI) == DI then w = "章" end
+      if before:sub(-#DI) == DI then  -- after 第 + number
+        if syl[1] == ZHANG then w = "章" elseif syl[1] == "ru6" then w = "集" end
+      end
       if w and cs[1] ~= w then cs[1] = w; changed = true end
     end
   end
@@ -1068,5 +1145,5 @@ local function digits(input, env)
 end
 
 return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
-         first_guess = first_guess,
+         first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
          complete_english = complete_english }

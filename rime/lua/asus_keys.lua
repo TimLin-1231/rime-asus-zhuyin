@@ -130,6 +130,7 @@ local function init(env)
     -- English context for asus_lang.lua: was the last commit English?
     local text = c:get_commit_text() or ""
     c:set_property("asus_en_ctx", text:match("[%a%d][%p]*$") and "1" or "0")
+    c:set_property("asus_final", "")
   end)
   env.update_conn = ctx.update_notifier:connect(function(c)
     if not c:is_composing() and (c:get_option(EXPANDED) or c:get_option("_linear")) then
@@ -214,6 +215,13 @@ local function func(key, env)
     local seg = ctx.composition:back()
     local cand = seg and seg:get_selected_candidate()
     if seg and seg:has_tag("asus_en") and cand and cand.type == "english" then
+      -- ...unless the letters are a first-tone syllable typed one slip off.
+      local typed = ctx.input:sub(seg.start + 1, seg._end)
+      if seg._end == #ctx.input and not ctx:get_option("ascii_mode")
+          and require("asus_lang").space_is_tone(typed, seg.start > 0,
+                                                 seg.start == 0 and ctx:get_property("asus_en_ctx") == "1") then
+        return kNoop
+      end
       ctx:commit()
       env.engine:commit_text(" ")
       return kAccepted
@@ -241,6 +249,9 @@ local function func(key, env)
     if code == XK_Down and key.modifier == 0 and ctx:has_menu() then
       set_expanded(ctx, true)
       return kAccepted
+    end
+    if code == XK_Return and key.modifier == 0 then
+      require("asus_lang").finalize(ctx)  -- digit keys at the end: a number now
     end
     return kNoop
   end

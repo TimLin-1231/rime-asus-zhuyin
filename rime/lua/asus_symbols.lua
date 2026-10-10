@@ -99,6 +99,7 @@ function processor.func(key, env)
     local punct = CTRL_PUNCT[ch]
     if punct then
       if ctx:is_composing() and not in_symbol_mode(ctx) then
+        require("asus_lang").finalize(ctx)  -- digit keys at the end: a number now
         ctx:commit()
       else
         ctx:clear()

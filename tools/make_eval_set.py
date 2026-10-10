@@ -169,6 +169,7 @@ if __name__ == "__main__":
     print("particles dev:", build_particles("particles"))
     print("particles test (held out):", build_particles("particles_test"))
     print("numbers dev:", build_mixed("numbers"))
+    print("numbers dev 2:", build_mixed("numbers_more"))
     print("numbers test (held out):", build_mixed("numbers_test"))
     print("edit dev:", build_mixed("edit"))
     print("edit test (held out):", build_mixed("edit_test"))
