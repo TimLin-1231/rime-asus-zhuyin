@@ -176,6 +176,9 @@ def main() -> None:
     proc = subprocess.run([sys.executable, __file__, "--worker", args.set], capture_output=True)
     if proc.returncode:
         raise SystemExit(proc.stderr.decode("utf-8", "replace"))
+    for line in proc.stderr.decode("utf-8", "replace").splitlines():
+        if line.startswith("rime_harness:"):  # e.g. the segmentation guard tripped
+            print(line, file=sys.stderr)
     res = json.loads(proc.stdout.decode("utf-8"))
     wrong = [(row, r) for row, r in zip(rows, res) if "down" in r]
     m = {"n": len(rows), "Wrong": len(wrong) / len(rows)}

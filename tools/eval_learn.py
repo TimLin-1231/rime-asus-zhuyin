@@ -276,6 +276,9 @@ def run(variant: str, mode: str, set_name: str) -> dict:
                           capture_output=True)
     if proc.returncode:
         raise SystemExit(f"{variant}/{mode} failed:\n{proc.stderr.decode('utf-8', 'replace')}")
+    for line in proc.stderr.decode("utf-8", "replace").splitlines():
+        if line.startswith("rime_harness:"):  # e.g. the segmentation guard tripped
+            print(line, file=sys.stderr)
     return json.loads(proc.stdout.decode("utf-8"))
 
 

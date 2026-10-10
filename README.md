@@ -196,11 +196,16 @@ C:\Users\User\anaconda3\python.exe tests\test_stage5.py
 C:\Users\User\anaconda3\python.exe tests\test_stage6.py
 C:\Users\User\anaconda3\python.exe tests\test_stage7.py
 C:\Users\User\anaconda3\python.exe tests\test_stage8.py
+C:\Users\User\anaconda3\python.exe tests\test_stage9.py
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
 C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改了什麼"
 ```
 評估表格的括號裡是**同一版評估集**上一次的數字，可以直接前後對照。
+
+### 不會卡死的兩道保險
+- **輸入法本身**：`asus_lang.lua` 的斷詞如果在 1 秒內對同一串輸入重來超過 300 次（正常打字不可能），那一串就改用原廠斷詞，並在日誌記一筆。最壞的結果是那一串選字比較差，下一個鍵照常運作，不會整個凍住。
+- **測試工具**：任何一個按鍵超過 30 秒沒回應（環境變數 `RIME_KEY_TIMEOUT` 可調），測試程序就自己結束（結束碼 124），只印出按鍵的形狀（字母→a、數字→0），不會印出保留測試集的內容。日誌只記警告以上。評估跑完如果保險被觸發過，會印出 `rime_harness: the segmentation guard tripped`，代表有 bug 要修。
 
 ## 回到上一版
 - **設定回到某個 commit**：`git log` 找到版本 → `git checkout <commit> -- rime/` → 重新部署。

@@ -16,8 +16,10 @@ import ctypes as C
 import json
 import os
 import shutil
+import re
 import subprocess
 import sys
+import threading
 import time
 import winreg
 from dataclasses import dataclass, field
@@ -30,6 +32,13 @@ HARNESS_DIR = ROOT / ".harness"
 # Files in rime/ that are runtime state, not configuration.
 SKIP_NAMES = {"build", "sync", "installation.yaml", "user.yaml"}
 SKIP_SUFFIXES = (".userdb",)
+
+# A key that librime does not finish within this many seconds ends the
+# process (exit code KEY_TIMEOUT_EXIT): an endless loop in a Lua component
+# once ran for three days and filled the disk with logs. The first key of a
+# session loads the dictionaries and the language model, well under this.
+KEY_TIMEOUT = float(os.environ.get("RIME_KEY_TIMEOUT", "30"))
+KEY_TIMEOUT_EXIT = 124
 
 # X11 keysyms / masks used by librime.
 XK = {
@@ -321,6 +330,22 @@ class Rime:
             self.api.join_maintenance_thread()
         self.session = self.api.create_session()
         self.committed: list[str] = []
+        self._typed: list[str] = []  # keys since the last clear(), for the watchdog
+        self._deadline: float | None = None
+        threading.Thread(target=self._watchdog, daemon=True).start()
+
+    def _watchdog(self) -> None:
+        while True:
+            time.sleep(0.5)
+            deadline = self._deadline
+            if deadline is not None and time.monotonic() > deadline:
+                # Only the shape of the keys: held-out sets must not be shown.
+                shape = re.sub(r"[a-z]", "a", re.sub(r"[A-Z]", "A", re.sub(r"[0-9]", "0", "".join(self._typed))))
+                sys.stderr.write(f"\nrime_harness: process_key did not return within {KEY_TIMEOUT:g} s "
+                                 f"(key {len(self._typed)} of this input, shape {shape!r}); "
+                                 f"librime is stuck, giving up. Logs: {self.log_dir}\n")
+                sys.stderr.flush()
+                os._exit(KEY_TIMEOUT_EXIT)
 
     @property
     def version(self) -> str:
@@ -340,7 +365,11 @@ class Rime:
         if code is None:
             assert len(name_or_char) == 1, name_or_char
             code = ord(name_or_char)
+        if not mask & RELEASE_MASK:
+            self._typed.append(name_or_char if len(name_or_char) == 1 else f"<{name_or_char}>")
+        self._deadline = time.monotonic() + KEY_TIMEOUT
         handled = bool(self.api.process_key(self.session, code, mask))
+        self._deadline = None
         self._drain_commit()
         return handled
 
@@ -360,6 +389,7 @@ class Rime:
     def clear(self) -> None:
         self.api.clear_composition(self.session)
         self.committed.clear()
+        self._typed.clear()
 
     def caret(self) -> int:
         return int(self.api.get_caret_pos(self.session))
@@ -405,6 +435,13 @@ class Rime:
     def close(self) -> None:
         self.api.destroy_session(self.session)
         self.api.finalize()
+        # The segmentor's safety net (asus_lang.lua) hides an endless loop
+        # behind a poor conversion; say so wherever it happened.
+        trips = sum(f.read_text(encoding="utf-8", errors="replace").count("did not settle")
+                    for f in self.log_dir.glob("*ERROR*"))
+        if trips:
+            sys.stderr.write(f"rime_harness: the segmentation guard tripped {trips} time(s); "
+                             f"see {self.log_dir}\n")
 
 
 def open_rime(name: str = "default", config: str = "project",

@@ -745,11 +745,35 @@ end
 -- Segmentor ------------------------------------------------------------------
 local segmentor = {}
 
+-- Safety net. librime calls the segmentors until the input is covered, and
+-- rewinding is the one thing here that moves backwards: a kept segment that
+-- never agrees with the plan is rewound and added again without end, which
+-- freezes the whole input method (it happened twice: I'm, API的用法 + Down).
+-- More than GUARD_REWINDS rewinds of one input within GUARD_SECONDS cannot
+-- be typing, so that input is left to the stock segmentors: the conversion
+-- may be poor, but the next key works.
+local GUARD_REWINDS, GUARD_SECONDS = 300, 1.0
+
+local function guard_tripped(env, input)
+  local now = os.clock()  -- wall time on Windows (MSVC CRT)
+  if env.guard_input ~= input or now - env.guard_since > GUARD_SECONDS then
+    env.guard_input, env.guard_since, env.guard_count, env.guard_off = input, now, 0, false
+  end
+  env.guard_count = env.guard_count + 1
+  if env.guard_count > GUARD_REWINDS and not env.guard_off then
+    env.guard_off = true
+    log.error(string.format("asus_lang.lua: segmentation of %d keys did not settle after %d rewinds;"
+      .. " using the stock segmentation for this input", #input, GUARD_REWINDS))
+  end
+  return env.guard_off
+end
+
 function segmentor.init(env)
   load_english()
   load_costs(env.engine.schema.config)
   env.shortcuts = require("asus_shortcuts").load(rime_api.get_user_data_dir() .. "/shortcuts.txt")
   env.debug = env.engine.schema.config:get_bool("asus_lang/debug") or false
+  env.guard_input, env.guard_since, env.guard_count, env.guard_off = nil, 0, 0, false
 end
 
 function segmentor.func(segmentation, env)
@@ -758,6 +782,7 @@ function segmentor.func(segmentation, env)
   local start = segmentation:get_current_start_position()
   local ctx = env.engine.context
   local en_ctx = ctx:get_property("asus_en_ctx") == "1"
+  if env.guard_off and env.guard_input == input then return true end  -- see guard_tripped
   local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx)
   -- Editing inside the composition (asus_edit.lua): one segment from the
   -- cursor to the end, so the menu lists what starts at the cursor.
@@ -784,6 +809,7 @@ function segmentor.func(segmentation, env)
   env.seg_input = input
   local call_start = start
   if not kept_matches(segmentation, spans, start, new_input, input) then
+    if guard_tripped(env, input) then return true end
     rewind(segmentation)
     start = segmentation:get_current_start_position()
   end
