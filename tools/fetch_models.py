@@ -1,4 +1,5 @@
-"""Download large model files into rime/ (they are not committed to git).
+"""Download large model and data files (they are not committed to git):
+language models into rime/, English word frequencies into third_party/symspell/.
 
     python tools/fetch_models.py
 """
@@ -23,6 +24,17 @@ MODELS = [
      "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hant.gram",
      "53b678ce17f1d80c75dd51976b697a5d1fc2cd6a13670652069b227b40157c98",
      410679340),
+    # English word and word-pair frequencies for the suggestions
+    # (tools/build_lang_data.py); MIT, wolfgarbe/SymSpell (Google Books
+    # Ngram x SCOWL).
+    ("third_party/symspell/frequency_dictionary_en_82_765.txt",
+     "https://raw.githubusercontent.com/wolfgarbe/SymSpell/master/SymSpell/frequency_dictionary_en_82_765.txt",
+     "c604e1121e398ae7c7fbf777f11e0a0f2fa66eda932cb9fba1321466cf3acd7b",
+     1332881),
+    ("third_party/symspell/frequency_bigramdictionary_en_243_342.txt",
+     "https://raw.githubusercontent.com/wolfgarbe/SymSpell/master/SymSpell/frequency_bigramdictionary_en_243_342.txt",
+     "fd892a160184101dd7ae807ac5a302d01fcea1c47304181a8ed7ed9c94545bcd",
+     5137213),
 ]
 
 
@@ -36,7 +48,9 @@ def sha256(path: Path) -> str:
 
 def main() -> int:
     for name, url, digest, size in MODELS:
-        dst = ROOT / "rime" / name
+        # a bare file name goes into rime/, a path is relative to the project
+        dst = ROOT / name if "/" in name else ROOT / "rime" / name
+        dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists() and dst.stat().st_size == size and sha256(dst) == digest:
             print(f"ok       {name}")
             continue

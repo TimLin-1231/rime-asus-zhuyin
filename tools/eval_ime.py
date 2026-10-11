@@ -31,6 +31,8 @@ Sets
   particles / particles_test  的/得/地 (typed ㄉㄜ˙) and 在/再; PartAcc = share
             of those positions converted correctly
   numbers / numbers_test  Chinese with numbers typed on the top-row digit keys
+  english_ctx / english_ctx_test  a previous English word, then a prefix: is the
+            word that usually follows the first guess (tests/eval/english_ctx*.txt)
   english / english_test  English prefixes and misspellings (tests/eval/english*.txt);
             Guess1 / Guess3 = expected word first / in the first three English
             guesses of the menu, Keep = correct words stay as typed
@@ -224,6 +226,13 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
             sets[stem] = [tuple(line.split("\t")[:2]) for line in
                           path.read_text(encoding="utf-8").splitlines()
                           if line.strip() and not line.startswith("#")]
+    # English after a previous English word: "prev typed" -> expected.
+    for stem in ("english_ctx", "english_ctx_test"):
+        path = EVAL / f"{stem}.txt"
+        if path.exists():
+            rows = [line.split("	") for line in path.read_text(encoding="utf-8").splitlines()
+                    if line.strip() and not line.startswith("#")]
+            sets[stem] = [(f"{prev} {typed}", want) for prev, typed, want in rows]
     words = EVAL / "private" / "asus_words.tsv"
     if words.exists():
         sets["words"] = load_set(words)
@@ -324,6 +333,7 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
         # prefixes and typos); Keep: a correct word stays as typed inline.
         g1 = g3 = ng = keep = nk = 0
         for (k, t), r in zip(cases, res):
+            k = k.split(" ")[-1]  # english_ctx: the previous word is committed
             if k == t:
                 nk += 1
                 keep += r["preview"] == t

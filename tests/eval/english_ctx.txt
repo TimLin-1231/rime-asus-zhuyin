@@ -1,0 +1,34 @@
+# English suggestions after a previous English word (DEV set, written for
+# stage 13 before the code): previous word<TAB>typed prefix<TAB>expected word.
+# The previous word is typed and committed with Space, then the prefix; the
+# expected word should be the first guess (Guess1) or among the first three.
+machine	lea	learning
+neural	net	network
+deep	lea	learning
+for	exa	example
+of	cou	course
+in	ord	order
+at	lea	least
+as	wel	well
+each	oth	other
+high	sch	school
+united	sta	states
+new	yor	york
+last	yea	year
+next	wee	week
+good	mor	morning
+very	muc	much
+how	man	many
+data	sci	science
+computer	sci	science
+artificial	int	intelligence
+natural	lan	language
+operating	sys	system
+open	sou	source
+source	cod	code
+real	tim	time
+long	ter	term
+credit	car	card
+social	med	media
+best	reg	regards
+looking	for	forward

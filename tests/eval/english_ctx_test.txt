@@ -1,0 +1,32 @@
+# Held-out counterpart of english_ctx.txt (written at the same time, before
+# the code; never look at its failures).
+reinforcement	lea	learning
+loss	fun	function
+training	dat	data
+high	qua	quality
+low	cos	cost
+climate	cha	change
+health	car	care
+public	tra	transport
+prime	min	minister
+in	fro	front
+in	add	addition
+in	fac	fact
+on	beh	behalf
+as	soo	soon
+as	lon	long
+more	tha	than
+rather	tha	than
+other	han	hand
+same	tim	time
+first	tim	time
+feel	fre	free
+make	sur	sure
+take	car	care
+short	ter	term
+web	bro	browser
+kind	reg	regards
+long	tim	time
+search	eng	engine
+user	int	interface
+state	uni	university
