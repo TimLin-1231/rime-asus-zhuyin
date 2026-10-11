@@ -721,7 +721,11 @@ end
 -- while 蛋餅 was being typed.
 -- This is decided on the converted candidate (filter `context` below), not
 -- in the plan: the number reading goes first and the Chinese one stays
--- second, one pick away, as with every other automatic replacement.
+-- second, one pick away, as with every other automatic replacement. Where
+-- the language model keeps the Chinese reading, the number reading is the
+-- second candidate instead; whichever the user picks is remembered for that
+-- syllable after that character (asus_learn.lua, "d" entries) and decides
+-- from then on.
 local NUM_NEW, NUM_NEW_MEASURE, NUM_LONGER = math.huge, 0.5, 0
 local NUM_NEW_START = 10  -- a new number as the very first thing typed
 local NUMBER_MARK = "數字"  -- comment of a candidate with digit keys read as digits
@@ -1308,14 +1312,40 @@ local function with_number_context(env, ctx, cand, keys)
   return changed and table.concat(cs) or nil
 end
 
--- cand's text with digit keys read as digits where the language model says
--- so (see "A digit or a Zhuyin initial?"), or nil.
+-- The key under which the user's choice between number and Chinese is
+-- remembered for a segment (keys, starting at byte `start` of input), and
+-- the syllable it is about: the first one that can be read both ways before
+-- a measure word, with the syllable in front of it ("#" after a number, ""
+-- at the start). Keys, not characters: the characters in front may differ
+-- between the two readings (月薪 / 月新).
+local function choice_key(input, start, keys)
+  local syl = head_syllables(keys)
+  for q, sy in ipairs(syl) do
+    if sy:sub(1, 1):match("%d") and zy.toned[sy:sub(2)] and MEASURE[sy:sub(2)] then
+      local left = syl[q - 1]
+      if not left then
+        local before = input:sub(1, start)
+        left = some_syllables(before, 1, true)[1] or (before:match("%d$") and "#") or ""
+      end
+      return left .. "\t" .. sy, q
+    end
+  end
+  return nil
+end
+
+-- cand's text with digit keys read as digits (see "A digit or a Zhuyin
+-- initial?"), and whether that reading should go first: the language model
+-- says so, or the user chose it here before. Otherwise the text (with the
+-- likeliest digit key read as a digit) is only offered second. nil when no
+-- key of the segment can be read both ways.
 local function number_reading(env, ctx, cand, keys)
   if not env.tr or not env.num_lm then return nil end
   local syl, used = head_syllables(keys)
   if #syl == 0 then return nil end
   local prev_num = number_at(ctx.composition, cand.start, true)
+  local ckey, cq = choice_key(ctx.input, cand.start, keys)
   local turned, any = {}, false
+  local alt, alt_gain  -- the likeliest one the language model did not take
   for q, sy in ipairs(syl) do
     local c, rest = sy:sub(1, 1), sy:sub(2)
     if c:match("%d") and zy.toned[rest] and not turned[q - 1] then
@@ -1347,12 +1377,21 @@ local function number_reading(env, ctx, cand, keys)
         log.info(string.format("asus_lang digit %s|%s gain=%.2f %s keys=%s", number, sy, as_num - as_is,
           number ~= "" and "longer" or MEASURE[rest] and "measure" or "new", keys))
       end
-      if as_num and as_is and not before_number and as_num > as_is + need then
-        turned[q], any = true, true
+      local choice = (q == cq) and learn.number_choice(ckey) or nil
+      if as_num and as_is and not before_number and need < math.huge then
+        if choice == "1" or (choice ~= "0" and as_num > as_is + need) then
+          turned[q], any = true, true
+        elseif not alt_gain or as_num - as_is > alt_gain then
+          alt, alt_gain = q, as_num - as_is
+        end
       end
     end
   end
-  if not any then return nil end
+  local first = any
+  if not any then
+    if not alt then return nil end
+    turned[alt] = true
+  end
   -- Convert with the digits as numerals, then put the digits back.
   local parts = {}
   for q, sy in ipairs(syl) do
@@ -1374,7 +1413,7 @@ local function number_reading(env, ctx, cand, keys)
       if word and not (word .. (MEASURE_ALSO[sy:sub(2)] or "")):find(cs[i], 1, true) then cs[i] = word end
     end
   end
-  return table.concat(cs)
+  return table.concat(cs), first
 end
 
 local context = {}
@@ -1470,13 +1509,16 @@ function numbers.func(input, env)
   for cand in input:iter() do
     if first then
       first = false
-      local better
+      local reading, goes_first
       if env.enabled and (cand.type == "sentence" or cand.type == "phrase" or cand.type == "user_phrase"
                           or cand.type == "simplified") then
-        better = number_reading(env, ctx, cand, ctx.input:sub(cand.start + 1, cand._end))
+        reading, goes_first = number_reading(env, ctx, cand, ctx.input:sub(cand.start + 1, cand._end))
       end
-      if better then yield(ShadowCandidate(cand, cand.type, better, NUMBER_MARK)) end
+      -- The other reading is always there, second: pick it once and it is
+      -- what comes first the next time (asus_learn.lua).
+      if reading and goes_first then yield(ShadowCandidate(cand, cand.type, reading, NUMBER_MARK)) end
       yield(cand)
+      if reading and not goes_first then yield(ShadowCandidate(cand, cand.type, reading, NUMBER_MARK)) end
     else
       yield(cand)
     end
@@ -1486,6 +1528,7 @@ numbers.init, numbers.fini = context.init, context.fini
 
 return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
          context = context, numbers = numbers, NUMBER_MARK = NUMBER_MARK,
+         choice_key = choice_key,
          first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
          key_tick = key_tick,
          complete_english = complete_english }

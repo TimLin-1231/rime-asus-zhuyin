@@ -74,15 +74,15 @@ def main() -> int:
     check("no digit shows while typing 早餐店的蛋餅很好吃", not leaks, ", ".join(leaks[:3]))
     # The other reading is one pick away, marked.
     r.clear(); r.key(">", SHIFT_MASK); r.clear()
-    r.type(mixed("月薪[5]萬")); r.key("Home"); r.key("Down")
+    r.type(mixed("一共[2]萬")); r.key("Home"); r.key("Down")
     c = r.snapshot().candidates
-    check("the number reading is marked 數字 and the Chinese one is second",
-          len(c) > 1 and c[0][0].startswith("月薪5萬") and "5" not in c[1][0], f"{c[:3]}")
+    check("the number reading is first in the list and the Chinese one is second",
+          len(c) > 1 and c[0][0].startswith("一共2萬") and "2" not in c[1][0], f"{c[:3]}")
     r.key("2")
     if r.snapshot().composing:
         r.key("Return")
     got = "".join(r.committed); r.clear()
-    check("picking the second gives the Chinese reading back", "5" not in got and got.startswith("月"), got)
+    check("picking the second gives the Chinese reading back", "2" not in got and got.startswith("一"), got)
 
     # Candidates in Taiwan forms (OpenCC: 爲 -> 為) are treated like the rest.
     got = out(mixed("我有[3]位客人"))
@@ -101,8 +101,36 @@ def main() -> int:
           "tim.lin@example.com" not in c3, f"{c3}")
     check("email: offered from min_prefix on", any("tim.lin@example.com" in x for x in c4), f"{c4}")
 
+    # Where the language model keeps the Chinese reading, the number reading
+    # is second; whichever is picked is remembered (keep these last: they teach).
+    def pick(k: str, want_digit: bool) -> str:
+        r.clear(); r.key(">", SHIFT_MASK); r.clear()
+        r.type(k); r.key("Home"); r.key("Down")
+        c = [x for x, _ in r.snapshot().candidates]
+        i = next((n for n, x in enumerate(c) if bool(re.search(r"[0-9]", x)) == want_digit), None)
+        if i is not None:
+            r.key(str(i + 1))
+            if r.snapshot().composing:
+                r.key("Return")
+        got = "".join(r.committed); r.clear()
+        return got
+
+    k = mixed("只要[5]萬就好")
+    first = out(k)
+    check("precondition: the language model reads 只要賺就好 here", "5" not in first, first)
+    got = pick(k, want_digit=True)
+    check("the number reading is in the list and can be picked", got == "只要5萬就好", got)
+    check("...and comes first from then on", out(k) == "只要5萬就好", out(k))
+    k = mixed("月薪[5]萬")
+    check("precondition: 月薪5萬 is a number by itself", out(k) == "月薪5萬", out(k))
+    got = pick(k, want_digit=False)
+    check("the Chinese reading can be picked instead", got != "" and "5" not in got, got)
+    check("...and comes first from then on", "5" not in out(k), out(k))
+    check("elsewhere nothing changed: 他存了2萬元", out(mixed("他存了[2]萬元")) == "他存了2萬元",
+          out(mixed("他存了[2]萬元")))
+
     r.close()
-    lua_errors = [line for f in r.log_dir.glob("*.log*")
+    lua_errors =[line for f in r.log_dir.glob("*.log*")
                   for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
                   if line.startswith("E") and "lua" in line.lower()]
     check("no Lua runtime errors in librime log", not lua_errors, lua_errors[0] if lua_errors else "")

@@ -27,6 +27,9 @@
 --   * After a number: the word picked from the list right after a number
 --     (第3 + ㄐㄧˊ: 集, not 級) is what asus_lang.lua proposes the next time
 --     the same character precedes the number.
+--   * Number or Chinese: for a digit key that is also a Zhuyin initial
+--     (5 + ㄨㄢˋ: 5萬 or 賺), the reading picked from the list is remembered
+--     for that syllable after that character.
 --   * Shift+Delete / Ctrl+Delete on the highlighted candidate (or prediction)
 --     forgets what was learned about it, including Rime's own user phrase.
 -- Weights halve every half_life_days (asus_learn/half_life_days, default 90).
@@ -495,14 +498,15 @@ function processor.init(env)
   open(env.engine.schema.config)
   env.prev_word = nil
   env.picks = {}  -- "start:end" of segments the user picked a candidate for
+  env.num_picks = {}  -- the same, "1" / "0": the number or the Chinese reading was picked
   if not enabled then return end
   local ctx = env.engine.context
   env.update_conn = ctx.update_notifier:connect(function(c)
-    if c.input == "" then env.picks = {} end
+    if c.input == "" then env.picks, env.num_picks = {}, {} end
   end)
   env.commit_conn = ctx.commit_notifier:connect(function(c)
-    local picks = env.picks
-    env.picks = {}
+    local picks, num_picks = env.picks, env.num_picks
+    env.picks, env.num_picks = {}, {}
     if not db then return end
     local now = os.time()
     local text = c:get_commit_text() or ""
@@ -550,6 +554,13 @@ function processor.init(env)
           left = left[#left] or ""
           if not is_cjk_text(left) then left = "" end
           if first then db:update("q\t" .. left .. "\t" .. first, chars(cand.text)[1]) end
+        end
+        -- Number or Chinese for a digit key that is both (asus_lang.lua,
+        -- "d" entries): the reading picked, when both were on offer.
+        local choice = num_picks[seg.start .. ":" .. seg._end]
+        if cand and choice then
+          local key = require("asus_lang").choice_key(input, seg.start, input:sub(seg.start + 1, seg._end))
+          if key then db:update("d\t" .. key, choice) end
         end
         prefix = prefix .. (cand and cand.text or "")
       end
@@ -642,6 +653,20 @@ local function note_pick(key, env)
   local cand = seg:get_candidate_at(index)
   if cand and cand.type ~= "sentence" then
     env.picks[seg.start .. ":" .. cand._end] = true
+  end
+  -- Number or Chinese for a digit key that is both (asus_lang.lua): which
+  -- of the two readings on offer is being picked.
+  local mark = require("asus_lang").NUMBER_MARK
+  if cand and cand.comment:find(mark, 1, true) then
+    env.num_picks[seg.start .. ":" .. cand._end] = "1"
+  elseif cand and not cand.text:match("%d") then
+    -- The number reading was what the segment showed (first in the list;
+    -- at the editing cursor asus_edit.lua lists it as the current text,
+    -- without the mark) and something without the digit is picked.
+    local top = seg:get_candidate_at(0)
+    if index > 0 and top and top.text:match("%d") then
+      env.num_picks[seg.start .. ":" .. cand._end] = "0"
+    end
   end
 end
 
@@ -799,6 +824,14 @@ local function after_number(left, keys)
   return (v and v ~= "") and v or nil
 end
 
+-- "1" (number) or "0" (Chinese): what the user picked for a syllable whose
+-- first key is a digit and a Zhuyin initial (key: asus_lang.choice_key).
+local function number_choice(key)
+  if not enabled or not db or not key then return nil end
+  local v = db:fetch("d\t" .. key)
+  return (v == "1" or v == "0") and v or nil
+end
+
 -- Has the user ever picked `text` for `keys`? (Such text is never treated
 -- as a typo by asus_typo.lua.)
 local function chosen(keys, text)
@@ -806,7 +839,7 @@ local function chosen(keys, text)
 end
 
 return { processor = processor, filter = filter, predict = predict, banned = banned, chosen = chosen,
-         after_number = after_number,
+         after_number = after_number, number_choice = number_choice,
          accepted = accepted, english = english, complete_english = complete_english,
          syllables = syllables, is_email = is_email, learn_email = learn_email,
          emails_for = emails_for, forget_email = forget_email,
