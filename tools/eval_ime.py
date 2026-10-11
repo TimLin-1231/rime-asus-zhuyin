@@ -210,7 +210,8 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
                        ("particles", "particles"), ("particles_test", "particles_test"),
                        ("numbers", "numbers"), ("numbers_test", "numbers_test"),
-                       ("numbers_more", "numbers_more")):
+                       ("numbers_more", "numbers_more"),
+                       ("numbers_amb", "numbers_amb"), ("numbers_amb_test", "numbers_amb_test")):
         if (EVAL / f"{stem}.tsv").exists():
             sets[name] = load_set(EVAL / f"{stem}.tsv")
     # Guard: every partial input of pure-Chinese dev sentences that ends on a
