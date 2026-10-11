@@ -283,6 +283,12 @@ C:\Users\User\anaconda3\python.exe tools\backup_learn.py --uninstall  取消每�
 - 排程每次執行的結果記在 `backups/learn/backup.log`。
 - **還原是全有或全無**：先核對備份的每個檔案和備份當時的雜湊值一致，在現有檔案旁邊準備好完整的一份並再核對一次，才停掉小狼毫、把現有資料移到一旁、換上新的；任何一步失敗就把已經做的步驟全部倒回去。
 
+## 切換視窗時保留沒送出的字
+原版小狼毫在切換視窗時會把還沒送出的字刪掉。`patches/weasel/` 是對小狼毫本身（C++ 的 `WeaselTSF`）的修補，讓行內已經顯示的字留在文件裡。
+- 這是唯一不在 `rime/` 裡的改動：換的是 `C:\Windows\System32\weasel.dll` 和 `C:\Windows\SysWOW64\weasel.dll`（原檔備份在旁邊），重新部署不會影響它，小狼毫更新後要重裝。
+- 實機測試：`python tools\tsf_test.py` 會開記事本自動打字、切視窗、讀回文字（約 1 分鐘，期間不要碰鍵盤滑鼠）。目前 6 項全過；Word、瀏覽器、VS Code 要手動試。
+- 安裝、還原、重新編譯的方法，以及第一版為什麼沒生效，寫在 `patches/weasel/README.md`。
+
 ## 隱私
 - 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
 - 英文詞的學習只從中文模式送出的文字學。英文模式雖然會組字，但只記長得像 email 地址的字（name@host.com），其他打的字一律不記，所以就算某個程式的密碼欄位沒有關掉輸入法，密碼也不會被存下來（除非它長得像 email）。終端機是直接輸出，完全不經過組字。

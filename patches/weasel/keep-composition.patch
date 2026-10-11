@@ -1,13 +1,105 @@
 diff --git a/WeaselTSF/Composition.cpp b/WeaselTSF/Composition.cpp
-index e94cea0..6531a60 100644
+index e94cea0..0fee3dd 100644
 --- a/WeaselTSF/Composition.cpp
 +++ b/WeaselTSF/Composition.cpp
-@@ -395,10 +395,27 @@ STDAPI WeaselTSF::OnCompositionTerminated(TfEditCookie ecWrite,
+@@ -3,6 +3,30 @@
+ #include "EditSession.h"
+ #include "ResponseParser.h"
+ #include "CandidateList.h"
++#include <cstdarg>
++#include <cstdio>
++
++// Diagnostics for tools/tsf_test.py of the input method project: start the
++// application with WEASEL_TSF_LOG set to a file path and the composition
++// events of that process are appended to it. Off (one check) otherwise.
++void TsfDebugLog(const wchar_t* fmt, ...) {
++  static int enabled = -1;
++  static wchar_t path[MAX_PATH];
++  if (enabled < 0)
++    enabled = GetEnvironmentVariableW(L"WEASEL_TSF_LOG", path, MAX_PATH) > 0;
++  if (!enabled)
++    return;
++  wchar_t buf[512];
++  va_list ap;
++  va_start(ap, fmt);
++  _vsnwprintf_s(buf, _TRUNCATE, fmt, ap);
++  va_end(ap);
++  FILE* f = nullptr;
++  if (_wfopen_s(&f, path, L"a") == 0 && f) {
++    fwprintf(f, L"%lu %ls\n", GetTickCount(), buf);
++    fclose(f);
++  }
++}
+ 
+ /* Start Composition */
+ class CStartCompositionEditSession : public CEditSession {
+@@ -113,8 +137,9 @@ STDAPI CEndCompositionEditSession::DoEditSession(TfEditCookie ec) {
+   if (_clear && _pComposition->GetRange(&pCompositionRange) == S_OK)
+     pCompositionRange->SetText(ec, 0, L"", 0);
+ 
+-  _pComposition->EndComposition(ec);
+-  _pTextService->_FinalizeComposition();
++  HRESULT hr = _pComposition->EndComposition(ec);
++  TsfDebugLog(L"end session runs: clear=%d EndComposition hr=%08x", _clear, hr);
++  _pTextService->_FinalizeComposition(_pComposition);
+   return S_OK;
+ }
+ 
+@@ -122,11 +147,27 @@ void WeaselTSF::_EndComposition(com_ptr<ITfContext> pContext, BOOL clear) {
+   CEndCompositionEditSession* pEditSession;
+   HRESULT hr;
+ 
++  // One end per composition. The session is granted when the application
++  // gets round to it (TF_ES_ASYNCDONTCARE), and until it has run
++  // _IsComposing() is still true: a second request for the same composition
++  // (losing the focus is reported twice, by OnSetFocus and OnKillThreadFocus)
++  // would run after the first and, if asked to clear, delete what the first
++  // one kept.
++  if (_pComposition != nullptr && _pComposition.p == _pEndingComposition) {
++    TsfDebugLog(L"end requested again for the same composition: ignored (clear=%d)", clear);
++    return;
++  }
++  _pEndingComposition = _pComposition.p;
++
+   _cand->EndUI();
+   if ((pEditSession = new CEndCompositionEditSession(
+            this, pContext, _pComposition, clear)) != NULL) {
+-    pContext->RequestEditSession(_tfClientId, pEditSession,
+-                                 TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hr);
++    HRESULT hrRequest =
++        pContext->RequestEditSession(_tfClientId, pEditSession,
++                                     TF_ES_ASYNCDONTCARE | TF_ES_READWRITE,
++                                     &hr);
++    TsfDebugLog(L"end requested: clear=%d request=%08x session=%08x", clear,
++                hrRequest, hr);
+     pEditSession->Release();
+   }
+ }
+@@ -395,10 +436,51 @@ STDAPI WeaselTSF::OnCompositionTerminated(TfEditCookie ecWrite,
    // This will be called when an edit session ended up with an empty composition
    // string, Even if it is closed normally. Silly M$.
  
 -  _AbortComposition();
-+  _KeepComposition(_pEditSessionContext);
++  // The application or TSF has ended the composition (the focus moved, the
++  // caret was put elsewhere, ...). The write cookie is ours for this call, so
++  // no edit session is requested: one would only run later, on a composition
++  // that is gone. With inline preedit the text is the conversion and stays;
++  // otherwise it is the placeholder and goes.
++  TsfDebugLog(L"OnCompositionTerminated: current=%d inline=%d",
++              pComposition == _pComposition.p, _inlinePreedit);
++  if (pComposition != nullptr && pComposition == _pComposition.p) {
++    if (_pEditSessionContext != nullptr)
++      _ClearCompositionDisplayAttributes(ecWrite, _pEditSessionContext);
++    if (!_inlinePreedit) {
++      com_ptr<ITfRange> pRange;
++      if (pComposition->GetRange(&pRange) == S_OK && pRange != nullptr)
++        pRange->SetText(ecWrite, 0, L"", 0);
++    }
++    _FinalizeComposition();
++  }
++  m_client.ClearComposition();
++  _committed = TRUE;
++  _cand->Destroy();
    return S_OK;
  }
  
@@ -20,10 +112,15 @@ index e94cea0..6531a60 100644
 +// on the next key. Without inline preedit the composition only holds
 +// placeholder text, which is still removed.
 +void WeaselTSF::_KeepComposition(com_ptr<ITfContext> pContext) {
++  TsfDebugLog(L"keep: composing=%d context=%d inline=%d", _IsComposing(),
++              pContext != nullptr, _inlinePreedit);
 +  m_client.ClearComposition();
++  // (_inlinePreedit is not reset here: the end session may still be pending,
++  // and a later notification for the same composition has to decide the same
++  // way. The first version reset it, so whichever call came second cleared
++  // the text the first had kept.)
 +  if (_IsComposing() && pContext)
 +    _EndComposition(pContext, !_inlinePreedit);
-+  _inlinePreedit = FALSE;
 +  _committed = TRUE;
 +  _cand->Destroy();
 +}
@@ -31,75 +128,119 @@ index e94cea0..6531a60 100644
  void WeaselTSF::_AbortComposition(bool clear) {
    m_client.ClearComposition();
    if (_IsComposing()) {
+@@ -410,10 +492,17 @@ void WeaselTSF::_AbortComposition(bool clear) {
+ 
+ void WeaselTSF::_FinalizeComposition() {
+   _pComposition = nullptr;
++  _pEndingComposition = nullptr;
++}
++
++void WeaselTSF::_FinalizeComposition(ITfComposition* pComposition) {
++  if (_pComposition.p == pComposition)
++    _FinalizeComposition();
+ }
+ 
+ void WeaselTSF::_SetComposition(com_ptr<ITfComposition> pComposition) {
+   _pComposition = pComposition;
++  _pEndingComposition = nullptr;
+ }
+ 
+ BOOL WeaselTSF::_IsComposing() {
 diff --git a/WeaselTSF/EditSession.cpp b/WeaselTSF/EditSession.cpp
-index 8f4d503..3256457 100644
+index 8f4d503..6c407b1 100644
 --- a/WeaselTSF/EditSession.cpp
 +++ b/WeaselTSF/EditSession.cpp
-@@ -35,6 +35,7 @@ STDAPI WeaselTSF::DoEditSession(TfEditCookie ec) {
+@@ -35,6 +35,10 @@ STDAPI WeaselTSF::DoEditSession(TfEditCookie ec) {
      } else if (!_status.composing && _IsComposing()) {
        _EndComposition(_pEditSessionContext, true);
      }
-+    _inlinePreedit = _IsComposing() && config.inline_preedit;
++    // (Not "&& _IsComposing()": for the first key the composition is still
++    // being started, and the flag has to be right when the focus leaves
++    // after that one key.)
++    _inlinePreedit = config.inline_preedit;
      if (_IsComposing() && config.inline_preedit) {
        _ShowInlinePreedit(_pEditSessionContext, context);
      }
 diff --git a/WeaselTSF/KeyEventSink.cpp b/WeaselTSF/KeyEventSink.cpp
-index c885ddd..6265be5 100644
+index c885ddd..769de14 100644
 --- a/WeaselTSF/KeyEventSink.cpp
 +++ b/WeaselTSF/KeyEventSink.cpp
-@@ -67,7 +67,7 @@ STDAPI WeaselTSF::OnSetFocus(BOOL fForeground) {
+@@ -67,7 +67,8 @@ STDAPI WeaselTSF::OnSetFocus(BOOL fForeground) {
      m_client.FocusIn();
    else {
      m_client.FocusOut();
 -    _AbortComposition();
++    TsfDebugLog(L"OnSetFocus(FALSE)");
 +    _KeepComposition(_pEditSessionContext);
    }
  
    return S_OK;
 diff --git a/WeaselTSF/TextEditSink.cpp b/WeaselTSF/TextEditSink.cpp
-index a6bc1f0..e82bce1 100644
+index a6bc1f0..003502e 100644
 --- a/WeaselTSF/TextEditSink.cpp
 +++ b/WeaselTSF/TextEditSink.cpp
-@@ -38,7 +38,7 @@ STDAPI WeaselTSF::OnEndEdit(ITfContext* pContext,
+@@ -37,8 +37,11 @@ STDAPI WeaselTSF::OnEndEdit(ITfContext* pContext,
+           cFetched == 1) {
          ITfRange* pRangeComposition;
          if (_pComposition->GetRange(&pRangeComposition) == S_OK) {
-           if (!IsRangeCovered(ecReadOnly, tfSelection.range, pRangeComposition))
+-          if (!IsRangeCovered(ecReadOnly, tfSelection.range, pRangeComposition))
 -            _EndComposition(pContext, true);
++          if (!IsRangeCovered(ecReadOnly, tfSelection.range,
++                              pRangeComposition)) {
++            TsfDebugLog(L"OnEndEdit: caret left the composition");
 +            _KeepComposition(pContext);
++          }
            pRangeComposition->Release();
          }
        }
 diff --git a/WeaselTSF/WeaselTSF.cpp b/WeaselTSF/WeaselTSF.cpp
-index 590d3b8..38c429f 100644
+index 590d3b8..7390766 100644
 --- a/WeaselTSF/WeaselTSF.cpp
 +++ b/WeaselTSF/WeaselTSF.cpp
-@@ -183,7 +183,7 @@ STDMETHODIMP WeaselTSF::OnSetThreadFocus() {
+@@ -183,7 +183,8 @@ STDMETHODIMP WeaselTSF::OnSetThreadFocus() {
    return S_OK;
  }
  STDMETHODIMP WeaselTSF::OnKillThreadFocus() {
 -  _AbortComposition();
++  TsfDebugLog(L"OnKillThreadFocus");
 +  _KeepComposition(_pEditSessionContext);
    return S_OK;
  }
  BOOL WeaselTSF::_InitThreadFocusSink() {
 diff --git a/WeaselTSF/WeaselTSF.h b/WeaselTSF/WeaselTSF.h
-index 696d3cc..5c64d9b 100644
+index 696d3cc..3e4ad1b 100644
 --- a/WeaselTSF/WeaselTSF.h
 +++ b/WeaselTSF/WeaselTSF.h
-@@ -122,6 +122,7 @@ class WeaselTSF : public ITfTextInputProcessorEx,
+@@ -8,6 +8,8 @@ class CCandidateList;
+ class CLangBarItemButton;
+ class CCompartmentEventSink;
+ 
++void TsfDebugLog(const wchar_t* fmt, ...);
++
+ class WeaselTSF : public ITfTextInputProcessorEx,
+                   public ITfThreadMgrEventSink,
+                   public ITfTextEditSink,
+@@ -121,7 +123,11 @@ class WeaselTSF : public ITfTextInputProcessorEx,
+   void _SetCompositionPosition(const RECT& rc);
    BOOL _UpdateCompositionWindow(com_ptr<ITfContext> pContext);
    void _FinalizeComposition();
++  // only if pComposition is still the current one (a pending end session of
++  // an older composition must not drop a newer one)
++  void _FinalizeComposition(ITfComposition* pComposition);
    void _AbortComposition(bool clear = true);
 +  void _KeepComposition(com_ptr<ITfContext> pContext);
  
    /* Language bar */
    HWND _GetFocusedContextWindow();
-@@ -232,5 +233,8 @@ class WeaselTSF : public ITfTextInputProcessorEx,
+@@ -232,5 +238,11 @@ class WeaselTSF : public ITfTextInputProcessorEx,
    TfGuidAtom _gaDisplayAttributeInput;
    BOOL _async_edit = false;
    BOOL _committed = false;
 +  // the composition text in the document is the inline preedit (not the
 +  // placeholder used when inline preedit is off)
 +  BOOL _inlinePreedit = false;
++  // the composition an end session has been requested for; identity only,
++  // never dereferenced (see _EndComposition)
++  ITfComposition* _pEndingComposition = nullptr;
    BOOL _isToOpenClose = false;
  };
