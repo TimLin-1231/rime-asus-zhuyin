@@ -1,10 +1,8 @@
 -- asus_keys.lua
 -- Key handling for the ASUS-style Zhuyin schema (asus_zhuyin).
 --
---   * A single Shift tap never switches modes. A quick double tap of Shift
---     (either side) or Ctrl+Space toggles ascii_mode. When switching to ascii
---     while composing, the converted Chinese text is committed first, so raw
---     keys are never dumped into the document.
+--   * Ctrl+Space toggles ascii_mode (double-tap Shift does too, in
+--     asus_shift.lua). What is being typed is committed first.
 --   * Shift+letter types a capital letter (English, see asus_lang.lua).
 --   * Space right after an English word commits the input plus that space.
 --   * BackSpace removes a whole completed syllable (one character).
@@ -14,8 +12,6 @@
 --     candidate, Enter picks it and commits everything, and Esc collapses
 --     back to the compact bubble. A pick that completes the input is
 --     committed at once (no Enter needed).
---
--- Must be the first processor so it sees Shift events before ascii_composer.
 
 local kRejected, kAccepted, kNoop = 0, 1, 2
 
@@ -45,29 +41,7 @@ local NAV_KEYS = {
 }
 
 local EXPANDED = "_asus_expanded"
-local TAP_MAX_MS = 300     -- a Shift press held longer than this is not a tap
-local DOUBLE_TAP_MS = 400  -- max gap between the two taps
-
--- Wall-clock milliseconds. rime_api.get_time_ms is missing from the
--- librime-lua bundled with Weasel 0.17.4; on Windows the MSVC CRT clock()
--- behind os.clock() measures elapsed wall time (not CPU time), so it is a
--- valid fallback there.
-local now_ms
-if rime_api.get_time_ms then
-  now_ms = function() return rime_api.get_time_ms() end
-else
-  now_ms = function() return os.clock() * 1000 end
-end
-
-local function toggle_ascii(ctx)
-  local to_ascii = not ctx:get_option("ascii_mode")
-  -- Either way what is typed is committed first (Chinese as converted,
-  -- English mode's word as typed, asus_english.lua).
-  if ctx:is_composing() then
-    ctx:commit()
-  end
-  ctx:set_option("ascii_mode", to_ascii)
-end
+local toggle_ascii = require("asus_shift").toggle_ascii
 
 -- Options tied to the expanded candidate list:
 --   _linear       the list is horizontal, so Left/Right move the highlight and
@@ -90,34 +64,7 @@ local function set_expanded(ctx, value)
   end
 end
 
--- Returns true when the Shift event completed a double tap.
-local function track_shift(env, key)
-  local t = now_ms()
-  local code = key.keycode
-  if not key:release() then
-    if key:ctrl() or key:alt() then
-      env.shift_down = nil
-    elseif env.shift_down ~= code then  -- ignore auto-repeat
-      env.shift_down, env.shift_down_at = code, t
-    end
-    return false
-  end
-  local is_tap = env.shift_down == code and (t - env.shift_down_at) <= TAP_MAX_MS
-  env.shift_down = nil
-  if not is_tap then
-    env.last_tap_at = nil
-    return false
-  end
-  if env.last_tap_at and (t - env.last_tap_at) <= DOUBLE_TAP_MS then
-    env.last_tap_at = nil
-    return true
-  end
-  env.last_tap_at = t
-  return false
-end
-
 local function init(env)
-  env.shift_down, env.shift_down_at, env.last_tap_at = nil, 0, nil
   local ctx = env.engine.context
   ctx:set_option(EXPANDED, false)
   set_list_options(ctx, false)
@@ -149,18 +96,10 @@ local function func(key, env)
   local ctx = env.engine.context
   local code = key.keycode
 
-  -- Mode switching -------------------------------------------------------
-  if code == XK_Shift_L or code == XK_Shift_R then
-    if track_shift(env, key) then
-      toggle_ascii(ctx)
-    end
-    return kNoop  -- let ascii_composer see it (configured as noop)
-  end
-  if key:release() then
+  -- Mode switching (double-tap Shift: asus_shift.lua) ----------------------
+  if code == XK_Shift_L or code == XK_Shift_R or key:release() then
     return kNoop
   end
-  -- Any other key breaks a tap sequence.
-  env.shift_down, env.last_tap_at = nil, nil
 
   if code == XK_space and key:ctrl() and not key:alt() and not key:shift() then
     toggle_ascii(ctx)

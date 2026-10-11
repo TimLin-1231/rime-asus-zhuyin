@@ -250,7 +250,12 @@ function processor.fini(env)
   if env.update_conn then env.update_conn:disconnect() end
 end
 
-local function is_key_char(code)
+local function is_key_char(code, st)
+  if code == XK_space then
+    -- Space is the first tone of the syllable being inserted (ㄔ + Space:
+    -- 吃); with nothing inserted, or after a tone key, it is not a key here.
+    return st ~= nil and st.ins ~= nil and TONES[st.input:sub(st.ins.e, st.ins.e)] == nil
+  end
   if code < 0x21 or code > 0x7e then return false end
   local ch = string.char(code)
   return ZHUYIN[ch] ~= nil or TONES[ch] ~= nil or ch:match("%a") ~= nil
@@ -473,7 +478,7 @@ function processor.func(key, env)
     apply(ctx, st)
     return kAccepted
   end
-  if is_key_char(code) then
+  if is_key_char(code, st) then
     -- Insert at the cursor.
     local at = st.ins and st.ins.e or caret_offset(st)
     if at >= #st.input and not st.ins then
@@ -547,6 +552,16 @@ local function filter(input, env)
             if #buffer > 150 then break end
           end
           if first._end == st.ins.e then conv = first.text end
+          -- Two or more syllables inserted: the candidate that covers exactly
+          -- them is a dictionary phrase, however rare (ㄔ ㄗㄠˇ: 摛藻); the
+          -- sentence that runs on through what follows reads them in context
+          -- (吃早 + 飯), one character per syllable.
+          local ins_syl = syllables(st.input:sub(st.ins.s + 1, st.ins.e))
+          if ins_syl and #ins_syl >= 2 and first._end > st.ins.e then
+            local all = syllables(st.input:sub(first.start + 1, first._end))
+            local fc = chars(first.text)
+            if all and #all == #fc then conv = table.concat(fc, "", 1, #ins_syl) end
+          end
           conv = conv or reading(st.input:sub(st.ins.s + 1, st.ins.e))
           ctx:set_property("asus_edit_conv", conv)
           parts[1] = conv

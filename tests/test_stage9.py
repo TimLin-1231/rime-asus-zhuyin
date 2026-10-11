@@ -103,6 +103,15 @@ def main() -> int:
           proc.returncode == KEY_TIMEOUT_EXIT and "librime is stuck" in err, f"rc={proc.returncode} {err[-200:]!r}")
     check("...within seconds, not days", dt < 60, f"{dt:.0f} s")
 
+    # A loop slower than 300 rewinds a second never filled the one-second
+    # window; rewinds are counted per key event as well.
+    t0 = time.perf_counter()
+    proc = subprocess.run([sys.executable, __file__, "--slow"], capture_output=True, timeout=120,
+                          env={**os.environ, "RIME_KEY_TIMEOUT": "20"})
+    dt = time.perf_counter() - t0
+    check("a slow endless loop (5 ms a round) is cut short too", proc.returncode == 0,
+          f"rc={proc.returncode} after {dt:.0f} s {proc.stderr.decode('utf-8', 'replace')[-200:]!r}")
+
     width = max(len(n) for n, _, _ in RESULTS)
     failed = 0
     for name, ok, detail in RESULTS:
@@ -110,6 +119,20 @@ def main() -> int:
         print(f"{'PASS' if ok else 'FAIL'}  {name:<{width}}  {'' if ok else detail}")
     print(f"{len(RESULTS) - failed}/{len(RESULTS)} passed")
     return 1 if failed else 0
+
+
+def slow() -> int:
+    """The bug again, each round of the loop taking 5 ms (under 300 a second)."""
+    extra = broken(with_guard=True)
+    wait = "    do local t0 = os.clock(); while os.clock() - t0 < 0.005 do end end\n"
+    extra["lua/asus_lang.lua"] = extra["lua/asus_lang.lua"].replace(GUARD, wait + GUARD)
+    r = open_rime("stage9-slow", extra=extra)
+    loop_keys(r)
+    r.clear()
+    r.type(keys("今天天氣很好")); ok = r.snapshot().preview == "今天天氣很好"
+    r.close()
+    log = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in r.log_dir.glob("*.log*"))
+    return 0 if ok and "did not settle" in log else 1
 
 
 def clean() -> int:
@@ -125,4 +148,4 @@ def clean() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(clean() if "--clean" in sys.argv else main())
+    sys.exit(clean() if "--clean" in sys.argv else slow() if "--slow" in sys.argv else main())

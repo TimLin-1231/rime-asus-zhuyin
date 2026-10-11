@@ -67,13 +67,42 @@ def main() -> int:
         p = run(root, "--list")
         check("--list shows it", name in p.stdout and "ok" in p.stdout, p.stdout)
 
-        # Damage, then restore.
+        # Damage, then restore. (--no-verify: the database here is a dummy.)
         (db / "000007.log").write_bytes(b"damaged")
         (root / "rime" / "emails.txt").unlink()
-        p = run(root, "--restore", "latest")
+        p = run(root, "--restore", "latest", "--no-verify")
         check("--restore without --yes changes nothing",
               p.returncode == 0 and (db / "000007.log").read_bytes() == b"damaged", p.stdout)
-        p = run(root, "--restore", "latest", "--yes")
+
+        def state() -> dict[str, bytes]:
+            return {f.relative_to(root).as_posix(): f.read_bytes()
+                    for top in (root / "rime", root / "lexicon") for f in top.rglob("*") if f.is_file()}
+
+        before = state()
+        # A failure in the middle of the swap: everything is put back.
+        p = run(root, "--restore", "latest", "--yes", "--no-verify", "--fail-after", "2")
+        check("a restore that fails half-way leaves everything as it was",
+              p.returncode == 1 and state() == before and "put back" in p.stdout, p.stdout + p.stderr)
+        check("...and no half-made folders behind",
+              not [x for x in dest.iterdir() if x.name.startswith("_before-restore-")]
+              and not [x for x in (root / "rime").iterdir() if ".restore-" in x.name],
+              f"{[x.name for x in dest.iterdir()]} {[x.name for x in (root / 'rime').iterdir()]}")
+        # A backup that was changed after it was made is refused.
+        victim = b / "rime/asus_learn.userdb/000005.ldb"
+        good_bytes = victim.read_bytes()
+        victim.write_bytes(b"tampered")
+        p = run(root, "--restore", "latest", "--yes", "--no-verify")
+        check("a backup changed after it was made is not restored",
+              p.returncode == 1 and state() == before and "changed since" in p.stdout, p.stdout + p.stderr)
+        victim.write_bytes(good_bytes)
+        moved = b / "lexicon/personal_words.txt"
+        moved.rename(moved.with_suffix(".gone"))
+        p = run(root, "--restore", "latest", "--yes", "--no-verify")
+        check("an incomplete backup is not restored",
+              p.returncode == 1 and state() == before and "incomplete" in p.stdout, p.stdout + p.stderr)
+        moved.with_suffix(".gone").rename(moved)
+
+        p = run(root, "--restore", "latest", "--yes", "--no-verify")
         check("--restore --yes puts the data back",
               p.returncode == 0 and (db / "000007.log").read_bytes() == b"log v1"
               and (root / "rime" / "emails.txt").read_text(encoding="utf-8") == "a@b.co\n", p.stdout + p.stderr)
@@ -87,9 +116,9 @@ def main() -> int:
         bad = dest / "20990101-000000"
         bad.mkdir()
         (bad / "backup.json").write_text(json.dumps({"ok": False, "errors": ["x"], "files": {}}))
-        p = run(root, "--restore", "latest")
+        p = run(root, "--restore", "latest", "--no-verify")
         check("latest skips a backup that failed its check", name in p.stdout and "20990101" not in p.stdout, p.stdout)
-        p = run(root, "--restore", "20990101-000000", "--yes")
+        p = run(root, "--restore", "20990101-000000", "--yes", "--no-verify")
         check("a failed backup cannot be restored by name", p.returncode == 1, p.stdout)
 
     # Which backups are kept: the newest of each of the last 14 days that

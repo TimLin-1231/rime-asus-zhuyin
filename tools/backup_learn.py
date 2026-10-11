@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -135,6 +136,16 @@ def copy_db(src: Path, dst: Path) -> None:
 
 def tree_size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def hashes(base: Path, rels: list[str]) -> dict[str, str]:
+    """sha256 of every file under base/<rel> (a file or a folder), by path relative to base."""
+    out: dict[str, str] = {}
+    for rel in rels:
+        top = base / rel
+        for f in ([top] if top.is_file() else sorted(x for x in top.rglob("*") if x.is_file())):
+            out[f.relative_to(base).as_posix()] = hashlib.sha256(f.read_bytes()).hexdigest()
+    return out
 
 
 def verify(backup: Path) -> dict:
@@ -328,6 +339,8 @@ def backup(root: Path, dest: Path, check: bool = True, now: dt.datetime | None =
         # database): keep everything older until someone has looked.
         if previous and total(previous[-1]) >= 20 and total(manifest) < total(previous[-1]) / 2:
             manifest["shrunk"] = True
+    # For --restore: the backup must still be what was written here.
+    manifest["sha256"] = hashes(target, sorted(manifest["files"]))
     (target / "backup.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     return target, manifest
 
@@ -340,7 +353,12 @@ def describe(manifest: dict) -> str:
 
 
 # -- restore -------------------------------------------------------------------
-def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True) -> int:
+def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True, check: bool = True,
+            fail_after: int | None = None) -> int:
+    """All or nothing: the backup is checked and a full copy is staged next
+    to the live files before anything is touched; then the live files are
+    moved aside and the staged ones moved in, and if any step fails every
+    step already made is undone. (fail_after: a failure for the tests.)"""
     items = backups(dest)
     good = [n for n, m in items if m.get("ok")]
     if name == "latest":
@@ -364,26 +382,87 @@ def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True) 
         print("Nothing was changed. Add --yes to restore; what is there now is first moved to "
               "backups/learn/_before-restore-<time>/.")
         return 0
-    server = weasel_server() if service and server_running() else None
-    if server and not stop_server(server):
-        print("WeaselServer did not quit; nothing was changed.")
+
+    # 1. Is the backup still what was written? Can its databases be read?
+    missing = [rel for rel in rels if not (src / rel).exists()]
+    if missing:
+        print(f"The backup is incomplete (missing {missing}); nothing was changed.")
         return 1
-    aside = dest / f"_before-restore-{dt.datetime.now():%Y%m%d-%H%M%S}"
+    want = manifest.get("sha256")
+    have = hashes(src, rels)
+    if want is not None and have != want:
+        bad = sorted(k for k in set(want) | set(have) if want.get(k) != have.get(k))
+        print(f"The backup has changed since it was made ({bad[:3]}...); nothing was changed.")
+        return 1
+    if check and not manifest.get("verified"):
+        res = verify(src)
+        if not res.get("ok"):
+            print(f"The backup cannot be read back ({res.get('errors')}); nothing was changed.")
+            return 1
+
+    # 2. Stage a complete copy beside the live files (same disk: moving it in
+    #    later is a rename) and compare it with the backup.
+    stamp = f"{dt.datetime.now():%Y%m%d-%H%M%S}"
+    staged = {rel: (root / rel).with_name((root / rel).name + f".restore-{stamp}") for rel in rels}
+    aside = dest / f"_before-restore-{stamp}"
+    done: list[tuple[str, str]] = []  # ("aside" | "in", rel), in the order made
+    server = None
     try:
-        for rel in rels:
-            cur, bak = root / rel, src / rel
-            if cur.exists():
-                (aside / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(cur), str(aside / rel))
-            cur.parent.mkdir(parents=True, exist_ok=True)
-            if bak.is_dir():
-                shutil.copytree(bak, cur)
-            else:
-                shutil.copy2(bak, cur)
+        try:
+            for rel in rels:
+                staged[rel].parent.mkdir(parents=True, exist_ok=True)
+                if (src / rel).is_dir():
+                    shutil.copytree(src / rel, staged[rel])
+                else:
+                    shutil.copy2(src / rel, staged[rel])
+            for rel in rels:
+                top = staged[rel]
+                files = [top] if top.is_file() else sorted(x for x in top.rglob("*") if x.is_file())
+                for f in files:
+                    key = rel if top.is_file() else f"{rel}/{f.relative_to(top).as_posix()}"
+                    if hashlib.sha256(f.read_bytes()).hexdigest() != have[key]:
+                        raise OSError(f"the staged copy of {key} differs from the backup")
+        except OSError as e:
+            print(f"Could not prepare the restore ({e}); nothing was changed.")
+            return 1
+
+        # 3. Swap, with the server stopped; undo everything if a step fails.
+        server = weasel_server() if service and server_running() else None
+        if server and not stop_server(server):
+            print("WeaselServer did not quit; nothing was changed.")
+            server = None
+            return 1
+        try:
+            for n, rel in enumerate(rels):
+                if fail_after is not None and n >= fail_after:
+                    raise OSError("failure requested by the test")
+                cur = root / rel
+                if cur.exists():
+                    (aside / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(cur), str(aside / rel))
+                    done.append(("aside", rel))
+                shutil.move(str(staged[rel]), str(cur))
+                done.append(("in", rel))
+        except OSError as e:
+            for step, rel in reversed(done):
+                cur = root / rel
+                if step == "in":
+                    shutil.move(str(cur), str(staged[rel]))
+                else:
+                    shutil.move(str(aside / rel), str(cur))
+            print(f"The restore failed ({e}); everything was put back as it was.")
+            return 1
     finally:
+        for path in staged.values():  # whatever was not moved in
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            elif path.exists():
+                path.unlink()
+        if aside.is_dir() and not any(f.is_file() for f in aside.rglob("*")):
+            shutil.rmtree(aside, ignore_errors=True)
         if server and not start_server(server):
             print("WeaselServer did not start again: start it from the Start menu (小狼毫算法服務).")
-    print(f"Restored. The previous files are in {aside}.")
+    print("Restored." + (f" The previous files are in {aside}." if aside.is_dir() else ""))
     return 0
 
 
@@ -474,6 +553,7 @@ def main() -> int:
     ap.add_argument("--root", type=Path, default=ROOT, help=argparse.SUPPRESS)  # tests
     ap.add_argument("--no-service", action="store_true", help=argparse.SUPPRESS)  # tests
     ap.add_argument("--verify-worker", type=Path, help=argparse.SUPPRESS)
+    ap.add_argument("--fail-after", type=int, help=argparse.SUPPRESS)  # tests
     args = ap.parse_args()
     if args.verify_worker:
         return verify_worker(args.verify_worker)
@@ -488,7 +568,8 @@ def main() -> int:
             print(f"{name}  {state} {describe(m)}" + (f"  {m.get('errors')}" if not m.get("ok") else ""))
         return 0
     if args.restore:
-        return restore(args.root, dest, args.restore, args.yes, service=not args.no_service)
+        return restore(args.root, dest, args.restore, args.yes, service=not args.no_service,
+                       check=not args.no_verify, fail_after=args.fail_after)
     if args.scheduled:
         today = dt.date.today().strftime("%Y%m%d")
         if any(n.startswith(today) and m.get("ok") for n, m in backups(dest)):

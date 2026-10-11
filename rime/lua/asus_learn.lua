@@ -24,6 +24,9 @@
 --   * Email addresses: every address committed (or typed in English mode,
 --     lua/asus_email.lua) is remembered, together with rime/emails.txt, so
 --     typing the first few characters offers the whole address.
+--   * After a number: the word picked from the list right after a number
+--     (第3 + ㄐㄧˊ: 集, not 級) is what asus_lang.lua proposes the next time
+--     the same character precedes the number.
 --   * Shift+Delete / Ctrl+Delete on the highlighted candidate (or prediction)
 --     forgets what was learned about it, including Rime's own user phrase.
 -- Weights halve every half_life_days (asus_learn/half_life_days, default 90).
@@ -528,6 +531,29 @@ function processor.init(env)
         end
       end
     end
+    -- The word picked right after a number ("q" entries; corrections are
+    -- only learned in inputs that are Chinese throughout). Told by the text
+    -- in front of the segment, not by segment tags: with the list opened at
+    -- the editing cursor everything before it is one locked segment.
+    if ok and segs then
+      local prefix = ""
+      for _, seg in ipairs(segs) do
+        local cand = seg:get_selected_candidate()
+        local head = prefix:match("^(.-)[%d.]+$")
+        if head and cand and picks[seg.start .. ":" .. seg._end] and is_cjk_text(cand.text) then
+          local first
+          local keys = input:sub(seg.start + 1, seg._end)
+          for len = math.min(5, #keys), 1, -1 do
+            if zy.toned[keys:sub(1, len)] then first = keys:sub(1, len); break end
+          end
+          local left = chars(head)
+          left = left[#left] or ""
+          if not is_cjk_text(left) then left = "" end
+          if first then db:update("q\t" .. left .. "\t" .. first, chars(cand.text)[1]) end
+        end
+        prefix = prefix .. (cand and cand.text or "")
+      end
+    end
     learn_corrections(c, text, now, picks)
     local words = words_of(text)
     if words then
@@ -765,6 +791,14 @@ local function complete_english(prefix)
   return best and { word = best.word, rank = 0 } or nil
 end
 
+-- The character the user picked for syllable keys right after a number that
+-- follows the character left ("" at the start), or nil.
+local function after_number(left, keys)
+  if not enabled or not db then return nil end
+  local v = db:fetch("q\t" .. left .. "\t" .. keys)
+  return (v and v ~= "") and v or nil
+end
+
 -- Has the user ever picked `text` for `keys`? (Such text is never treated
 -- as a typo by asus_typo.lua.)
 local function chosen(keys, text)
@@ -772,6 +806,7 @@ local function chosen(keys, text)
 end
 
 return { processor = processor, filter = filter, predict = predict, banned = banned, chosen = chosen,
+         after_number = after_number,
          accepted = accepted, english = english, complete_english = complete_english,
          syllables = syllables, is_email = is_email, learn_email = learn_email,
          emails_for = emails_for, forget_email = forget_email,

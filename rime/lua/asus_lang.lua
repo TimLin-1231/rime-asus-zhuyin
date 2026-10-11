@@ -363,19 +363,13 @@ local MEASURE = {
   ["1u04"] = "遍", ["fm0 "] = "圈", ["2j04"] = "段", ["504"] = "站", ["ek6"] = "格",
   ["x06"] = "欄", ["xjp6"] = "輪", ["rm6"] = "局", ["q06"] = "盤", ["zj4"] = "副",
   ["tj04"] = "串", ["zj6"] = "幅", ["5ji "] = "桌", ["eji "] = "鍋", ["ej04"] = "罐",
-  ["u4"] = "億", ["5l4"] = "兆", ["10 "] = "班",
+  ["u4"] = "億", ["5l4"] = "兆", ["10 "] = "班", ["5 "] = "隻",
 }
 local MEASURE2 = {
   ["ej/ xu3"] = "公里", ["ej/ rup "] = "公斤", ["ej/ zp "] = "公分", ["ej/ t3"] = "公尺",
   ["vul3g6"] = "小時", ["zp 5j/ "] = "分鐘", ["ek4m,4"] = "個月",
 }
-local DI, ZHANG = "2u4", "5; "
-local MEASURE_START = {}  -- first syllables of the two-syllable measure words
-for k in pairs(MEASURE2) do
-  for len = 2, 5 do
-    if zy.toned[k:sub(1, len)] then MEASURE_START[k:sub(1, len)] = true; break end
-  end
-end
+local DI = "2u4"
 
 -- Can one key of tok, changed to a neighbouring key, make it a syllable?
 local typo_memo = {}
@@ -813,17 +807,31 @@ local segmentor = {}
 -- be typing, so that input is left to the stock segmentors: the conversion
 -- may be poor, but the next key works.
 local GUARD_REWINDS, GUARD_SECONDS = 300, 1.0
+-- A loop slower than that would never reach the count before the second is
+-- over, so rewinds are also counted per key event: asus_shift.lua, the
+-- first processor, calls key_tick() for every key pressed, and no key needs
+-- GUARD_PER_KEY rewinds (moving the editing cursor, the most, takes a few).
+local GUARD_PER_KEY = 100
+local key_serial = 0  -- one Lua state per process, keys arrive one at a time
+
+local function key_tick()
+  key_serial = key_serial + 1
+end
 
 local function guard_tripped(env, input)
   local now = os.clock()  -- wall time on Windows (MSVC CRT)
   if env.guard_input ~= input or now - env.guard_since > GUARD_SECONDS then
-    env.guard_input, env.guard_since, env.guard_count, env.guard_off = input, now, 0, false
+    env.guard_input, env.guard_since, env.guard_count, env.guard_off = input, now, 0, env.guard_off
+        and env.guard_input == input
   end
+  if env.guard_key ~= key_serial then env.guard_key, env.guard_key_count = key_serial, 0 end
   env.guard_count = env.guard_count + 1
-  if env.guard_count > GUARD_REWINDS and not env.guard_off then
+  env.guard_key_count = env.guard_key_count + 1
+  if (env.guard_count > GUARD_REWINDS or env.guard_key_count > GUARD_PER_KEY) and not env.guard_off then
     env.guard_off = true
-    log.error(string.format("asus_lang.lua: segmentation of %d keys did not settle after %d rewinds;"
-      .. " using the stock segmentation for this input", #input, GUARD_REWINDS))
+    log.error(string.format("asus_lang.lua: segmentation of %d keys did not settle after %d rewinds"
+      .. " (%d for this key); using the stock segmentation for this input",
+      #input, env.guard_count, env.guard_key_count))
   end
   return env.guard_off
 end
@@ -834,6 +842,7 @@ function segmentor.init(env)
   env.shortcuts = require("asus_shortcuts").load(rime_api.get_user_data_dir() .. "/shortcuts.txt")
   env.debug = env.engine.schema.config:get_bool("asus_lang/debug") or false
   env.guard_input, env.guard_since, env.guard_count, env.guard_off = nil, 0, 0, false
+  env.guard_key, env.guard_key_count = -1, 0
 end
 
 function segmentor.func(segmentation, env)
@@ -1081,31 +1090,194 @@ local function number_at(comp, pos, before)
   return nil
 end
 
-local function measure_words(ctx, cand, keys)
-  local syl = require("asus_learn").syllables(keys)
-  local cs = chars(cand.text)
-  if not syl or #syl ~= #cs then return nil end
-  local changed = false
-  local num = number_at(ctx.composition, cand.start, true)
-  if num then
-    local two = #syl >= 2 and MEASURE2[syl[1] .. syl[2]]
-    if two then
-      local w = chars(two)
-      if cs[1] ~= w[1] or cs[2] ~= w[2] then cs[1], cs[2] = w[1], w[2]; changed = true end
-    else
-      local w = MEASURE[syl[1]]
-      local before = ctx.input:sub(1, num.start)
-      if before:sub(-#DI) == DI then  -- after 第 + number
-        if syl[1] == ZHANG then w = "章" elseif syl[1] == "ru6" then w = "集" end
+-- Chinese next to a number -----------------------------------------------------
+-- A number splits the input into segments, and librime converts each segment
+-- on its own, so the word right after a number has no left context
+-- (3 + ㄎㄜ: 科 or 顆? 第2 + ㄓㄤ: 張 or 章?). For a first syllable of the
+-- measure-word table, the first character is chosen again:
+--   1. The segment is converted once more behind what precedes the number,
+--      the number read as its numeral (住三晚, 考三科, 第二章寫完了,
+--      第二張照片), and the first character of that is the proposal.
+--   2. It must be one of the words at home after a number (MEASURE and
+--      MEASURE_ALSO: 元 圓 員, not 垣 from 三垣); else librime's own character
+--      if it is one; else the table's word (2 + ㄅㄟ: 杯, 18 + ㄙㄨㄟˋ: 歲).
+-- Nothing is forced beyond that table: 第2 + ㄓㄤ used to be 章 always
+-- (第2章照片) and ㄐㄧˊ after 第N always 集 (第2集警戒). Tried and dropped:
+-- taking the whole segment from the conversion with the numeral (共12人參加
+-- -> 人身家), and proposing for syllables outside the table (3比2 -> 3筆2).
+-- The result goes first and librime's own conversion stays second, one pick
+-- away; the learned corrections (asus_learn.lua, a later filter) still have
+-- the last word. Before a number only ㄉㄧˋ is touched: 第.
+local MEASURE_ALSO = {
+  -- only words that are measure words in their own right; spelling variants
+  -- (周 for 週, 圓 for 元) are not offered
+  ["5; "] = "章", ["ru6"] = "集", ["dk "] = "科棵", ["j03"] = "晚", ["1j4"] = "步", ["u,4"] = "夜",
+  ["qu/6"] = "坪", ["t/6"] = "乘", ["5 "] = "支枝",
+}
+-- Keys of the numeral a number is read as, for the language model: the
+-- digit itself (第一集 and 第三級 are not the same to it), 十 / 十N for longer
+-- numbers, 三 for anything else.
+local NUMERALS = { ["0"] = "xu/6", ["1"] = "u ", ["2"] = "-4", ["3"] = "n0 ", ["4"] = "n4",
+  ["5"] = "j3", ["6"] = "xu.4", ["7"] = "fu ", ["8"] = "18 ", ["9"] = "ru.3" }
+local function numeral(digits, ordinal)
+  -- 2 before a measure word is read 兩 (兩碗飯; 二晚飯 pulls towards 晚飯),
+  -- but 二 after 第.
+  if digits == "2" and not ordinal then return "xu;3", 1 end
+  if #digits == 1 and NUMERALS[digits] then return NUMERALS[digits], 1 end
+  local last = digits:match("^%d+(%d)$")
+  if last == "0" then return "g6", 1 end
+  if last then return "g6" .. NUMERALS[last], 2 end
+  return NUMERALS["3"], 1
+end
+local CONTEXT_SYLLABLES = 2
+local CACHE_MAX = 500
+
+-- Up to n syllables from the start (from_end: the end) of keys; the rest may
+-- be anything (an unfinished syllable while typing).
+local function some_syllables(keys, n, from_end)
+  local out = {}
+  if from_end then
+    local e = #keys
+    while e >= 1 and #out < n do
+      local found
+      for len = math.min(MAX_SYLLABLE, e), 1, -1 do
+        if zy.toned[keys:sub(e - len + 1, e)] then found = len; break end
       end
-      if w and cs[1] ~= w then cs[1] = w; changed = true end
+      if not found then break end
+      table.insert(out, 1, keys:sub(e - found + 1, e))
+      e = e - found
+    end
+  else
+    local pos = 1
+    while pos <= #keys and #out < n do
+      local found
+      for len = math.min(MAX_SYLLABLE, #keys - pos + 1), 1, -1 do
+        if zy.toned[keys:sub(pos, pos + len - 1)] then found = len; break end
+      end
+      if not found then break end
+      out[#out + 1] = keys:sub(pos, pos + found - 1)
+      pos = pos + found
     end
   end
-  if syl[#syl] == DI and cs[#cs] ~= "第" and number_at(ctx.composition, cand._end, false) then
-    cs[#cs] = "第"
-    changed = true
+  return out
+end
+
+-- Keys of the plain Chinese segment ending (before = true) or starting at
+-- pos, and the last character it shows.
+local function chinese_at(ctx, pos, before)
+  local ok, segs = pcall(function() return ctx.composition:toSegmentation():get_segments() end)
+  for _, s in ipairs(ok and segs or {}) do
+    if s._end > s.start and (before and s._end or s.start) == pos then
+      if s:has_tag("asus_num") or s:has_tag("asus_en") or s:has_tag("asus_stray") or not s:has_tag("abc") then
+        return nil
+      end
+      local cand = s:get_selected_candidate()
+      local cs = cand and chars(cand.text) or {}
+      return ctx.input:sub(s.start + 1, s._end), cs[#cs]
+    end
+  end
+  return nil
+end
+
+local function convert(env, keys)
+  local hit = env.conv[keys]
+  if hit ~= nil then return hit or nil end
+  local text = false
+  local seg = Segment(0, #keys)
+  seg.tags = Set({ "abc" })
+  local t = env.tr:query(keys, seg)
+  if t then
+    for c in t:iter() do
+      if c._end == #keys then text = c.text end
+      break
+    end
+  end
+  if env.conv_n >= CACHE_MAX then env.conv, env.conv_n = {}, 0 end
+  env.conv[keys] = text
+  env.conv_n = env.conv_n + 1
+  return text or nil
+end
+
+-- cand's text with the character next to a number chosen again (see
+-- above), or nil when there is no number there or nothing changes.
+local function with_number_context(env, ctx, cand, keys)
+  local comp = ctx.composition
+  local cs = chars(cand.text)
+  local changed = false
+  local before = number_at(comp, cand.start, true)
+  local first = before and some_syllables(keys, 2, false) or {}
+  if #first > 0 and #cs >= 1 then
+    local two = #first == 2 and #cs >= 2 and MEASURE2[first[1] .. first[2]]
+    if two then
+      local w = chars(two)
+      if cs[1] ~= w[1] or cs[2] ~= w[2] then cs[1], cs[2], changed = w[1], w[2], true end
+    else
+      -- Only syllables of the table: elsewhere the stand-in numeral pulls
+      -- towards measure words that are not meant (3比2 -> 3筆2).
+      local word = MEASURE[first[1]]
+      local prev, left = chinese_at(ctx, before.start, true)
+      -- What the user picked here before goes first (asus_learn.lua).
+      local learned = learn.after_number(left or "", first[1])
+      if learned then
+        if learned ~= cs[1] then cs[1], changed = learned, true end
+      elseif word then
+        local pick
+        if env.tr then
+          local tail = prev and some_syllables(prev, CONTEXT_SYLLABLES, true) or {}
+          local num, n = numeral(ctx.input:sub(before.start + 1, before._end), left == "第")
+          local text = convert(env, table.concat(tail) .. num .. keys)
+          -- one character per finished syllable in front
+          if text and utf8.len(text) == #tail + n + #cs then pick = chars(text)[#tail + n + 1] end
+        end
+        local at_home = word .. (MEASURE_ALSO[first[1]] or "")
+        if not (pick and at_home:find(pick, 1, true)) then
+          pick = at_home:find(cs[1], 1, true) and cs[1] or word
+        end
+        if pick ~= cs[1] then cs[1], changed = pick, true end
+      end
+    end
+  end
+  if keys:sub(-#DI) == DI and cs[#cs] ~= "第" and #cs >= 1 and number_at(comp, cand._end, false)
+      and zy.toned[DI] and (#keys == #DI or TONE_KEYS[keys:sub(-#DI - 1, -#DI - 1)]) then
+    cs[#cs], changed = "第", true
   end
   return changed and table.concat(cs) or nil
+end
+
+local context = {}
+
+function context.init(env)
+  local ok, tr = pcall(function()
+    return Component.Translator(env.engine, "", "script_translator@translator")
+  end)
+  env.tr = ok and tr or nil
+  env.conv, env.conv_n = {}, 0
+  local on = env.engine.schema.config:get_bool("asus_lang/number_context")
+  env.enabled = (on == nil) or on
+  -- Commits change Rime's user dictionary: convert afresh.
+  env.conn = env.engine.context.commit_notifier:connect(function() env.conv, env.conv_n = {}, 0 end)
+end
+
+function context.fini(env)
+  if env.conn then env.conn:disconnect() end
+end
+
+function context.func(input, env)
+  local ctx = env.engine.context
+  local first = true
+  for cand in input:iter() do
+    if first then
+      first = false
+      local better
+      if env.enabled and (cand.type == "sentence" or cand.type == "phrase" or cand.type == "user_phrase") then
+        better = with_number_context(env, ctx, cand, ctx.input:sub(cand.start + 1, cand._end))
+      end
+      if better then yield(ShadowCandidate(cand, cand.type, better, cand.comment)) end
+      yield(cand)
+    else
+      yield(cand)
+    end
+  end
 end
 
 local function digits(input, env)
@@ -1116,12 +1288,7 @@ local function digits(input, env)
     if n == 1 then
       local keys = ctx.input:sub(cand.start + 1, cand._end)
       local plain = keys:match("^%d+%.?%d*$") and keys:match("%d$")
-      local fixed = cand.type ~= "number" and measure_words(ctx, cand, keys)
-      if fixed then
-        yield(ShadowCandidate(cand, cand.type, fixed, cand.comment))
-      else
-        yield(cand)
-      end
+      yield(cand)
       if plain then
         if cand.type == "number" then
           fw = true
@@ -1145,5 +1312,7 @@ local function digits(input, env)
 end
 
 return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
+         context = context,
          first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
+         key_tick = key_tick,
          complete_english = complete_english }

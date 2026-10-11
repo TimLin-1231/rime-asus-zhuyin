@@ -22,13 +22,14 @@ schema:
 
 engine:
   processors:
+    - lua_processor@*asus_shift  # double-tap Shift; must see every key, so first
     - lua_processor@*asus_learn*processor  # Shift/Ctrl+Delete forgets; learns on commit
     - lua_processor@*asus_english*processor  # English mode: words with guesses
     - lua_processor@*asus_email*processor  # Tab types a remembered email address
     - lua_processor@*asus_predict*processor  # next-word prediction, Tab autocomplete
     - lua_processor@*asus_symbols*processor  # ` symbol keyboard, Ctrl+punctuation
     - lua_processor@*asus_edit*processor  # Left/Right cursor, Down at cursor, edit inside
-    - lua_processor@*asus_keys  # double-Shift / Ctrl+Space, compact menu keys
+    - lua_processor@*asus_keys  # Ctrl+Space, compact menu keys, Space / BackSpace
     - ascii_composer
     - recognizer
     - key_binder
@@ -58,6 +59,7 @@ engine:
     - simplifier@zh_hant_tw
     - uniquifier
     - lua_filter@*asus_typo*filter  # a key typed one key off (ㄈ->ㄌ), by sentence weight
+    - lua_filter@*asus_lang*context  # Chinese next to a number, converted with it as context
     - lua_filter@*asus_tw  # Taiwan spellings: 宕機 -> 當機, 坐標 -> 座標
     - lua_filter@*asus_grammar  # 的/得/地, 在/再 context rules
     - lua_filter@*asus_learn*filter  # learned corrections (after the rules)
