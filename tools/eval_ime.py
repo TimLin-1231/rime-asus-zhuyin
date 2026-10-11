@@ -340,6 +340,8 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
                 continue
             ng += 1
             guesses = [c for c in r["page"] if c != k and c.isascii() and c.strip()]
+            if name.startswith("english_ctx"):  # united + sta: States is right too
+                guesses = [c.lower() for c in guesses]
             g1 += guesses[:1] == [t]
             g3 += t in guesses[:3]
         m = {"n": n, "Guess1": g1 / max(ng, 1), "Guess3": g3 / max(ng, 1),

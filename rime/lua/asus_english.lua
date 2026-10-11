@@ -100,7 +100,7 @@ function processor.func(key, env)
   end
   if plain and code == XK_Tab and key.modifier == 0 then
     local seg = ctx.composition:back()
-    local word = seg and require("asus_lang").first_guess(ctx.input)
+    local word = seg and require("asus_lang").first_guess(ctx.input, ctx)
     if word then
       for i = 0, 8 do
         local c = seg:get_candidate_at(i)

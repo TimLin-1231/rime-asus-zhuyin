@@ -178,7 +178,7 @@ function processor.func(key, env)
       -- ("pyth" + Tab -> python, "recieve" + Tab -> receive).
       if last and last:has_tag("asus_en") then
         local typed = ctx.input:sub(last.start + 1, last._end)
-        local word = require("asus_lang").first_guess(typed)
+        local word = require("asus_lang").first_guess(typed, ctx)
         if word then
           for i = 0, 8 do
             local c = last:get_candidate_at(i)

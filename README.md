@@ -21,7 +21,8 @@
 | `tools/eval_ime.py` | 量化評估（整句正確率、字正確率、個人詞 Top1／Top9、每鍵延遲） |
 | `tools/eval_learn.py` | 學習評估：模擬一位使用者連續打字、改字，量測學到的東西有沒有用、有沒有改壞 |
 | `tools/make_eval_set.py` | 從 `tests/eval/sentences.txt` 產生評估用的按鍵序列（採台灣教育部讀音） |
-| `tools/fetch_models.py` | 下載語言模型 `.gram`（不進 git） |
+| `tools/fetch_models.py` | 下載語言模型 `.gram` 和英文詞頻表（不進 git） |
+| `tools/tsf_test.py` | 在真的記事本裡自動打字、切視窗，檢查沒送出的字有沒有保留 |
 | `tests/test_stage1.py` | 階段 1 的行為測試 |
 | `reports/eval_history.jsonl` | 歷次評估結果 |
 | `backups/` | 改動前的完整備份（不進 git） |
@@ -171,6 +172,11 @@
   它是用開發集 A/B 評估選出來的，`rime/grammar.yaml` 裡有改回舊模型的方法。
 - **英文猜字**：`rime/opencc/asus_en_prefix.*`（每個開頭最多 5 個補完）和 `asus_en_fix.*`（前 40,000 個常用字的拼字更正，差一個字母：多、少、錯、前後顛倒），由 `build_lang_data.py` 產生。小狼毫啟動後第一次打字時多花約 0.7 秒載入，只發生一次。
 - **英文詞彙**：來自舊小狼毫的 `easy_en` 詞頻表，加上 `lexicon/english_words.txt`（你自己的英文專有名詞，一行一個）。
+- **英文猜字的排序**（階段 13）：
+  - 詞頻改用兩個來源的幾何平均：`easy_en` 加上 [SymSpell](https://github.com/wolfgarbe/SymSpell) 的詞頻表（MIT 授權，資料來自 Google Books Ngram 與 SCOWL，放在 `third_party/symspell/`，由 `fetch_models.py` 下載）。只靠 `easy_en` 時 neurone 排在 neural 前面、optimise 在 optimize 前面、occurred 完全沒有頻率；只靠 SymSpell 時 classifieds 排在 classification 前面、沒有 dataset。
+  - **看前一個英文字**：`rime/opencc/asus_en_follow.*` 記每個英文字後面最常接的 40 個字（SymSpell 的詞對資料）。打完 `machine` 再打 `lea`，第一個猜的是 learning；打完 `new` 再打 `yor` 會被認成英文並猜 York。前一個字是中文或標點時不套用。
+  - 「這串按鍵算不算英文」仍然只看 `easy_en` 的詞頻，所以中英混打的判斷不受影響（一開始沒分開，「幫我check一下」的 check 被吃成 checku）。
+  - 評估（開發集／保留測試集，第一個就猜對）：單字 75% ／ 65% → 87.5% ／ 65%；有前一個字 50% ／ 33.3% → 70% ／ 70%。前三個內猜對：單字 90% ／ 77.5% → 95% ／ 80%；有前一個字 56.7% ／ 73.3% → 83.3% ／ 93.3%。單字的保留測試集第一名沒有進步：沒有前文時 experi 是 experience 還是 experiment 本來就猜不準。
   修改後執行 `python tools/build_lang_data.py`，再重新部署。
   詞表放在 OpenCC 字典裡（`rime/opencc/asus_en.*`），不放在 Lua 記憶體，否則每次按鍵會慢約 40 ms。
 
@@ -245,6 +251,7 @@ C:\Users\User\anaconda3\python.exe tests\test_stage9.py
 C:\Users\User\anaconda3\python.exe tests\test_stage10.py
 C:\Users\User\anaconda3\python.exe tests\test_stage11.py
 C:\Users\User\anaconda3\python.exe tests\test_stage12.py
+C:\Users\User\anaconda3\python.exe tests\test_stage13.py
 C:\Users\User\anaconda3\python.exe tests\test_backup.py
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"

@@ -119,6 +119,32 @@ local prefix_memo, prefix_memo_input = {}, nil
 local fix_cc
 local fix_memo, guess_memo = {}, {}
 
+-- The words that most often follow an English word (opencc/asus_en_follow),
+-- and the previous English word: the last one committed (asus_keys.lua keeps
+-- it in the property asus_en_prev). After "machine", lea is learning.
+local follow_cc
+local prev_word = ""
+local follow_memo = {}
+local function followers()
+  if prev_word == "" or not follow_cc then return nil end
+  local hit = follow_memo[prev_word]
+  if hit == nil then
+    hit = follow_cc:convert_word(prev_word) or false
+    follow_memo = { [prev_word] = hit }
+  end
+  return hit or nil
+end
+local function set_previous(ctx)
+  prev_word = ctx:get_property("asus_en_prev") or ""
+end
+-- Do the keys start a word that often follows the previous English word?
+local function follows_previous(tok)
+  for _, w in ipairs(followers() or {}) do
+    if #w > #tok and w:sub(1, #tok):lower() == tok then return true end
+  end
+  return false
+end
+
 local function load_english()
   if english_cc == nil then
     local ok, cc = pcall(Opencc, "asus_en.json")
@@ -131,6 +157,10 @@ local function load_english()
   if fix_cc == nil then  -- spelling correction (opencc/asus_en_fix.json)
     local ok, cc = pcall(Opencc, "asus_en_fix.json")
     fix_cc = ok and cc or false
+  end
+  if follow_cc == nil then  -- words that follow a word (opencc/asus_en_follow.json)
+    local ok, cc = pcall(Opencc, "asus_en_follow.json")
+    follow_cc = ok and cc or false
   end
 end
 
@@ -145,6 +175,19 @@ local function english_prefix(key)
   if value then
     local rank, word = value:match("^(%d+):(.+)$")
     if rank then entry = { word = word, rank = tonumber(rank) } end
+    -- The ranks of this table order the suggestions. How readily the keys
+    -- are taken for an unfinished English word goes by the lexicon's ranks,
+    -- as words themselves do: the best one among the completions listed.
+    if entry and english_cc then
+      local best
+      for _, form in ipairs(forms) do
+        local w = form:match("^%d+:(.+)$")
+        local lex = w and english_cc:convert_word(w:lower())
+        local r = lex and lex[1] and tonumber(lex[1]:match("^(%d+):"))
+        if r and (not best or r < best) then best = r end
+      end
+      entry.rank = best or entry.rank
+    end
   end
   prefix_memo[key] = entry
   return entry or nil
@@ -281,18 +324,19 @@ end
 
 local GUESS_MAX = 8
 local COMMON = 20000   -- a completion this common goes before corrections
-local C_FIX_SCORE = 2.5  -- a correction ranks as if 10^2.5 times rarer per edit
+local C_FIX_SCORE = 1.5  -- a correction ranks as if 10^1.5 times rarer per edit (2.5: untill -> untilled before until)
 -- Words to suggest for typed English key (lower case): completions of an
 -- unfinished word and corrections of a misspelt one, best first.
 local function guesses(key, entry)
-  local hit = guess_memo[key]
+  local memo_key = prev_word .. " " .. key
+  local hit = guess_memo[memo_key]
   if hit then return hit end
   -- Remembered email addresses starting with what was typed come first.
   -- (asus_email.match: the same shortest prefix, asus_email/min_prefix, as
   -- the Tab hint in the bubble.)
   local mails = require("asus_email").match(key, 3)
   if key:find("@", 1, true) or key:find("%.%a+$") then
-    guess_memo[key] = mails
+    guess_memo[memo_key] = mails
     return mails
   end
   if key:find("'", 1, true) then
@@ -304,7 +348,7 @@ local function guesses(key, entry)
     table.sort(out, function(a, b) return #a < #b or (#a == #b and a < b) end)
     if key:match("^%a+'$") and english(key:sub(1, -2)) and #out == 0 then out[1] = key .. "s" end
     while #out > GUESS_MAX do table.remove(out) end
-    guess_memo[key] = out
+    guess_memo[memo_key] = out
     return out
   end
   local comps = completions(key)
@@ -329,6 +373,28 @@ local function guesses(key, entry)
   if CONTRACTION_OF[key] then  -- dont -> don't
     out[#out + 1] = contraction_form(CONTRACTION_OF[key])
   end
+  -- What usually follows the previous word goes first: its followers that
+  -- start with what was typed (most frequent pair first), then guesses
+  -- that are followers at all (a misspelt one among them).
+  local follow = followers()
+  if follow then
+    local is_follower = {}
+    for _, w in ipairs(follow) do
+      local lw = w:lower()
+      is_follower[lw] = true
+      if #lw > #key and lw:sub(1, #key) == key and not seen[lw] and #out < GUESS_MAX then
+        seen[lw] = true
+        out[#out + 1] = w
+      end
+    end
+    for _, e in ipairs(list) do
+      local lw = e.word:lower()
+      if is_follower[lw] and not seen[lw] and #out < GUESS_MAX then
+        seen[lw] = true
+        out[#out + 1] = e.word
+      end
+    end
+  end
   for _, e in ipairs(list) do
     local lw = e.word:lower()
     if not seen[lw] then
@@ -337,7 +403,7 @@ local function guesses(key, entry)
       if #out >= GUESS_MAX then break end
     end
   end
-  guess_memo[key] = out
+  guess_memo[memo_key] = out
   return out
 end
 
@@ -456,7 +522,10 @@ local function word_cost(tok, en_ctx, at_end)
   if not best and #tok >= C_FIX_MIN_LEN and tok:match("^%l+$") and not zhuyin_like(tok) then
     local fix = corrections(tok)[1]
     if fix and fix.dist == 1 then
-      best = base + C_EN_RANK * math.log(fix.rank + 1, 10) + C_EN_FIX
+      -- (The lexicon's rank, as for any word: the correction table's ranks
+      -- only order the suggestions.)
+      local lex = english(fix.word:lower())
+      best = base + C_EN_RANK * math.log((lex and lex.rank or fix.rank) + 1, 10) + C_EN_FIX
     end
   end
   -- Capitalised tokens (GPU, GPT4, DE-LSTM) are English even if unknown.
@@ -611,6 +680,11 @@ local function plan_run(run, en_ctx, final)
               cost = (en_ctx and C_EN_BASE_CTX or C_EN_BASE)
                 + C_EN_RANK * math.log(p.rank + 1, 10) + C_EN_PREFIX
             end
+          end
+          -- Right after an English word, the start of a word that usually
+          -- follows it (new + yor, open + sou) is English whatever its rank.
+          if j == n and en_ctx and #tok >= 3 and tok:match("^%l+$") and follows_previous(tok) then
+            cost = math.min(cost or math.huge, C_EN_BASE_CTX + C_EN_PREFIX)
           end
           relax(i, from, j, "en", cost, "en")
         end
@@ -770,7 +844,7 @@ end
 
 -- Plan for input[floor:], cached; positions are 0-based [start, end) in input.
 local function plan_input(env, input, floor, en_ctx, final)
-  local cache_key = (en_ctx and "e" or "z") .. (final and "f" or "") .. floor .. ":" .. input
+  local cache_key = (en_ctx and ("e" .. prev_word) or "z") .. (final and "f" or "") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
   if memo_input ~= input then memo, memo_input = {}, input end
   if prefix_memo_input ~= input then
@@ -933,6 +1007,7 @@ function segmentor.func(segmentation, env)
   local start = segmentation:get_current_start_position()
   local ctx = env.engine.context
   local en_ctx = ctx:get_property("asus_en_ctx") == "1"
+  set_previous(ctx)
   if env.guard_off and env.guard_input == input then return true end  -- see guard_tripped
   local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx,
                            ctx:get_property("asus_final") == input)
@@ -1082,6 +1157,7 @@ function translator.func(input, seg, env)
     yield(c)
   end
   if entry and entry.word ~= shown then more(entry.word, "") end
+  set_previous(env.engine.context)
   for i, word in ipairs(guesses(input:lower(), entry)) do
     -- Keep the typed capitalisation: Pyth -> Python.
     if input:match("^%u") and not word:match("%u") then word = word:sub(1, 1):upper() .. word:sub(2) end
@@ -1091,8 +1167,9 @@ end
 
 -- Remainder that completes the typed English prefix ("pyth" -> "on"), or nil.
 -- First guess for the typed English word, or nil (what Tab takes).
-local function first_guess(typed)
+local function first_guess(typed, ctx)
   load_english()
+  if ctx then set_previous(ctx) end
   local key = typed:lower()
   local word = guesses(key, english(key))[1]
   if word and typed:match("^%u") and not word:match("%u") then

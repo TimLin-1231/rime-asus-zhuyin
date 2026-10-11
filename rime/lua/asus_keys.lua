@@ -77,6 +77,8 @@ local function init(env)
     -- English context for asus_lang.lua: was the last commit English?
     local text = c:get_commit_text() or ""
     c:set_property("asus_en_ctx", text:match("[%a%d][%p]*$") and "1" or "0")
+    -- ...and its last word, for the suggestions (what usually follows it).
+    c:set_property("asus_en_prev", (text:match("(%a[%a']*)%p*$") or ""):lower())
     c:set_property("asus_final", "")
   end)
   env.update_conn = ctx.update_notifier:connect(function(c)

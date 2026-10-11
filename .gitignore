@@ -60,3 +60,5 @@ rime/opencc/asus_tw.json
 rime/opencc/*.ocd2
 rime/opencc/asus_en_fix.txt
 rime/opencc/asus_en_fix.json
+rime/opencc/asus_en_follow.txt
+rime/opencc/asus_en_follow.json
