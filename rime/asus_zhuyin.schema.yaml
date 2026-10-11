@@ -58,6 +58,7 @@ engine:
     - simplifier@zh_hans
     - simplifier@zh_hant_tw
     - uniquifier
+    - lua_filter@*asus_lang*numbers  # 5 + ㄨㄢˋ: 5萬 or 賺? (before the typo filter)
     - lua_filter@*asus_typo*filter  # a key typed one key off (ㄈ->ㄌ), by sentence weight
     - lua_filter@*asus_lang*context  # Chinese next to a number, converted with it as context
     - lua_filter@*asus_tw  # Taiwan spellings: 宕機 -> 當機, 坐標 -> 座標

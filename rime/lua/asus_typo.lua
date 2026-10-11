@@ -23,6 +23,7 @@
 -- asus_typo/enabled: false turns it off.
 
 local zy = require("asus_zhuyin_data")
+local NUMBER_MARK = "數字"  -- asus_lang.lua (which requires this module, so not the other way round)
 
 local ROWS = { "1234567890-", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./" }
 local TONE = { [" "] = true, ["6"] = true, ["3"] = true, ["4"] = true, ["7"] = true }
@@ -156,6 +157,8 @@ local function init(env)
     env.tr = ok and tr or nil
   end
   env.cache, env.words, env.cached = {}, {}, 0
+  local ok_tw, tw = pcall(Opencc, "t2tw.json")
+  env.tw = ok_tw and tw or nil
   -- Commits change Rime's user dictionary (and so the weights): start over.
   env.conn = env.engine.context.commit_notifier:connect(function()
     env.cache, env.words, env.cached = {}, {}, 0
@@ -377,7 +380,14 @@ local function func(input, env)
     if first then
       first = false
       local keys = ctx.input:sub(cand.start + 1, cand._end)
-      local fixed = (cand.type == "sentence" or cand.type == "phrase" or cand.type == "user_phrase")
+      -- ("simplified": the same, after OpenCC changed a character to its
+      -- Taiwan form, 爲 -> 為. Leaving those out skipped every sentence with
+      -- 為 裡 著 麵... in it.)
+      -- (Not a candidate in which asus_lang.lua read digit keys as digits:
+      -- 2萬元 is not 段元 with a slip in it.)
+      local fixed = (cand.type == "sentence" or cand.type == "phrase" or cand.type == "user_phrase"
+                     or cand.type == "simplified")
+          and cand.comment ~= NUMBER_MARK
           and corrected(env, keys, cand.text)
       local text
       if fixed then
@@ -390,6 +400,9 @@ local function func(input, env)
             break
           end
         end
+        -- The text comes straight from the translator: Taiwan forms as
+        -- the simplifier would have given it.
+        if text and env.tw and ctx:get_option("zh_hant_tw") then text = env.tw:convert(text) end
       end
       if text and text ~= cand.text then
         yield(Candidate("typo", cand.start, cand._end, text, "更正"))

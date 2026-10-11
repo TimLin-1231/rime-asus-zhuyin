@@ -288,7 +288,9 @@ local function guesses(key, entry)
   local hit = guess_memo[key]
   if hit then return hit end
   -- Remembered email addresses starting with what was typed come first.
-  local mails = (#key >= 3) and learn.emails_for(key, 3) or {}
+  -- (asus_email.match: the same shortest prefix, asus_email/min_prefix, as
+  -- the Tab hint in the bubble.)
+  local mails = require("asus_email").match(key, 3)
   if key:find("@", 1, true) or key:find("%.%a+$") then
     guess_memo[key] = mails
     return mails
@@ -684,6 +686,82 @@ local function plan_run(run, en_ctx, final)
     if t.kind == "fix" then last.fixes[#last.fixes + 1] = { i = t.i, j = t.j } end
   end
   return merged, special, cost
+end
+
+-- Keys of the numeral a number is read as, for the language model: the
+-- digit itself (第一集 and 第三級 are not the same to it), 十 / 十N for longer
+-- numbers, 三 for anything else.
+local NUMERALS = { ["0"] = "xu/6", ["1"] = "u ", ["2"] = "-4", ["3"] = "n0 ", ["4"] = "n4",
+  ["5"] = "j3", ["6"] = "xu.4", ["7"] = "fu ", ["8"] = "18 ", ["9"] = "ru.3" }
+local function numeral(digits, ordinal)
+  -- 2 before a measure word is read 兩 (兩碗飯; 二晚飯 pulls towards 晚飯),
+  -- but 二 after 第.
+  if digits == "2" and not ordinal then return "xu;3", 1 end
+  if #digits == 1 and NUMERALS[digits] then return NUMERALS[digits], 1 end
+  local last = digits:match("^%d+(%d)$")
+  if last == "0" then return "g6", 1 end
+  if last then return "g6" .. NUMERALS[last], 2 end
+  return NUMERALS["3"], 1
+end
+
+-- A digit or a Zhuyin initial? -------------------------------------------------
+-- The keys 1 2 5 are ㄅ ㄉ ㄓ as well, so a digit right before a syllable that
+-- starts with a vowel spells another syllable: 5 + ㄨㄢˋ (5萬) is ㄓㄨㄢˋ (賺),
+-- 2 + ㄨㄟˋ (2位) is ㄉㄨㄟˋ (對), 1 + ㄧˋ (1億) is ㄅㄧˋ (必). The costs above
+-- always read such keys as Chinese (a syllable costs nothing), which got
+-- every 5萬 / 2位 / 12萬 wrong. Keys cannot tell the two apart; the language
+-- model can: both readings are converted with two syllables of context on
+-- each side, the number read as its numeral (只要賺就好 against 只要五萬就好,
+-- 一段 against 一萬 after a 1), and the number reading is taken when its weight is
+-- higher by NUM_NEW_MEASURE (a number where there was none, before a measure
+-- word of the table: 萬 位 碗 億; it also has to make up for being one
+-- syllable longer) or by NUM_LONGER (a number that grows by a digit: 1 + 段
+-- -> 12 + 萬). A new number before any other word (NUM_NEW) is off: nothing
+-- in the eval sets needs it, and at 5 it showed 早餐店的2按 for a moment
+-- while 蛋餅 was being typed.
+-- This is decided on the converted candidate (filter `context` below), not
+-- in the plan: the number reading goes first and the Chinese one stays
+-- second, one pick away, as with every other automatic replacement.
+local NUM_NEW, NUM_NEW_MEASURE, NUM_LONGER = math.huge, 0.5, 0
+local NUM_NEW_START = 10  -- a new number as the very first thing typed
+local NUMBER_MARK = "數字"  -- comment of a candidate with digit keys read as digits
+
+-- Finished syllables from the start of keys (greedy), and how many keys they
+-- take; what follows may be an unfinished syllable.
+local function head_syllables(keys)
+  local out, pos = {}, 1
+  while pos <= #keys do
+    local found
+    for len = math.min(MAX_SYLLABLE, #keys - pos + 1), 1, -1 do
+      if zy.toned[keys:sub(pos, pos + len - 1)] then found = len; break end
+    end
+    if not found then break end
+    out[#out + 1] = keys:sub(pos, pos + found - 1)
+    pos = pos + found
+  end
+  return out, pos - 1
+end
+
+local function lm_weight(env, keys)
+  local w = env.lm[keys]
+  if w ~= nil then return w or nil end
+  w = false
+  local seg = Segment(0, #keys)
+  seg.tags = Set({ "abc" })
+  local t = env.tr:query(keys, seg)
+  if t then
+    for c in t:iter() do
+      if c._end == #keys then
+        local ok, ph = pcall(function() return c:get_genuine():to_phrase() end)
+        if ok and ph then w = ph.weight end
+      end
+      break
+    end
+  end
+  if env.lm_n >= 2000 then env.lm, env.lm_n = {}, 0 end
+  env.lm[keys] = w
+  env.lm_n = env.lm_n + 1
+  return w or nil
 end
 
 -- Plan for input[floor:], cached; positions are 0-based [start, end) in input.
@@ -1114,21 +1192,6 @@ local MEASURE_ALSO = {
   ["5; "] = "章", ["ru6"] = "集", ["dk "] = "科棵", ["j03"] = "晚", ["1j4"] = "步", ["u,4"] = "夜",
   ["qu/6"] = "坪", ["t/6"] = "乘", ["5 "] = "支枝",
 }
--- Keys of the numeral a number is read as, for the language model: the
--- digit itself (第一集 and 第三級 are not the same to it), 十 / 十N for longer
--- numbers, 三 for anything else.
-local NUMERALS = { ["0"] = "xu/6", ["1"] = "u ", ["2"] = "-4", ["3"] = "n0 ", ["4"] = "n4",
-  ["5"] = "j3", ["6"] = "xu.4", ["7"] = "fu ", ["8"] = "18 ", ["9"] = "ru.3" }
-local function numeral(digits, ordinal)
-  -- 2 before a measure word is read 兩 (兩碗飯; 二晚飯 pulls towards 晚飯),
-  -- but 二 after 第.
-  if digits == "2" and not ordinal then return "xu;3", 1 end
-  if #digits == 1 and NUMERALS[digits] then return NUMERALS[digits], 1 end
-  local last = digits:match("^%d+(%d)$")
-  if last == "0" then return "g6", 1 end
-  if last then return "g6" .. NUMERALS[last], 2 end
-  return NUMERALS["3"], 1
-end
 local CONTEXT_SYLLABLES = 2
 local CACHE_MAX = 500
 
@@ -1192,6 +1255,7 @@ local function convert(env, keys)
       break
     end
   end
+  if text and env.tw then text = env.tw:convert(text) end  -- Taiwan forms, as the simplifier gives
   if env.conv_n >= CACHE_MAX then env.conv, env.conv_n = {}, 0 end
   env.conv[keys] = text
   env.conv_n = env.conv_n + 1
@@ -1244,7 +1308,80 @@ local function with_number_context(env, ctx, cand, keys)
   return changed and table.concat(cs) or nil
 end
 
+-- cand's text with digit keys read as digits where the language model says
+-- so (see "A digit or a Zhuyin initial?"), or nil.
+local function number_reading(env, ctx, cand, keys)
+  if not env.tr or not env.num_lm then return nil end
+  local syl, used = head_syllables(keys)
+  if #syl == 0 then return nil end
+  local prev_num = number_at(ctx.composition, cand.start, true)
+  local turned, any = {}, false
+  for q, sy in ipairs(syl) do
+    local c, rest = sy:sub(1, 1), sy:sub(2)
+    if c:match("%d") and zy.toned[rest] and not turned[q - 1] then
+      -- the number in front, when this is the first syllable after one
+      local number = (q == 1 and prev_num) and ctx.input:sub(prev_num.start + 1, prev_num._end) or ""
+      local left = {}
+      if q > 1 then
+        for k = math.max(1, q - 2), q - 1 do left[#left + 1] = syl[k] end
+      elseif number ~= "" then
+        local before = chinese_at(ctx, prev_num.start, true)
+        left = before and some_syllables(before, CONTEXT_SYLLABLES, true) or {}
+      end
+      local ordinal = left[#left] == DI
+      local l, r = table.concat(left), table.concat(syl, "", q + 1, math.min(#syl, q + 2))
+      -- A number that grows is read as the same numeral both times, so that
+      -- the two readings have as many syllables (一段 / 一萬).
+      local n_is = number ~= "" and numeral(number, ordinal) or ""
+      local n_num = number ~= "" and n_is or numeral(c, ordinal)
+      local as_is = lm_weight(env, l .. n_is .. sy .. r)
+      local as_num = lm_weight(env, l .. n_num .. rest .. r)
+      local need = (number ~= "") and NUM_LONGER or MEASURE[rest] and NUM_NEW_MEASURE or NUM_NEW
+      -- At the very start there is nothing on the left to go by, and 兩位...
+      -- is a common way to begin (a personal word starting with 對 became
+      -- 2位 at a gain of 8).
+      if number == "" and #left == 0 and cand.start == 0 then need = math.max(need, NUM_NEW_START) end
+      -- ...and never right before another number (賺25萬 is not 5萬25萬).
+      local before_number = q == #syl and used == #keys and number_at(ctx.composition, cand._end, false)
+      if env.debug and as_is and as_num then
+        log.info(string.format("asus_lang digit %s|%s gain=%.2f %s keys=%s", number, sy, as_num - as_is,
+          number ~= "" and "longer" or MEASURE[rest] and "measure" or "new", keys))
+      end
+      if as_num and as_is and not before_number and as_num > as_is + need then
+        turned[q], any = true, true
+      end
+    end
+  end
+  if not any then return nil end
+  -- Convert with the digits as numerals, then put the digits back.
+  local parts = {}
+  for q, sy in ipairs(syl) do
+    parts[#parts + 1] = turned[q] and (numeral(sy:sub(1, 1), syl[q - 1] == DI) .. sy:sub(2)) or sy
+  end
+  local text = convert(env, table.concat(parts) .. keys:sub(used + 1))
+  local cs = text and chars(text) or {}
+  local n = 0
+  for q in pairs(turned) do n = n + 1 end
+  if #cs < #syl + n then return nil end
+  local i = 0
+  for q, sy in ipairs(syl) do
+    i = i + 1
+    if turned[q] then
+      cs[i] = sy:sub(1, 1)
+      i = i + 1
+      -- the word after it: one that is at home after a number
+      local word = MEASURE[sy:sub(2)]
+      if word and not (word .. (MEASURE_ALSO[sy:sub(2)] or "")):find(cs[i], 1, true) then cs[i] = word end
+    end
+  end
+  return table.concat(cs)
+end
+
 local context = {}
+-- Digit keys read as digits (number_reading): its own filter, before
+-- asus_typo's, which would otherwise "correct" 段元 to 隊員 first. The
+-- candidate is marked NUMBER_MARK; asus_typo.lua leaves marked ones alone.
+local numbers = {}
 
 function context.init(env)
   local ok, tr = pcall(function()
@@ -1252,10 +1389,22 @@ function context.init(env)
   end)
   env.tr = ok and tr or nil
   env.conv, env.conv_n = {}, 0
-  local on = env.engine.schema.config:get_bool("asus_lang/number_context")
+  local ok_tw, tw = pcall(Opencc, "t2tw.json")
+  env.tw = ok_tw and tw or nil
+  local config = env.engine.schema.config
+  local on = config:get_bool("asus_lang/number_context")
   env.enabled = (on == nil) or on
+  on = config:get_bool("asus_lang/number_lm")
+  env.num_lm = (on == nil) or on
+  NUM_NEW = tonumber(config:get_string("asus_lang/num_new") or "") or NUM_NEW
+  NUM_NEW_MEASURE = tonumber(config:get_string("asus_lang/num_new_measure") or "") or NUM_NEW_MEASURE
+  NUM_LONGER = tonumber(config:get_string("asus_lang/num_longer") or "") or NUM_LONGER
+  env.debug = config:get_bool("asus_lang/debug") or false
+  env.lm, env.lm_n = {}, 0
   -- Commits change Rime's user dictionary: convert afresh.
-  env.conn = env.engine.context.commit_notifier:connect(function() env.conv, env.conv_n = {}, 0 end)
+  env.conn = env.engine.context.commit_notifier:connect(function()
+    env.conv, env.conv_n, env.lm, env.lm_n = {}, 0, {}, 0
+  end)
 end
 
 function context.fini(env)
@@ -1269,7 +1418,11 @@ function context.func(input, env)
     if first then
       first = false
       local better
-      if env.enabled and (cand.type == "sentence" or cand.type == "phrase" or cand.type == "user_phrase") then
+      -- ("simplified": after OpenCC changed a character to its Taiwan form.
+      -- A number reading from the filter below is left as it is.)
+      if env.enabled and cand.comment ~= NUMBER_MARK
+          and (cand.type == "sentence" or cand.type == "phrase" or cand.type == "user_phrase"
+               or cand.type == "simplified") then
         better = with_number_context(env, ctx, cand, ctx.input:sub(cand.start + 1, cand._end))
       end
       if better then yield(ShadowCandidate(cand, cand.type, better, cand.comment)) end
@@ -1311,8 +1464,28 @@ local function digits(input, env)
   end
 end
 
+function numbers.func(input, env)
+  local ctx = env.engine.context
+  local first = true
+  for cand in input:iter() do
+    if first then
+      first = false
+      local better
+      if env.enabled and (cand.type == "sentence" or cand.type == "phrase" or cand.type == "user_phrase"
+                          or cand.type == "simplified") then
+        better = number_reading(env, ctx, cand, ctx.input:sub(cand.start + 1, cand._end))
+      end
+      if better then yield(ShadowCandidate(cand, cand.type, better, NUMBER_MARK)) end
+      yield(cand)
+    else
+      yield(cand)
+    end
+  end
+end
+numbers.init, numbers.fini = context.init, context.fini
+
 return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
-         context = context,
+         context = context, numbers = numbers, NUMBER_MARK = NUMBER_MARK,
          first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
          key_tick = key_tick,
          complete_english = complete_english }
