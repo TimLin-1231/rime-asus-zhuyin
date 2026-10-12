@@ -1,0 +1,29 @@
+# Where does the English word end? HELD-OUT set (written before the code and
+# without trying any line; look at the totals only, never at which lines
+# fail). Same format and the same three groups as en_edge.txt.
+[ann]跟我一起去
+那個[cop]給我一張單
+這個[tap]給你用
+我的[pal]跟我說
+一個[ton]跟一千公斤一樣
+[sid]給我一個建議
+這個[cap]給你
+這個[tub]跟浴缸一樣
+那個[rat]跑過去了
+所有[drivers]要更新
+這些[tools]有用嗎
+我的[notes]也不見了
+他們的[teams]一樣強
+很多[games]要錢
+新的[rules]有改
+這個[writer]有名嗎
+[later]有空嗎
+這個[timer]一直響
+我的[goods]一直沒到
+新的[rule]你看了嗎
+這個[tool]你會用嗎
+我[write]就好
+太[late]就不要去
+這個[game]你玩過嗎
+[time]就是金錢
+那個[kit]跟這個一樣

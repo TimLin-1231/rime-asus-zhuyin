@@ -49,6 +49,8 @@ Sets
   en_short / en_short_test  3-4 letter English words typed in lowercase inside
             Chinese (tests/eval/en_short*.txt); the dev set also has first tones
             typed without Space that must stay Chinese
+  en_edge / en_edge_test  an English word whose last letter, or the key after
+            it, could belong to either side (tim + 改 / time + 矮, tests/eval/en_edge*.txt)
   english_next / english_next_test  English mode, a word and Space: Next1 /
             Next3 = the expected next word is offered first / among the three
   dev_partial  partial inputs of dev sentences ending on a digit key; Digits =
@@ -228,6 +230,7 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
                        ("mixed_fix", "mixed_fix"), ("mixed_fix_test", "mixed_fix_test"),
                        ("en_case", "en_case"), ("en_case_test", "en_case_test"),
                        ("en_short", "en_short"), ("en_short_test", "en_short_test"),
+                       ("en_edge", "en_edge"), ("en_edge_test", "en_edge_test"),
                        ("particles", "particles"), ("particles_test", "particles_test"),
                        ("numbers", "numbers"), ("numbers_test", "numbers_test"),
                        ("numbers_more", "numbers_more"),

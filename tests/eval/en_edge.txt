@@ -1,0 +1,33 @@
+# Where does the English word end? DEV set (written before the code). The
+# key after the word is the first key of the next syllable; with one key
+# more or one key less the word is another word and the rest still is a
+# syllable (tim + 改 = time + 矮, your + 有 = you + 酒). [word] is typed in
+# lowercase and expected as typed. Committed with Enter.
+# -- the shorter word is meant (the longer one is more common)
+叫[tim]改一下
+[tim]跟我說過
+[sam]給我一本書
+這個[mod]改過了
+把[tap]關起來
+這個[pin]改掉了
+把[hat]給我
+這個[part]在哪裡
+# -- the longer word is meant (the shorter one is more common)
+他說[your]有問題
+這些[files]有問題
+今天的[news]有看嗎
+把[items]一個一個刪掉
+這個[user]有三台電腦
+我們的[server]一直當機
+有些[users]要換密碼
+這些[works]一樣可以
+# -- what the costs choose today is right, though the other reading exists
+把[plan]給我看
+我的[plan]跟你不一樣
+你[use]就知道了
+這個[new]你看過嗎
+一杯[tea]就夠了
+這個[file]你看一下
+看[you]就知道
+新的[drive]就夠用了
+這個[item]你要嗎
