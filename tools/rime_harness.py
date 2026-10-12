@@ -321,8 +321,9 @@ class Rime:
         t.distribution_version = b"0.1"
         t.app_name = f"rime.{log_name}".encode()
         # WARNING and up: the tests only look for errors, and INFO logs of a
-        # long eval grew to hundreds of GB under %TEMP%.
-        t.min_log_level = 1
+        # long eval grew to hundreds of GB under %TEMP%. (RIME_LOG_LEVEL=0 for
+        # a short debugging session, e.g. with asus_lang/debug: true.)
+        t.min_log_level = int(os.environ.get("RIME_LOG_LEVEL", "1"))
         self.traits = t
         self.api.setup(C.byref(t))
         self.api.initialize(C.byref(t))

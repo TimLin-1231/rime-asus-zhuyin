@@ -121,7 +121,7 @@ asus	dev_swap	外面在下雨記得帶傘	外面自9下雨記得帶傘
 asus	dev_swap	等一下我再打電話給你	等一下我在2823宴會給你
 asus	dev_swap	你吃過晚餐了嗎	你吃過0午餐了嗎
 asus	dev_swap	我晚一點再回覆你	五晚一點再回覆你
-asus	dev_swap	謝謝你的幫忙	謝欸以你的幫忙
+asus	dev_swap	謝謝你的幫忙	謝以你的幫忙
 asus	dev_swap	手機快沒電了	手跡庫9沒電了
 asus	dev_swap	請在下週之前交報告	請在下週知言交報告
 asus	dev_swap	我正在整理文獻回顧	我正9字整理文獻回顧
@@ -143,6 +143,8 @@ asus	mixed	測試case要再多一點	測試case要在多一點
 asus	mixed	server又當機了	serve就當機了
 asus	mixed_fix	那個document在哪裡	哪個document在哪裡
 asus	mixed_fix	用utils裡的函式	用utils裡的韓式
+asus	en_short	明天要run一次	明天要run依次
+asus	en_short	這台電腦的CPU	這一電腦的CPU
 asus	particles	她唱得比我好聽	他唱得比我好聽
 asus	particles	她認真地讀完整本書	他認真地讀完整本書
 asus	particles	我們在討論下週的行程	我們再討論下週的形成
@@ -206,7 +208,7 @@ asus	english_ctx	learning	machine lea
 asus	english_ctx	network	neural net
 asus	english_ctx	learning	deep lea
 asus	english_ctx	example	for exa
-asus	english_ctx	course	誒黑蟻
+asus	english_ctx	course	誒cou
 asus	english_ctx	order	喔ord
 asus	english_ctx	least	吃lea
 asus	english_ctx	well	呢wel
@@ -271,8 +273,8 @@ asus	autofix_zh	happened	happen開
 asus	autofix_zh	that	吃
 asus	autofix_zh	what	wah吃
 asus	autofix_zh	this	hsi
-asus	autofix_zh	just	無呢
-asus	autofix_zh	would	忒要
+asus	autofix_zh	just	呢
+asus	autofix_zh	would	wou尻
 asus	autofix_zh	people	people凹
 asus	autofix_zh	I'm	喔
 asus	autofix_zh	pytorch	ytorch

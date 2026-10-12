@@ -5,6 +5,7 @@
 -- dynamic programming into tokens with costs:
 --   Zhuyin syllable  toned 0 | toneless C_TONELESS | unfinished at end C_PREFIX
 --                    | lone initial (abbreviation) C_ABBR
+--                    + C_AGAIN for a slip right after a toneless syllable
 --   English word     C_EN_BASE + C_EN_RANK * log10(rank + 1)  (rank 0 = personal)
 --   typed with caps  C_CAPS + C_DIGIT per digit (uppercase can never be Zhuyin)
 --   stray key        C_STRAY (dropped from the output)
@@ -57,6 +58,12 @@ local MAX_SYLLABLE = 5
 local C_FIX = 1.2        -- below a toneless syllable (1.5), above any real syllable
 local C_FIX_DIGIT = 2.5  -- the same for a digit key + a whole syllable: above a number
 local C_FIX_FINAL = 0.5  -- tone key before the last key, at the end when committing: below a number
+-- A second slip right after a syllable typed without its tone key: another
+-- such syllable, a typo syllable, or keys left unfinished at the end. Three
+-- letters of an English word (doc + 改) otherwise read as ㄎㄟ and a 改 with
+-- one key too many for 2.7, less than any English word between Chinese.
+-- Below C_STRAY - C_FIX: two slips in a row still cost less than a stray key.
+local C_AGAIN = 2.0
 local C_NUM = 0.2        -- + 2 x C_SWITCH between Chinese: below a toneless syllable
 local C_NUM_DIGIT = 0.05 -- longer numbers cost a little more: 2838 = 打 + 8
 local C_NUM_END = 1.0
@@ -79,6 +86,7 @@ local function load_costs(config)
   C_NUM = get("num", C_NUM)
   C_FIX = get("fix", C_FIX)
   C_FIX_DIGIT = get("fix_digit", C_FIX_DIGIT)
+  C_AGAIN = get("again", C_AGAIN)
   C_NUM_DIGIT = get("num_digit", C_NUM_DIGIT)
   C_NUM_END = get("num_end", C_NUM_END)
   C_NUM_OPEN = get("num_open", C_NUM_OPEN)
@@ -610,13 +618,15 @@ local function has_typo_fix(tok)
   return hit
 end
 
+-- Cost of tok as a Zhuyin syllable, and "toneless" / "open" (unfinished at
+-- the end) for the two kinds that count as slips (C_AGAIN).
 local function zh_cost(tok, at_end)
   if zy.toned[tok] then return 0 end
-  if at_end and zy.prefix[tok] then return C_PREFIX end
+  if at_end and zy.prefix[tok] then return C_PREFIX, "open" end
   if zy.toneless[tok] then
     -- A one-key toneless syllable mid-input (ㄧ, ㄚ, ㄓ...) is what a stray
     -- key looks like; at the end it is just an unfinished syllable.
-    return (#tok == 1) and C_TONELESS_1KEY or C_TONELESS
+    return (#tok == 1) and C_TONELESS_1KEY or C_TONELESS, "toneless"
   end
   if #tok <= 2 and IS_INITIAL[tok:sub(1, 1)]
       and (#tok == 1 or (" 6347"):find(tok:sub(2, 2), 1, true)) then
@@ -777,17 +787,21 @@ end
 local function plan_run(run, en_ctx, final)
   local n = #run
   local INF = math.huge
-  -- best[i][lang]: cost of covering run[1..i-1]; lang of last token
+  -- best[i][lang]: cost of covering run[1..i-1]; lang of last token. "zx" is
+  -- zh whose last syllable has no tone key: the next slip costs C_AGAIN more.
+  -- (Not where no tone key is typed at all: that is a way of typing.)
+  local again = run:find("[ 6347]") and C_AGAIN or 0
   local best, back = {}, {}
-  for i = 1, n + 1 do best[i] = { zh = INF, en = INF, num = INF, none = INF }; back[i] = {} end
+  for i = 1, n + 1 do best[i] = { zh = INF, zx = INF, en = INF, num = INF, none = INF }; back[i] = {} end
   best[1].none = 0
-  local function relax(i, from_lang, j, lang, cost, kind)
+  local function relax(i, from_lang, j, lang, cost, kind, slip)
     local base = best[i][from_lang]
     if base == INF or cost == nil then return end
-    local switch = (from_lang ~= "none" and lang ~= "none" and from_lang ~= lang) and C_SWITCH or 0
+    local from = (from_lang == "zx") and "zh" or from_lang
+    local switch = (from ~= "none" and lang ~= "none" and from ~= lang) and C_SWITCH or 0
     if from_lang == "en" and kind == "en" and best[i].en_word then switch = C_EN_JOIN end
-    local total = base + cost + switch
-    local to_lang = (lang == "none") and from_lang or lang
+    local total = base + cost + switch + ((slip and from_lang == "zx") and again or 0)
+    local to_lang = (lang == "none") and from_lang or (slip == "toneless") and "zx" or lang
     if total < best[j + 1][to_lang] then
       best[j + 1][to_lang] = total
       back[j + 1][to_lang] = { i = i, from = from_lang, kind = kind }
@@ -795,14 +809,14 @@ local function plan_run(run, en_ctx, final)
     end
   end
   for i = 1, n do
-    for _, from in ipairs({ "none", "zh", "en", "num" }) do
+    for _, from in ipairs({ "none", "zh", "zx", "en", "num" }) do
       if best[i][from] < INF then
         -- Zhuyin syllables
         for j = i, math.min(n, i + MAX_SYLLABLE - 1) do
           local tok = run:sub(i, j)
           if tok:find("[%u'+#@_]") then break end
-          local c = zh_cost(tok, j == n and not (final and tok:match("^[125890]+$")))
-          relax(i, from, j, "zh", c, "zh")
+          local c, slip = zh_cost(tok, j == n and not (final and tok:match("^[125890]+$")))
+          relax(i, from, j, "zh", c, "zh", slip)
           -- (Also where tok could be a lone initial with a tone key, C_ABBR.)
           if not zy.toned[tok] and #tok >= 2 and TONE_KEYS[tok:sub(-1)] and has_typo_fix(tok) then
             -- Digits alone (13 is not ㄅ + a missing key + ˇ), or digits and
@@ -810,7 +824,7 @@ local function plan_run(run, en_ctx, final)
             -- a number the user typed must never be taken for a slip.
             local rest = tok:match("^%d+(.*)$")
             local digit = rest and (rest == "" or zy.toned[rest])
-            relax(i, from, j, "zh", digit and C_FIX_DIGIT or C_FIX, "fix")
+            relax(i, from, j, "zh", digit and C_FIX_DIGIT or C_FIX, "fix", "fix")
           elseif #tok >= 3 and TONE_KEYS[tok:sub(-2, -2)] and not TONE_KEYS[tok:sub(-1)]
               and zy.toned[tok:sub(1, -3) .. tok:sub(-1) .. tok:sub(-2, -2)] then
             -- The tone key pressed before the syllable's last key (ㄨˇㄛ for
@@ -821,7 +835,7 @@ local function plan_run(run, en_ctx, final)
             local digit = j < n and tok:match("%d$") and zy.toned[tok:sub(1, -2)]
             local cost = digit and C_FIX_DIGIT or C_FIX - 0.05
             if final and j == n then cost = C_FIX_FINAL end
-            relax(i, from, j, "zh", cost, "fix")
+            relax(i, from, j, "zh", cost, "fix", "fix")
           end
         end
         -- English words / capitalised runs
@@ -894,7 +908,7 @@ local function plan_run(run, en_ctx, final)
     end
   end
   local lang, cost = "none", INF
-  for _, l in ipairs({ "none", "zh", "en", "num" }) do
+  for _, l in ipairs({ "none", "zh", "zx", "en", "num" }) do
     if best[n + 1][l] < cost then lang, cost = l, best[n + 1][l] end
   end
   if cost == INF then return nil, false, cost end
@@ -1226,8 +1240,12 @@ function segmentor.func(segmentation, env)
       -- back().start). After dropping a kept segment, forward() recreates it.
       if not segmentation:empty() then
         local last = segmentation:back()
+        -- (Also one of the same size but another kind: cpu read as Zhuyin
+        -- until the key after it; AddSegment would only merge the tags and
+        -- the Chinese menu would stay.)
+        local special = last:has_tag("asus_en") or last:has_tag("asus_num") or last:has_tag("asus_stray")
         if last.start == start and last._end > last.start
-            and (last._end ~= span.e
+            and (last._end ~= span.e or (span.kind ~= "zh") ~= special
                  or (span.kind == "en" and (span.enfix or false) ~= last:has_tag("asus_enfix"))) then
           segmentation:pop_back()
           if not segmentation:empty() then segmentation:forward() end
