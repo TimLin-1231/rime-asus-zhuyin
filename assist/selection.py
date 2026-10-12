@@ -15,7 +15,7 @@ user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 CF_UNICODETEXT, GMEM_MOVEABLE = 13, 0x0002
-INPUT_KEYBOARD, KEYEVENTF_KEYUP = 1, 0x2
+INPUT_KEYBOARD, KEYEVENTF_KEYUP, KEYEVENTF_EXTENDEDKEY = 1, 0x2, 0x1
 VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN = 0x10, 0x11, 0x12, 0x5B, 0x5C
 VK_C, VK_V, VK_HOME = 0x43, 0x56, 0x24
 ULONG_PTR = ctypes.c_size_t
@@ -136,7 +136,10 @@ def set_clipboard_text(text: str | None) -> bool:
 
 
 def _key(vk: int, up: bool = False) -> INPUT:
-    return INPUT(INPUT_KEYBOARD, _U(ki=KEYBDINPUT(vk, 0, KEYEVENTF_KEYUP if up else 0, 0, 0)))
+    # Home is an "extended" key: sent without the flag it counts as the
+    # numeric pad's, and Windows then drops the Shift held with it.
+    flags = (KEYEVENTF_KEYUP if up else 0) | (KEYEVENTF_EXTENDEDKEY if vk == VK_HOME else 0)
+    return INPUT(INPUT_KEYBOARD, _U(ki=KEYBDINPUT(vk, 0, flags, 0, 0)))
 
 
 def _send(*events: INPUT) -> None:

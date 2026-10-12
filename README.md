@@ -17,7 +17,7 @@
 | `rime/lua/asus_english.lua` | 英文模式的組字與猜字（補完、拼字更正、email）、空白鍵自動修正、下一個詞 |
 | `rime/lua/asus_email.lua` | Email 提示：打前幾個字就出現完整的 email，Tab 送出 |
 | `tools/eval_edit.py` | 改字評估：句子打錯時改到對要按幾個鍵、能不能改好 |
-| `assist/` | 寫作小幫手：選取文字按 Ctrl+Alt+G，文法修正、改寫、續寫（獨立的小程式，不經過小狼毫） |
+| `assist/` | 寫作小幫手：選取文字按 Ctrl+Alt+W，文法修正、改寫、續寫（獨立的小程式，不經過小狼毫） |
 | `start_assist.bat` | 啟動寫作小幫手 |
 | `tools/fetch_assist.py` | 下載小幫手用的 Harper、llama.cpp 和模型（不進 git） |
 | `tools/eval_assist.py` | 小幫手的文法修正評估 |
@@ -118,7 +118,7 @@
 輸入法只看得到「正在打的那個字」，整句的文法、改寫要另一個程式來做。`assist/` 是一個常駐的小程式，在任何程式裡都能用：
 
 1. 執行 `start_assist.bat`（畫面上會閃一下「寫作小幫手已啟動」）。
-2. 在任何地方**選取一段英文**，按 **Ctrl+Alt+G**。沒有選取時，會自動選「這一行從開頭到游標」。
+2. 在任何地方**選取一段英文**，按 **Ctrl+Alt+W**。沒有選取時，會自動選「這一行從開頭到游標」。
 3. 滑鼠旁邊出現小視窗，裡面是修正後的文字，**改過的地方有黃色底**，下面列出 Harper 找到的問題。
 4. **Enter** 把視窗裡的文字貼回去取代原本選取的；**Esc** 什麼都不改。
 
@@ -136,7 +136,7 @@
 - **中英夾雜**：「修正」會保留中文、只改英文（我明天會 recieve 那個 package → receive）；「改寫」是給整段英文用的，夾中文時會被一起改成英文。
 - **剪貼簿**：取字和貼回是用 Ctrl+C／Ctrl+V 做的。剪貼簿原本的**文字**會還原；如果原本放的是圖片或檔案，會被蓋掉。
 - **終端機不能用**（Ctrl+C 在那裡是中斷程式），小幫手會直接提示、不送按鍵。
-- 設定（選用）：建立 `assist/config.json`，例如 `{"hotkey": "ctrl+alt+g", "idle_minutes": 10, "line_if_empty": true}`。快捷鍵被別的程式佔用時啟動會提示。
+- 設定（選用）：建立 `assist/config.json`，例如 `{"hotkey": "ctrl+alt+w", "idle_minutes": 10, "line_if_empty": true}`。快捷鍵被別的程式佔用時啟動會提示（這台電腦上 Ctrl+Alt+G 已經被別的程式註冊了，所以預設用 W）。
 - 想要開機自動啟動：把 `start_assist.bat` 的捷徑放進「啟動」資料夾（Win+R 輸入 `shell:startup`）。預設沒有幫你設。
 - 第一次使用（或換電腦）：`python tools/fetch_assist.py` 下載約 3.4 GB 到 `third_party/` 和 `models/`，每個檔案都會核對發行者公布的 SHA-256。只要文法規則、不要模型：`python tools/fetch_assist.py harper`（12 MB），這時只有「修正」能用，而且只改 Harper 有規則的錯。
 

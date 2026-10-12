@@ -39,6 +39,7 @@ RESULTS: list[tuple[str, bool, str]] = []
 
 user32.FindWindowW.argtypes = [wt.LPCWSTR, wt.LPCWSTR]
 user32.FindWindowW.restype = wt.HWND
+user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
@@ -46,7 +47,10 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def prepare(np: Notepad, text: str, select: bool) -> None:
-    user32.SendMessageW(np.edit, WM_SETTEXT, 0, ctypes.addressof(ctypes.create_unicode_buffer(text)))
+    buf = ctypes.create_unicode_buffer(text)  # (kept alive until the message returns)
+    user32.SendMessageW(np.edit, WM_SETTEXT, 0, ctypes.addressof(buf))
+    if np.text() != text:
+        raise Stop("could not put the text into Notepad")
     np.activate()
     user32.SendMessageW(np.edit, EM_SETSEL, 0 if select else len(text), len(text))
     time.sleep(0.2)
@@ -86,10 +90,17 @@ def main() -> int:
         # -- 2. the helper itself --------------------------------------------------
         if not llm.available():
             raise Stop("the model is not installed: python tools/fetch_assist.py")
-        helper = subprocess.Popen([sys.executable, "-m", "assist"], cwd=ROOT)
+        log = ROOT / ".harness" / "assist-test.log"
+        log.parent.mkdir(exist_ok=True)
+        helper = subprocess.Popen([sys.executable, "-m", "assist"], cwd=ROOT, stdout=log.open("wb"),
+                                  stderr=subprocess.STDOUT)
         time.sleep(3.0)
-        if helper.poll() is not None:
-            raise Stop("the helper did not start (already running, or its hotkey is taken)")
+        dialog = user32.FindWindowW("#32770", TITLE)  # its message box: already running / hotkey taken
+        if helper.poll() is not None or dialog:
+            said = ctypes.create_unicode_buffer(300)
+            if dialog:
+                user32.GetWindowTextW(user32.FindWindowExW(dialog, None, "Static", None), said, 300)
+            raise Stop(f"the helper did not start: {said.value or 'see ' + str(log)}")
         prepare(np, FAULTY, select=True)
         press_hotkey(cfg.get("hotkey", DEFAULTS["hotkey"]))
         popup, deadline = None, time.monotonic() + 90

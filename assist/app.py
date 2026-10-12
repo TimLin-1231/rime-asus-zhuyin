@@ -1,5 +1,5 @@
 """The writing helper: select text in any program, press the hotkey
-(Ctrl+Alt+G), and a small window offers the text with its grammar corrected;
+(Ctrl+Alt+W), and a small window offers the text with its grammar corrected;
 other buttons reword it or continue it. Enter puts the offered text in place
 of the selection, Esc leaves everything as it was.
 
@@ -11,7 +11,7 @@ small language model served by llama.cpp on 127.0.0.1 (assist/llm.py). The
 model is loaded on first use and unloaded after a while unused.
 
 Settings (optional file assist/config.json):
-    {"hotkey": "ctrl+alt+g", "idle_minutes": 10, "line_if_empty": true, "port": 8719}
+    {"hotkey": "ctrl+alt+w", "idle_minutes": 10, "line_if_empty": true, "port": 8719}
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from . import harper, llm, selection
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = Path(__file__).resolve().parent / "config.json"
-DEFAULTS = {"hotkey": "ctrl+alt+g", "idle_minutes": 10, "line_if_empty": True, "port": 8719}
+DEFAULTS = {"hotkey": "ctrl+alt+w", "idle_minutes": 10, "line_if_empty": True, "port": 8719}
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
