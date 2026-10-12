@@ -20,6 +20,7 @@ local XK_Shift_L, XK_Shift_R = 0xffe1, 0xffe2
 local XK_Control_L, XK_Control_R = 0xffe3, 0xffe4
 local XK_Escape = 0xff1b
 local XK_Down = 0xff54
+local XK_Left, XK_Right = 0xff51, 0xff53
 local XK_BackSpace = 0xff08
 local XK_Return = 0xff0d
 
@@ -44,15 +45,25 @@ local EXPANDED = "_asus_expanded"
 local toggle_ascii = require("asus_shift").toggle_ascii
 
 -- Options tied to the expanded candidate list:
---   _linear       the list is horizontal, so Left/Right move the highlight and
---                 Up/Down change page (librime selector). Off in compact mode,
---                 where Left/Right must move the caret for editing.
+--   _linear       off: the list is vertical (weasel.custom.yaml, as in ASUS
+--                 Smart Input), so Up/Down move the highlight (librime
+--                 selector) and Left/Right change page (turn_page below).
 --   _auto_commit  picking a candidate that completes the input commits it
 --                 right away (librime Engine::OnSelect), as in ASUS Smart
 --                 Input; Weasel discards uncommitted text when focus moves.
 local function set_list_options(ctx, value)
-  ctx:set_option("_linear", value)
+  ctx:set_option("_linear", false)
   ctx:set_option("_auto_commit", value)
+end
+
+-- Left / Right in an open list: the first candidate of the previous / next
+-- page (Page_Up / Page_Down do the same in librime's selector).
+local function turn_page(ctx, env, step)
+  local seg = ctx.composition:back()
+  if not seg or not seg.menu then return end
+  local page_size = env.engine.schema.page_size
+  local first = seg.selected_index - seg.selected_index % page_size + step * page_size
+  if first >= 0 and seg.menu:prepare(first + 1) > first then seg.selected_index = first end
 end
 
 local function set_expanded(ctx, value)
@@ -214,6 +225,10 @@ local function func(key, env)
     end
     return kAccepted  -- never insert the digit as Zhuyin while expanded
   end
+  if key.modifier == 0 and (code == XK_Left or code == XK_Right) then
+    turn_page(ctx, env, code == XK_Right and 1 or -1)
+    return kAccepted
+  end
   if code == XK_space and key.modifier == 0 then
     -- select() (not confirm_current_selection) so Engine::OnSelect runs and
     -- _auto_commit can commit a completed input.
@@ -239,4 +254,4 @@ local function func(key, env)
   return kNoop
 end
 
-return { init = init, func = func, fini = fini }
+return { init = init, func = func, fini = fini, turn_page = turn_page }

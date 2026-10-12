@@ -56,19 +56,35 @@ def main() -> int:
           f"committed={s.committed!r} want={expanded[2]} input={s.input!r}")
 
     # Re-read the page: the commit above was learned and may reorder candidates.
-    r.clear(); r.type("ru04"); r.key("Down"); r.key("Right"); s = r.snapshot()
-    check("expanded: Right moves the highlight (horizontal list)",
+    r.clear(); r.type("ru04"); r.key("Down"); r.key("Down"); s = r.snapshot()
+    check("expanded: Down moves the highlight (vertical list)",
           s.highlighted == 1, f"highlighted={s.highlighted}")
+    r.key("Up"); s2 = r.snapshot(); r.key("Down")
+    check("expanded: Up moves it back", s2.highlighted == 0, f"highlighted={s2.highlighted}")
     want = s.candidates[1][0] if len(s.candidates) > 1 else None
     r.key("space"); s = r.snapshot()
     check("expanded: Space picks and commits the highlighted candidate",
           s.committed == want and not r.get_option("_asus_expanded"),
           f"committed={s.committed!r} want={want}")
 
-    r.clear(); r.type("ru04"); r.key("Down"); r.key("Down"); s = r.snapshot()
-    check("expanded: Down goes to the next page",
-          s.candidates and [c for c, _ in s.candidates] != expanded,
+    r.clear(); r.type("ru04"); r.key("Down"); first = [c for c, _ in r.snapshot().candidates]
+    r.key("Right"); s = r.snapshot()
+    check("expanded: Right goes to the next page",
+          s.candidates and [c for c, _ in s.candidates] != first and s.highlighted == 0,
+          f"{[c for c, _ in s.candidates][:3]} highlighted={s.highlighted}")
+    r.key("Left"); s = r.snapshot()
+    check("expanded: Left goes back to the previous page",
+          [c for c, _ in s.candidates] == first and r.get_option("_asus_expanded"),
           f"{[c for c, _ in s.candidates][:3]}")
+    r.key("Left"); s = r.snapshot()
+    check("expanded: Left on the first page stays there",
+          [c for c, _ in s.candidates] == first and s.composing, f"{[c for c, _ in s.candidates][:3]}")
+    for _ in range(len(first)):
+        r.key("Down")
+    s = r.snapshot()
+    check("expanded: Down past the last row continues on the next page",
+          s.candidates and [c for c, _ in s.candidates] != first and s.highlighted == 0,
+          f"highlighted={s.highlighted}")
 
     r.clear(); r.type("su3cl3"); r.key("Down"); s = r.snapshot()
     page = [c for c, _ in s.candidates]

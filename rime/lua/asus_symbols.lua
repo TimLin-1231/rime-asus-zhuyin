@@ -117,7 +117,7 @@ function processor.func(key, env)
   if not ctx:is_composing() then
     if code == XK_grave and not key:shift() and #env.cats > 0 then
       ctx:set_property(PROP, "1")
-      ctx:set_option("_linear", true)  -- horizontal list: Left/Right, Up/Down = page
+      ctx:set_option("_linear", false)  -- vertical list: Up/Down, Left/Right = page
       ctx:push_input(TRIGGER)
       return kAccepted
     end
@@ -151,7 +151,11 @@ function processor.func(key, env)
     if sym then commit(env, sym) end
     return kAccepted  -- unmapped printable keys are swallowed
   end
-  return kNoop  -- navigation keys go to the selector
+  if key.modifier == 0 and (code == 0xff51 or code == 0xff53) then  -- Left / Right
+    require("asus_keys").turn_page(ctx, env, code == 0xff53 and 1 or -1)
+    return kAccepted
+  end
+  return kNoop  -- other navigation keys go to the selector
 end
 
 -- Translator ---------------------------------------------------------------

@@ -102,17 +102,17 @@ def main() -> int:
 
     # -- Enter in the expanded list picks the highlighted candidate -------------
     for word in ("你", "時間"):
-        r.clear(); type_text(keys(word)); press("Down"); press("Right")
+        r.clear(); type_text(keys(word)); press("Down"); press("Down")
         want = r.snapshot().candidates[1][0]; press("Return")
         out = "".join(r.committed); r.clear()
-        check(f"Down, Right, Enter commits the highlighted word ({want})", out == want, f"{out!r}")
+        check(f"Down, Down, Enter commits the highlighted word ({want})", out == want, f"{out!r}")
     sent = "我今天很忙"
     r.clear(); type_text(keys(sent)); press("Home"); press("Right"); press("Down")
     c = [x for x, _ in r.snapshot().candidates]
     alt = next((x for x in c[1:] if x and x[0] != "今"), None)
     if alt:
         for _ in range(c.index(alt)):
-            press("Right")
+            press("Down")
         press("Return")
     out = "".join(r.committed); s = r.snapshot(); r.clear()
     check("Enter in the list at the cursor picks the highlighted word and commits",
@@ -139,7 +139,7 @@ def main() -> int:
     c = [x for x, _ in r.snapshot().candidates]
     if "new.friend@mail.tw" in c:
         for _ in range(c.index("new.friend@mail.tw")):
-            press("Right")
+            press("Down")
         press("Delete", SHIFT_MASK)
     r.clear(); type_text("new.f"); s = r.snapshot(); r.clear()
     check("Shift+Delete forgets an address",

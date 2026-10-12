@@ -140,7 +140,7 @@ end
 -- Composition control --------------------------------------------------------
 local function set_list(ctx, expanded)
   ctx:set_option(EXPANDED, expanded)
-  ctx:set_option("_linear", expanded)
+  ctx:set_option("_linear", false)  -- a vertical list, see asus_keys.lua
   ctx:set_option("_auto_commit", false)
 end
 

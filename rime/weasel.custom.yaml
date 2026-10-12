@@ -20,7 +20,7 @@ patch:
   style/label_font_point: 10
   style/comment_font_point: 12
 
-  style/horizontal: true
+  style/horizontal: false              # the list opened with Down is vertical
   style/inline_preedit: true
   style/preedit_type: preview          # inline text is the best candidate
   style/label_format: "%s"

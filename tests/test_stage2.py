@@ -51,12 +51,12 @@ def main() -> int:
     r.clear(); r.key("`"); r.key("Tab"); r.key("Tab"); r.key("Tab"); r.key("q"); s = r.snapshot()
     check("Tab wraps around to 一般", s.committed == "《", f"committed={s.committed!r}")
 
-    r.clear(); r.key("`"); r.key("Right"); r.key("space"); s = r.snapshot()
-    check("Right + Space commits the highlighted symbol",
+    r.clear(); r.key("`"); r.key("Down"); r.key("space"); s = r.snapshot()
+    check("Down + Space commits the highlighted symbol",
           s.committed == "。", f"committed={s.committed!r}")
 
-    r.clear(); r.key("`"); r.key("Down"); s = r.snapshot()
-    check("Down shows the next page of symbols",
+    r.clear(); r.key("`"); r.key("Right"); s = r.snapshot()
+    check("Right shows the next page of symbols",
           s.composing and s.candidates and s.candidates[0][0] != "，",
           f"first={s.candidates[:1]}")
 
