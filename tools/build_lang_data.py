@@ -14,7 +14,9 @@ frequencies of SymSpell's dictionary (Google Books Ngram x SCOWL, third_party/
 symspell, fetched by tools/fetch_models.py): easy_en's ranks put neurone
 before neural and optimise before optimize and give "occurred" no rank at
 all. Recognising a word as English still uses easy_en's ranks. The word
-pairs of the same source give the words that follow a word.
+pairs of the same source give the words that follow a word. The same list
+also tells words from acronyms: easy_en's all-capitals forms are kept only
+for acronyms (display_form).
 Zhuyin syllables come from terra_pinyin char readings.
 
     python tools/build_lang_data.py [--top 100000]
@@ -46,12 +48,48 @@ FIX_TOP = 5
 ZERO_MIN_LEN = 4
 
 
-def load_easy_en(top: int) -> dict[str, tuple[str, int]]:
+# Capitals. lua/asus_lang.lua shows the display word in place of lowercase
+# input when it has capitals beyond the first letter (api -> API), so a wrong
+# form here rewrites what was typed. easy_en spells thousands of words in
+# capitals only, and not just acronyms: CORE, FAX, ADMIN, ALICE, CONFIG,
+# BRANSON (no key has a lowercase entry beside the one in capitals). An
+# all-capitals form is kept when it looks like an acronym: at most
+# ACRONYM_MAX_LEN letters and not a word of SymSpell's (lowercase) list.
+# That keeps USA, NATO, HTML, RISC and drops CORE, AIDS, ALICE, CONFIG.
+# The two lists are the exceptions, picked by hand from the forms the rule
+# gets wrong; lexicon/english_words.txt overrides everything.
+ACRONYM_MAX_LEN = 5
+# Acronyms although SymSpell lists the lowercase string, or although long.
+ACRONYMS = frozenset("""
+    algol anzac arpanet atm bios cobol emf multics rom rpm sos unix vhf
+    ancova centcom codasyl comecon crispr decnet ebcdic ecosoc ecowas eeprom
+    fodmap humint manova milnet mosfet nsfnet pcmcia satcom snobol uhmwpe
+    unesco unitar usenix
+""".split())
+# Shown as typed although the only form has capitals: short commands and
+# programmers' abbreviations that SymSpell does not list, and MEd, DoH.
+PLAIN = frozenset("""
+    accum addr alloc attr bool buf chdir clr ctl fdisk fixme func gosub grp
+    mkdir redir rmdir subst ver xcopy xfer doh med
+""".split())
+
+
+def display_form(word: str, key: str, sym: dict[str, int]) -> str:
+    """The form of easy_en's `word` to show for the lowercase letters `key`."""
+    if key in PLAIN:
+        return key
+    if word == key.upper() and key not in ACRONYMS and (key in sym or len(key) > ACRONYM_MAX_LEN):
+        return key
+    return word
+
+
+def load_easy_en(top: int, sym: dict[str, int]) -> dict[str, tuple[str, int]]:
     """key (lowercase letters) -> (display word, rank).
 
     Top `top` ranked words of length >= 3, plus weight-0 words of length >=
     ZERO_MIN_LEN (many plurals and newer words such as "slides", "email" have
-    weight 0 in easy_en) at the poor rank ZERO_RANK.
+    weight 0 in easy_en) at the poor rank ZERO_RANK. `sym` (load_symspell)
+    helps to tell words from acronyms, see display_form.
     """
     best: dict[str, tuple[str, int]] = {}
     zero: dict[str, str] = {}
@@ -68,6 +106,7 @@ def load_easy_en(top: int) -> dict[str, tuple[str, int]]:
             continue
         if not word.replace("-", "").isalpha():
             continue
+        word = display_form(word, key, sym)
         if weight <= 0:
             if len(key) >= ZERO_MIN_LEN and (word == key or key not in zero):
                 zero[key] = word
@@ -361,7 +400,8 @@ def main() -> None:
     ap.add_argument("--top", type=int, default=100000)
     args = ap.parse_args()
 
-    words = load_easy_en(args.top) if EASY_EN.exists() else {}
+    sym = load_symspell()
+    words = load_easy_en(args.top, sym) if EASY_EN.exists() else {}
     words.update(load_personal())
     # The lexicon lives in an OpenCC text dictionary (loaded in C++ by
     # librime-lua's Opencc) rather than a Lua table: a 56k-entry Lua table
@@ -382,7 +422,6 @@ def main() -> None:
     # completions (best first) among the common words (rank <=
     # PREFIX_MAX_RANK) and personal words. Ranks here and in the spelling
     # table are guess_rank(): SymSpell's frequencies where it has the word.
-    sym = load_symspell()
     comps: dict[str, list[tuple[int, int, str]]] = {}
     for key, (word, rank) in words.items():
         rank = guess_rank(key, rank, sym)

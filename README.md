@@ -121,7 +121,7 @@
 | 開發集（18 句有錯字、12 句不該改） | 33.3% | 90.0% |
 | 保留測試集（20 句有錯字、12 句不該改） | 28.1% | 68.8% |
 
-  開發集剩下的 3 句錯在別的地方（那個／哪個、函式／韓式，以及 `config` 被顯示成 `CONFIG`：詞庫裡有些一般的字只有全大寫的寫法，是既有的問題，還沒修）。原本的中英混打評估（`mixed`、`mixed_test`）92.5%／97.5% 不變。
+  開發集剩下的 3 句錯在別的地方（那個／哪個、函式／韓式，以及 `config` 被顯示成 `CONFIG`：詞庫裡有些一般的字只有全大寫的寫法。這一項後來修掉了，見「詞庫」的「英文字的大小寫」，開發集變成 93.3%，保留測試集不變）。原本的中英混打評估（`mixed`、`mixed_test`）92.5%／97.5% 不變。
 - 中文模式打一個英文字再按空白（`autofix_zh`，跟英文模式同一批字）：錯字修正了 0% → 78.7%（保留測試集 70.6%）。比英文模式低，是因為有些拼錯的字在中文模式會先被當成注音（taht、jsut），那是修正之前就有的情況。
 
 ### 下一個詞（階段 14）
@@ -296,6 +296,22 @@
   它是用開發集 A/B 評估選出來的，`rime/grammar.yaml` 裡有改回舊模型的方法。
 - **英文猜字**：`rime/opencc/asus_en_prefix.*`（每個開頭最多 5 個補完）和 `asus_en_fix.*`（前 40,000 個常用字的拼字更正，差一個字母：多、少、錯、前後顛倒），由 `build_lang_data.py` 產生。小狼毫啟動後第一次打字時多花約 0.7 秒載入，只發生一次。
 - **英文詞彙**：來自舊小狼毫的 `easy_en` 詞頻表，加上 `lexicon/english_words.txt`（你自己的英文專有名詞，一行一個）。
+- **英文字的大小寫**：中文模式用小寫打的英文字，如果詞庫裡的寫法在第一個字母以外還有大寫，就換成那個寫法（api → API、nato → NATO）。但 `easy_en` 有三千多個字只有全大寫的寫法，其中很多是一般的字和人名（CORE、FAX、ADMIN、ALICE、CONFIG、BRANSON），所以以前打 core 會變成 CORE。現在 `build_lang_data.py` 只在「看起來是縮寫」時才保留全大寫：
+  - 最多 5 個字母，而且 SymSpell 的詞表（全小寫的一般單字）沒有這個字，才保留大寫：USA、NATO、HTML、RISC、CPU。其他的照你打的小寫：core、aids、alice、adams、americas、config。
+  - 規則判斷錯的用兩份小清單修正（`build_lang_data.py` 的 `ACRONYMS`：unix、bios、rom、atm、unesco、eeprom 等 36 個仍然大寫；`PLAIN`：bool、func、addr、mkdir 等 23 個照打的）。
+  - McCartney、MHz 這種大小寫混合的寫法不動；用 Shift 打的大寫永遠照打的。
+  - `lexicon/english_words.txt` 裡的字照你寫的，優先於以上全部：想要某個字固定大寫或固定小寫，把你要的寫法加進去再重新產生詞表。
+  - 一共 514 個字改成小寫。詞頻和「這串按鍵算不算英文」的判斷都沒有變；猜字、拼字更正、下一個詞用的也是同一個寫法（alic 補完成 alice，不再是 ALICE）。
+  - 評估（`tests/eval/en_case*.txt`，中文句子裡用小寫打一個英文字，整句完全正確才算對）：
+
+| | 一般的字、人名照打的小寫 | 縮寫變成大寫 |
+|---|---:|---:|
+| 開發集（30 個字、20 個縮寫）：之前 → 現在 | 23.3% → 100% | 100% → 100% |
+| 保留測試集（32 個字、22 個縮寫）：之前 → 現在 | 15.6% → 90.6% | 95.5% → 95.5% |
+
+  保留測試集沒對的 4 句都不是大小寫的問題（只統計了數量，沒有看是哪幾句）：把大小寫忽略不計，結果還是不對，也就是那個字沒被認成英文或前後的中文轉錯。
+  - 其他評估集：中英混打（`mixed`、`mixed_test`）92.5%／97.5% 不變；`mixed_fix` 開發集 90.0% → 93.3%（`config`）；有前一個字的英文猜字（`english_ctx`）第一個就猜對 70%／70% → 73.3%／83.3%，因為以前打到 int、reg 這種「本身就是全大寫條目」的開頭時，第一個候選是 INT、REG；其餘 118 項分數完全相同。
+  - 還分不出來的：5 個字母以內、SymSpell 沒有的人名（ALIX、GIBB、IMRAN）仍然是全大寫，因為長得跟縮寫一樣。
 - **英文猜字的排序**（階段 13）：
   - 詞頻改用兩個來源的幾何平均：`easy_en` 加上 [SymSpell](https://github.com/wolfgarbe/SymSpell) 的詞頻表（MIT 授權，資料來自 Google Books Ngram 與 SCOWL，放在 `third_party/symspell/`，由 `fetch_models.py` 下載）。只靠 `easy_en` 時 neurone 排在 neural 前面、optimise 在 optimize 前面、occurred 完全沒有頻率；只靠 SymSpell 時 classifieds 排在 classification 前面、沒有 dataset。
   - **看前一個英文字**：`rime/opencc/asus_en_follow.*` 記每個英文字後面最常接的 40 個字（SymSpell 的詞對資料）。打完 `machine` 再打 `lea`，第一個猜的是 learning；打完 `new` 再打 `yor` 會被認成英文並猜 York。前一個字是中文或標點時不套用。
@@ -379,6 +395,7 @@ C:\Users\User\anaconda3\python.exe tests\test_stage13.py
 C:\Users\User\anaconda3\python.exe tests\test_stage14.py
 C:\Users\User\anaconda3\python.exe tests\test_stage16.py
 C:\Users\User\anaconda3\python.exe tests\test_stage17.py
+C:\Users\User\anaconda3\python.exe tests\test_en_case.py
 C:\Users\User\anaconda3\python.exe tests\test_backup.py
 C:\Users\User\anaconda3\python.exe tests\test_assist.py --llm
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py

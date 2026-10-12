@@ -142,7 +142,6 @@ asus	mixed	請先download這個檔案	請仙download這個檔案
 asus	mixed	測試case要再多一點	測試case要在多一點
 asus	mixed	server又當機了	serve就當機了
 asus	mixed_fix	那個document在哪裡	哪個document在哪裡
-asus	mixed_fix	把config改一下	把CONFIG改一下
 asus	mixed_fix	用utils裡的函式	用utils裡的韓式
 asus	particles	她唱得比我好聽	他唱得比我好聽
 asus	particles	她認真地讀完整本書	他認真地讀完整本書
@@ -222,7 +221,7 @@ asus	english_ctx	much	very muc
 asus	english_ctx	many	how man
 asus	english_ctx	science	data sci
 asus	english_ctx	science	computer sci
-asus	english_ctx	intelligence	artificial INT
+asus	english_ctx	intelligence	artificial int
 asus	english_ctx	language	natural LAN
 asus	english_ctx	system	operating sys
 asus	english_ctx	source	open sou
@@ -231,7 +230,7 @@ asus	english_ctx	time	real tim
 asus	english_ctx	term	long ter
 asus	english_ctx	card	credit car
 asus	english_ctx	media	social me看
-asus	english_ctx	regards	best REG
+asus	english_ctx	regards	best reg
 asus	english_ctx	forward	looking for
 asus	autofix_more	bizarre	bizzare
 asus	autofix_more	cemetery	cemetary
@@ -278,7 +277,6 @@ asus	autofix_zh	people	people凹
 asus	autofix_zh	I'm	喔
 asus	autofix_zh	pytorch	ytorch
 asus	autofix_zh	kubectl	bec超
-asus	autofix_zh	config	CONFIG
 asus	autofix_zh	nginx	gin啦
 asus	autofix_zh	cuda	cud媽
 asus	autofix_zh	kwargs	wargs
