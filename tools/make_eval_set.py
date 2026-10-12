@@ -67,13 +67,15 @@ def build_mixed(stem: str) -> int:
         keys, shown = [], []
         for zh, en in re.findall(r"([^\[\]]+)|\[([^\]]+)\]", line):
             if en:
+                en = en.split("=>")[0]  # [typed=>meant]: the misspelling is typed
                 keys.append(en)
                 shown.append(f"[{en}]")
             else:
                 k = "".join(reading_keys(zh)[0])
                 keys.append(k)
                 shown.append(keys_to_display(k))
-        rows.append(f"{''.join(keys)}\t{' '.join(shown)}\t{line.replace('[', '').replace(']', '')}\tmixed")
+        text = re.sub(r"\[[^\]]*=>", "", line).replace("[", "").replace("]", "")  # ...the word meant is expected
+        rows.append(f"{''.join(keys)}\t{' '.join(shown)}\t{text}\tmixed")
     (EVAL / f"{stem}.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     return len(rows)
 
@@ -166,6 +168,7 @@ if __name__ == "__main__":
     print("test sentences (held out):", build_sentences("sentences_test"))
     print("mixed dev:", build_mixed("mixed"))
     print("mixed test (held out):", build_mixed("mixed_test"))
+    print("misspelt English in Chinese dev / test:", build_mixed("mixed_fix"), build_mixed("mixed_fix_test"))
     print("particles dev:", build_particles("particles"))
     print("particles test (held out):", build_particles("particles_test"))
     print("numbers dev:", build_mixed("numbers"))

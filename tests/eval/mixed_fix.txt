@@ -1,0 +1,34 @@
+# Misspelt English inside Chinese, DEV sentences (stage 17, written before
+# the code). [typed=>meant]: typed as written, the word meant is expected;
+# [word]: a word no dictionary knows well, it must stay as typed.
+# Every English word is followed by Chinese; committed with Enter.
+這個[enviroment=>environment]有問題
+請幫我[seperate=>separate]這兩個檔案
+明天的[meetign=>meeting]改到下午
+我[definately=>definitely]會去
+這個[mesage=>message]要回嗎
+那個[docuemnt=>document]在哪裡
+他[beleive=>believe]這個結果
+這個[adress=>address]是錯的
+我的[buisness=>business]卡在這
+[becuase=>because]他沒來
+這個[questoin=>question]很難
+幫我[recomend=>recommend]一家餐廳
+這是[similiar=>similar]的問題
+給我一點[suprise=>surprise]吧
+這個[knowlege=>knowledge]很重要
+我們[acheive=>achieve]目標了
+這個[succesful=>successful]的案例
+我會[recieve=>receive]你的信
+把[config]改一下
+這個[repo]是誰的
+開[async]模式
+把[backend]重啟
+[frontend]壞了
+這個[datasets]太小
+看一下[stdout]的輸出
+用[utils]裡的函式
+我的[asus]筆電
+[runtime]錯誤
+我[rebased]過了
+裝[linux]系統

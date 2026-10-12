@@ -40,6 +40,9 @@ Sets
             (tests/eval/autofix*.txt): Fix = misspellings corrected, Wrong =
             misspellings turned into another word, FalseFix = words that
             should stay as typed and were changed (lower is better)
+  autofix_zh / autofix_zh_test  the same words typed in Chinese mode, then Space
+  mixed_fix / mixed_fix_test  Chinese with a misspelt English word in it
+            (tests/eval/mixed_fix*.txt), and with words that must stay
   english_next / english_next_test  English mode, a word and Space: Next1 /
             Next3 = the expected next word is offered first / among the three
   dev_partial  partial inputs of dev sentences ending on a digit key; Digits =
@@ -216,6 +219,7 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     sets["dev_swap"] = [(inject_swap(k, random.Random(6007 + i)), t) for i, (k, t) in enumerate(dev)]
     sets["test_swap"] = [(inject_swap(k, random.Random(7007 + i)), t) for i, (k, t) in enumerate(test)]
     for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
+                       ("mixed_fix", "mixed_fix"), ("mixed_fix_test", "mixed_fix_test"),
                        ("particles", "particles"), ("particles_test", "particles_test"),
                        ("numbers", "numbers"), ("numbers_test", "numbers_test"),
                        ("numbers_more", "numbers_more"),
@@ -246,6 +250,10 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
             sets[stem] = [tuple(line.split("\t")[:2]) for line in
                           path.read_text(encoding="utf-8").splitlines()
                           if line.strip() and not line.startswith("#")]
+    # The same words in Chinese mode: a word, then Space.
+    for stem in ("autofix", "autofix_test"):
+        if stem in sets:
+            sets[stem.replace("autofix", "autofix_zh")] = sets[stem]
     words = EVAL / "private" / "asus_words.tsv"
     if words.exists():
         sets["words"] = load_set(words)
@@ -281,9 +289,11 @@ def worker(variant: str, sets_json: str) -> None:
             rime.clear()
             rime.key(">", SHIFT_MASK)
             rime.clear()
-            english_mode = name.startswith(("autofix", "english_next"))
+            word_and_space = name.startswith(("autofix", "english_next"))
+            english_mode = word_and_space and not name.startswith("autofix_zh")
             if english_mode:
                 rime.set_option("ascii_mode", True)
+            if word_and_space:
                 keys += " "
             t0 = time.perf_counter()
             for ch in keys:  # capitals are typed with Shift
@@ -292,7 +302,7 @@ def worker(variant: str, sets_json: str) -> None:
             snap = rime.snapshot()
             preview = snap.committed + snap.preview
             page, final = [], preview
-            if english_mode:
+            if word_and_space:
                 # What is in the document after Space (a correction is shown
                 # there, to be committed by the next key), and the words on offer.
                 final = preview.strip()
