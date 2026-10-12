@@ -1,0 +1,46 @@
+# Short English words (3-4 letters) typed in lowercase inside Chinese,
+# HELD-OUT set (written before the code and before trying any of these
+# words; look at the totals only, never at which lines fail). Same format as
+# en_short.txt.
+這個[box]太小了
+他的[car]很貴
+幫我[cut]一下
+記得按[end]鍵
+買一個[hub]回來
+這個[kit]很好用
+我在[lab]做實驗
+把顏色[mix]在一起
+今天的[net]很慢
+這是[new]的版本
+那個是[old]的
+我用手機[pay]錢
+中間空一個[row]出來
+一[set]多少錢
+開一個新的[tab]看
+給你一個[tip]吧
+排在最[top]的位置
+我想[try]看看
+可以[use]這個
+另一個[way]比較快
+我們會[win]的
+我用[git]管理程式碼
+這個[url=>URL]打不開
+電腦的[ram]不夠
+加一個[tag]上去
+最小值用[min]算
+差一個[bit]而已
+這個[bot]會自動回覆
+[led]燈不亮
+把[pin]記下來
+把[menu]打開
+這個[file]太大
+我的[team]很強
+下一個[step]是什麼
+這個[item]賣完了
+這個要怎麼[fix]
+我們一起去[gym]
+我今天搭[bus]
+幫我畫一張[map]
+這個檔案要[zip]
+我想喝[tea]
+我家有一隻[cat]

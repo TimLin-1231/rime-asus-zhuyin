@@ -46,6 +46,9 @@ Sets
   en_case / en_case_test  an English word typed in lowercase inside Chinese
             (tests/eval/en_case*.txt): Lower = ordinary words and names that
             come out as typed, Caps = acronyms that come out in capitals
+  en_short / en_short_test  3-4 letter English words typed in lowercase inside
+            Chinese (tests/eval/en_short*.txt); the dev set also has first tones
+            typed without Space that must stay Chinese
   english_next / english_next_test  English mode, a word and Space: Next1 /
             Next3 = the expected next word is offered first / among the three
   dev_partial  partial inputs of dev sentences ending on a digit key; Digits =
@@ -224,6 +227,7 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
                        ("mixed_fix", "mixed_fix"), ("mixed_fix_test", "mixed_fix_test"),
                        ("en_case", "en_case"), ("en_case_test", "en_case_test"),
+                       ("en_short", "en_short"), ("en_short_test", "en_short_test"),
                        ("particles", "particles"), ("particles_test", "particles_test"),
                        ("numbers", "numbers"), ("numbers_test", "numbers_test"),
                        ("numbers_more", "numbers_more"),

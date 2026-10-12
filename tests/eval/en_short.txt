@@ -1,0 +1,39 @@
+# Short English words (3-4 letters) typed in lowercase inside Chinese, DEV
+# set (written before the code). The first two letters of most of them are a
+# Zhuyin syllable without its tone key. [word]: expected as typed;
+# [typed=>MEANT]: an acronym expected in capitals. Committed with Enter.
+這個[app]很好用
+把[doc]傳給我
+[cpu=>CPU]太熱了
+這個[api=>API]壞了
+我不知道[how]做
+明天要[run]一次
+這個[job]跑了很久
+今天很[hot]啊
+我家的[dog]很可愛
+用[sum]算總和
+加一個[dot]在後面
+這個[bug]修好了
+打開[log]看一下
+這個[key]是錯的
+發出[sos=>SOS]訊號
+先[add]再說
+這裡的[gap]很大
+記憶體[full]了
+這條[rule]要改
+我們的[goal]是什麼
+車子要加[fuel]了
+我想下載這個[app]
+幫我看一下這個[doc]
+今天要跑一個[job]
+這是誰的[dog]
+這台電腦的[cpu=>CPU]
+我也不知道[how]
+每天都要[run]
+# Guards: a first tone typed without its Space, where the keys happen to
+# start an English word (ruc, rut, eke, ala, con); these must stay Chinese.
+有[ru=>機]會
+我的[ru=>機]車
+我[ek=>哥]哥
+[al=>貓]咪很可愛
+[co=>黑]色的
