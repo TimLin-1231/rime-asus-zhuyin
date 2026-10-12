@@ -185,13 +185,19 @@ local function select_fixed(ctx, s, e, text)
 end
 
 -- Lock the text before `p` (selected), nothing after it.
+local busy = false  -- the input is being shortened and put back (lock_to)
 local function lock_to(ctx, st, p)
   local e, past = locked_end(ctx, p)
   if past then
-    -- Shortening the input drops the selections that reach past p.
+    -- Shortening the input drops the selections that reach past p. (For
+    -- p = 0 it is empty for a moment: with the cursor back at the very
+    -- start that looked like the end of the composition and the state was
+    -- dropped, so what was typed next went to the end of the text.)
     local input = ctx.input
+    busy = true
     ctx.input = input:sub(1, p)
     ctx.input = input
+    busy = false
     e = locked_end(ctx, p)
   end
   if e < p then select_fixed(ctx, e, p, text_between(st, e, p)) end
@@ -245,7 +251,7 @@ function processor.init(env)
   -- A composition can also end without a commit (Esc, cleared when the
   -- focus moves); a stale state would keep the other filters waiting.
   env.update_conn = ctx.update_notifier:connect(function(c)
-    if c.input == "" and (c:get_property(STATE) or "") ~= "" then leave(c) end
+    if not busy and c.input == "" and (c:get_property(STATE) or "") ~= "" then leave(c) end
   end)
 end
 
@@ -545,6 +551,49 @@ local function caret_comment(st)
   return table.concat(before) .. "｜" .. table.concat(after) .. (r ~= "" and ("  " .. r) or "")
 end
 
+-- Finished syllables at the start of keys, and how many keys they take.
+local function head_syllables(keys)
+  local out, pos = {}, 1
+  while pos <= #keys do
+    local found
+    for len = math.min(5, #keys - pos + 1), 1, -1 do
+      local s = keys:sub(pos, pos + len - 1)
+      if zy.toned[s] or (zy.word_toned and zy.word_toned[s]) then found = len; break end
+    end
+    if not found then break end
+    out[#out + 1] = keys:sub(pos, pos + found - 1)
+    pos = pos + found
+  end
+  return out, pos - 1
+end
+
+local function filter_init(env)
+  -- A translator of its own: the keys typed at the cursor are converted by
+  -- themselves when the sentence around them does not say how they read.
+  local ok, tr = pcall(function()
+    return Component.Translator(env.engine, "", "script_translator@translator")
+  end)
+  env.tr = ok and tr or nil
+  local ok_tw, tw = pcall(Opencc, "t2tw.json")
+  env.tw = ok_tw and tw or nil
+end
+
+local function convert(env, keys)
+  if not env.tr or keys == "" then return nil end
+  local seg = Segment(0, #keys)
+  seg.tags = Set({ "abc" })
+  local t = env.tr:query(keys, seg)
+  local text
+  if t then
+    for c in t:iter() do
+      if c._end == #keys then text = c.text end
+      break
+    end
+  end
+  if text and env.tw then text = env.tw:convert(text) end  -- Taiwan forms, as the simplifier gives
+  return text
+end
+
 local function filter(input, env)
   local ctx = env.engine.context
   local st = load(ctx)
@@ -587,13 +636,23 @@ local function filter(input, env)
           -- them is a dictionary phrase, however rare (ㄔ ㄗㄠˇ: 摛藻); the
           -- sentence that runs on through what follows reads them in context
           -- (吃早 + 飯), one character per syllable.
-          local ins_syl = syllables(st.input:sub(st.ins.s + 1, st.ins.e))
+          local ins_keys = st.input:sub(st.ins.s + 1, st.ins.e)
+          local ins_syl = syllables(ins_keys)
           if ins_syl and #ins_syl >= 2 and first._end > st.ins.e then
             local all = syllables(st.input:sub(first.start + 1, first._end))
             local fc = chars(first.text)
             if all and #all == #fc then conv = table.concat(fc, "", 1, #ins_syl) end
           end
-          conv = conv or reading(st.input:sub(st.ins.s + 1, st.ins.e))
+          if not conv then
+            -- Neither says how they read: a syllable still being typed (the
+            -- ones before it must not turn back into Zhuyin meanwhile), or
+            -- keys after the cursor that are no syllables. The finished
+            -- syllables converted by themselves, then the unfinished one.
+            local head, used = head_syllables(ins_keys)
+            local text = #head > 0 and convert(env, ins_keys:sub(1, used))
+            if text then conv = text .. reading(ins_keys:sub(used + 1)) end
+          end
+          conv = conv or reading(ins_keys)
           ctx:set_property("asus_edit_conv", conv)
           parts[1] = conv
           covered = st.ins.e
@@ -663,4 +722,5 @@ local function text_after(ctx, p)
   return st and text_between(st, p, #st.input) or nil
 end
 
-return { processor = processor, filter = filter, translator = translator, text_after = text_after }
+return { processor = processor, filter = { init = filter_init, func = filter }, translator = translator,
+         text_after = text_after }

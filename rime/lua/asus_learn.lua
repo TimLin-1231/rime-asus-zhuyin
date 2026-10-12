@@ -138,7 +138,8 @@ local function syllables(input)
     local found
     for len = math.min(5, #input - pos + 1), 1, -1 do
       local s = input:sub(pos, pos + len - 1)
-      if zy.toned[s] then found = s; break end
+      -- (word_toned: ㄒㄧ˙ of 東西, a syllable no single character has.)
+      if zy.toned[s] or (zy.word_toned and zy.word_toned[s]) then found = s; break end
     end
     if not found then return nil end
     out[#out + 1] = found

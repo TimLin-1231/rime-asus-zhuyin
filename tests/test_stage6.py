@@ -211,6 +211,37 @@ def main() -> int:
     check("moving the highlight stays fast (< 30 ms a key)", ms < 30, f"{ms:.1f} ms")
     r.key("Escape"); r.clear()
 
+    # Typing in front of what is already there.
+    def insert(first: str, nav: list[str], then: str) -> tuple[str, list[str]]:
+        start(keys(first))
+        for k in nav:
+            r.key(k)
+        seen = []
+        for ch in keys(then):
+            r.key(ch)
+            seen.append(r.snapshot().preview)
+        r.key("Return")
+        out = "".join(r.committed); r.clear()
+        return out, seen
+
+    out, _ = insert("很好", ["Left", "Left"], "這個")
+    check("Left back to the very start, then typing: in front (the cursor was lost there)", out == "這個很好", out)
+    out, _ = insert("很好", ["Left", "Left", "Left"], "這個")
+    check("...one Left more changes nothing", out == "這個很好", out)
+    out, seen = insert("我想買水果", ["Left", "Left", "Left"], "在網路上")
+    check("three syllables typed in the middle are converted", out == "我想在網路上買水果", out)
+    check("...and never shown as Zhuyin with digits while the next one is being typed",
+          not any(re.search(r"[ㄅ-ㄩ]\d", p) for p in seen), f"{[p for p in seen if re.search(r'[ㄅ-ㄩ][0-9]', p)][:2]}")
+    # 西 of 東西 is ㄒㄧ˙, a syllable no single character has.
+    start(keys("我想買東西")); r.key("Left"); s = r.snapshot()
+    check("the cursor moves through a sentence with such a syllable one character at a time",
+          "東｜西" in (s.candidates[0][1] if s.candidates else ""), f"{s.candidates[:1]}")
+    r.clear()
+    out, _ = insert("我想買東西", ["Left", "Left", "Left"], "在網路上")
+    check("...typing in the middle of it", out == "我想在網路上買東西", out)
+    out, _ = insert("很好", ["Home"], "我覺得這個")
+    check("Home, five syllables in front", out == "我覺得這個很好", out)
+
     # Ordinary typing is unaffected.
     for text in ("我今天晚上要去吃飯", "謝謝你的幫忙"):
         check(f"no cursor: {text} as before", start(keys(text)) == text, start(keys(text)))

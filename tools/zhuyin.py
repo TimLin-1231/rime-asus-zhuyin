@@ -198,6 +198,30 @@ def keys_to_pinyin_map() -> dict[str, str]:
     return out
 
 
+@lru_cache(maxsize=1)
+def word_syllable_keys() -> frozenset[str]:
+    """Dachen keys of the syllables that only words of terra_pinyin have: the
+    neutral tones of 東西 (ㄒㄧ˙), 丈夫 (ㄈㄨ˙), 客氣 (ㄑㄧ˙)... No character is
+    listed with them, so keys_to_pinyin_map() does not know them."""
+    path = weasel_root() / "data" / "terra_pinyin.dict.yaml"
+    known = set(keys_to_pinyin_map().values())
+    out: set[str] = set()
+    body = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not body:
+            body = line == "..."
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2 and len(parts[0]) > 1:
+            for syl in parts[1].split():
+                if syl not in known:
+                    try:
+                        out.add(pinyin_to_keys(syl))
+                    except Exception:  # noqa: BLE001  (not a syllable of this layout)
+                        pass
+    return frozenset(out)
+
+
 def zhuyin_to_pinyin(zhuyin: str) -> list[str] | None:
     """'ㄋㄧˇ ㄏㄠˇ' -> ['ni3', 'hao3']; None if a syllable is unknown to terra_pinyin."""
     table = keys_to_pinyin_map()
