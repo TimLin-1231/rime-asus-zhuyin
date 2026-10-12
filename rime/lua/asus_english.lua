@@ -80,6 +80,8 @@ local function collapse(ctx)
   ctx:set_option("_auto_commit", false)
 end
 
+local settings = { auto = true }  -- asus_english/autocorrect, for correct_word()
+
 local function init(env)
   local config = env.engine.schema.config
   local function flag(name)
@@ -88,6 +90,7 @@ local function init(env)
   end
   env.compose, env.auto, env.predict = flag("compose"), flag("autocorrect"), flag("predict")
   env.live = flag("continue")
+  settings.auto = env.auto
   env.pipe = "\\\\.\\pipe\\" .. (config:get_string("asus_english/pipe") or "asus_zhuyin_assist")
   env.typed, env.typed_at, env.asked, env.waiting = "", 0, 0, nil
 end
@@ -145,7 +148,7 @@ local function answer(env)
   return tonumber(number) == waiting and phrase or nil
 end
 
--- The correction shown but not committed yet: what was typed, or nil.
+-- The correction shown but not committed yet: the input as it was typed, or nil.
 local function corrected(ctx)
   local v = ctx:get_property(AUTO)
   if v == "" then return nil end
@@ -165,6 +168,64 @@ local function correct(ctx, env, tail)
   ctx:set_property(AUTO, ctx.input .. "\t" .. fixed .. stop .. tail)
   ctx:refresh_non_confirmed_composition()
   return true
+end
+
+-- Chinese mode (asus_keys.lua): Space after the English word that ends the
+-- input. The same correction, shown in place of that word with the space.
+local function correct_word(ctx, word, tail)
+  if not settings.auto or ctx:get_option(NOAUTO) or not word:match("^%a+$") then return false end
+  local fixed = lang.autocorrect(word)
+  if not fixed then return false end
+  ctx:set_property(AUTO, ctx.input .. "\t" .. fixed .. tail)
+  ctx:refresh_non_confirmed_composition()
+  return true
+end
+
+-- A corrected word is waiting: BackSpace / Esc bring back what was typed
+-- (true: the key is done with); any other key commits the correction and is
+-- then handled as usual (false).
+local function settle(ctx, key)
+  local typed = corrected(ctx)
+  if not typed then return false end
+  ctx:set_property(AUTO, "")
+  local code = key.keycode
+  if key.modifier == 0 and (code == XK_BackSpace or code == XK_Escape) then
+    lang.keep_word(typed:match("(%a+)%.?$"))
+    ctx:refresh_non_confirmed_composition()
+    return true
+  end
+  ctx:commit()
+  return false
+end
+
+-- Chinese mode: a word picked from the list instead of the correction
+-- offered before it (更正) is what the user meant - it is left alone from
+-- then on. (At the editing cursor the list starts with the text as it is,
+-- asus_edit.lua; the correction comes after that.)
+local function note_pick(ctx, key, env)
+  if key.modifier ~= 0 or not ctx:get_option(EXPANDED) then return end
+  local seg = not ctx.composition:empty() and ctx.composition:back()
+  if not seg or not seg.menu then return end
+  local code, index = key.keycode, nil
+  if code >= 0x31 and code <= 0x39 then
+    local page_size = env.engine.schema.page_size
+    index = seg.selected_index - seg.selected_index % page_size + (code - 0x31)
+  elseif code == XK_space or code == XK_Return then
+    index = seg.selected_index
+  end
+  local cand = index and index > 0 and seg:get_candidate_at(index)
+  -- (No look at cand.type: at the editing cursor the candidates are wrapped.)
+  local word = cand and cand.text:match("^(%a+)$")
+  if not word or not lang.autocorrect(word, true) then return end
+  for i = 0, math.min(index - 1, 2) do
+    local before = seg:get_candidate_at(i)
+    if before and before.comment == lang.FIX_MARK then
+      -- Remembered when the text is committed: doing it now would rebuild
+      -- the list (without the correction) under the pick being made.
+      env.keep_later = word
+      return
+    end
+  end
 end
 
 -- The words that usually follow word, offered after it was committed with a
@@ -192,6 +253,10 @@ function processor.init(env)
   -- (what engine:commit_text sends is noted where it is sent).
   env.commit_conn = env.engine.context.commit_notifier:connect(function(c)
     if active(c, env) then note(env, c:get_commit_text() or "") end
+    if env.keep_later then  -- note_pick()
+      lang.keep_word(env.keep_later)
+      env.keep_later = nil
+    end
   end)
 end
 
@@ -219,23 +284,13 @@ local function handle(key, env)
   if key:release() or MODIFIERS[code] then return kNoop end
   if not active(ctx, env) then
     forget(env)  -- Chinese mode, or a program typed into directly
+    if settle(ctx, key) then return kAccepted end
+    note_pick(ctx, key, env)
     return kNoop
   end
   cancel(env)
   local plain = not key:ctrl() and not key:alt() and not key:super()
-
-  -- A corrected word is waiting: BackSpace / Esc bring back what was typed,
-  -- any other key commits the correction and is then handled as usual.
-  local typed = corrected(ctx)
-  if typed then
-    ctx:set_property(AUTO, "")
-    if key.modifier == 0 and (code == XK_BackSpace or code == XK_Escape) then
-      lang.keep_word(typed:match("^%a+"))
-      ctx:refresh_non_confirmed_composition()
-      return kAccepted
-    end
-    ctx:commit()
-  end
+  if settle(ctx, key) then return kAccepted end
 
   -- Next words on offer: Tab types the first and a space; anything else
   -- dismisses them.
@@ -366,4 +421,4 @@ function segmentor.func(segmentation, env)
   return false
 end
 
-return { processor = processor, segmentor = segmentor }
+return { processor = processor, segmentor = segmentor, correct_word = correct_word }

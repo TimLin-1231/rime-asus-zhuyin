@@ -164,6 +164,11 @@ local function func(key, env)
                                                  seg.start == 0 and ctx:get_property("asus_en_ctx") == "1") then
         return kNoop
       end
+      -- A misspelt word is corrected first: shown with the space, committed
+      -- by the next key, taken back by BackSpace (asus_english.lua).
+      if seg._end == #ctx.input and require("asus_english").correct_word(ctx, typed, " ") then
+        return kAccepted
+      end
       ctx:commit()
       env.engine:commit_text(" ")
       return kAccepted

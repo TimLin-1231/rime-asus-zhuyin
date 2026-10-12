@@ -417,9 +417,13 @@ local function guesses(key, entry)
   return out
 end
 
--- Automatic correction (English mode, asus_english.lua) ------------------------
--- Space after a misspelt word puts the word that was meant in its place, when
--- that is safe to say. A correction costs log10(rank of the word) plus how
+-- Automatic correction ---------------------------------------------------------
+-- A misspelt English word is replaced by the word that was meant, when that
+-- is safe to say: on Space after it (English mode, asus_english.lua; Chinese
+-- mode, asus_keys.lua - shown first, BackSpace takes it back), and inside a
+-- Chinese sentence as soon as something is typed after it (the translator
+-- below; marked 更正, what was typed is the second candidate).
+-- A correction costs log10(rank of the word) plus how
 -- unlikely the slip is; it is made when the cost is low enough for the length
 -- of what was typed and no other word comes close. What was typed is left
 -- alone when it is a word (any word of the lexicon with a frequency, a word
@@ -441,6 +445,9 @@ local AUTO_CAPITAL = 0.5  -- Recieve: a capital may start a name
 local AUTO_SHORT = { teh = "the", hte = "the", adn = "and", nad = "and", yuo = "you", nto = "not",
                      ofr = "for", wsa = "was", hsa = "has", hda = "had", btu = "but", aer = "are" }
 local kept = {}  -- corrections taken back (BackSpace): left alone until Weasel restarts
+local auto_on = true  -- asus_english/autocorrect
+local NOAUTO = "asus_en_noauto"  -- app option: no automatic correction in this program
+local FIX_MARK = "更正"
 
 local KEY_AT = {}
 for r, row in ipairs({ "qwertyuiop", "asdfghjkl", "zxcvbnm" }) do
@@ -492,7 +499,8 @@ local function slip(key, word)
 end
 
 -- The word to put in place of typed (letters only), or nil to leave it.
-local function autocorrect(typed)
+-- inline: inside a Chinese sentence, where a lone i is a name (變數 i), not I.
+local function autocorrect(typed, inline)
   local capital = typed:match("^%u%l*$") ~= nil
   if not capital and not typed:match("^%l+$") then return nil end
   local key = typed:lower()
@@ -501,7 +509,7 @@ local function autocorrect(typed)
     if capital and not word:match("^%u") then return word:sub(1, 1):upper() .. word:sub(2) end
     return word
   end
-  if key == "i" then return not capital and "I" or nil end
+  if key == "i" then return not capital and not inline and "I" or nil end
   local short = CONTRACTION_OF[key] and contraction_form(CONTRACTION_OF[key]) or AUTO_SHORT[key]
   if short then return shaped(short) end
   load_english()
@@ -1085,6 +1093,8 @@ local function kept_matches(segmentation, spans, start, new_input, input)
         end
       elseif not sp or sp.e ~= seg._end or (sp.kind ~= "zh") ~= special then
         return false
+      elseif sp.kind == "en" and (sp.enfix or false) ~= seg:has_tag("asus_enfix") then
+        return false  -- a misspelt word that got, or lost, text after it: translated anew
       end
     end
   end
@@ -1174,6 +1184,17 @@ function segmentor.func(segmentation, env)
                             s = edit_span, e = #input }
     spans = before
   end
+  -- A misspelt English word with something typed after it is finished: its
+  -- segment is tagged asus_enfix and the translator puts the word meant
+  -- first. (The tag is what makes librime translate the segment again when
+  -- the next key arrives: kept segments keep their menus.)
+  local auto = auto_on and not ctx:get_option(NOAUTO)
+  for _, sp in ipairs(spans) do
+    if sp.kind == "en" then
+      local typed = input:sub(sp.s + 1, sp.e)
+      sp.enfix = auto and sp.e < #input and typed:match("^%a+$") ~= nil and autocorrect(typed, true) ~= nil
+    end
+  end
   -- Typo syllables for asus_typo.lua: "start:end" key ranges.
   local fixes = {}
   for _, sp in ipairs(spans) do
@@ -1205,7 +1226,9 @@ function segmentor.func(segmentation, env)
       -- back().start). After dropping a kept segment, forward() recreates it.
       if not segmentation:empty() then
         local last = segmentation:back()
-        if last.start == start and last._end > last.start and last._end ~= span.e then
+        if last.start == start and last._end > last.start
+            and (last._end ~= span.e
+                 or (span.kind == "en" and (span.enfix or false) ~= last:has_tag("asus_enfix"))) then
           segmentation:pop_back()
           if not segmentation:empty() then segmentation:forward() end
         end
@@ -1216,7 +1239,7 @@ function segmentor.func(segmentation, env)
       elseif span.kind == "open_en" then
         seg.tags = Set({ "asus_en", "asus_open", "abc" })
       elseif span.kind == "en" then
-        seg.tags = Set({ "asus_en", "abc" })
+        seg.tags = Set(span.enfix and { "asus_en", "asus_enfix", "abc" } or { "asus_en", "abc" })
       elseif span.kind == "num" then
         seg.tags = Set({ "asus_num", "abc" })
       elseif span.kind == "stray" then
@@ -1254,6 +1277,8 @@ local translator = {}
 
 function translator.init(env)
   load_english()
+  local v = env.engine.schema.config:get_bool("asus_english/autocorrect")
+  auto_on = (v == nil) or v
 end
 
 function translator.func(input, seg, env)
@@ -1280,19 +1305,21 @@ function translator.func(input, seg, env)
     return
   end
   if not seg:has_tag("asus_en") then return end
+  local ctx = env.engine.context
   if seg:has_tag("asus_ascii") then
     -- (English mode has no plan_input to do this; without it each key got
     -- slower as words were typed: 2 ms -> 14 ms after 600 words.)
     fresh_memos(input)
-    -- A correction made on Space, shown but not committed yet: BackSpace
-    -- brings back what was typed (asus_english.lua).
-    local typed, shown = (env.engine.context:get_property(AUTO_PROP) or ""):match("^(.-)\t(.+)$")
-    if typed == input then
-      local cand = Candidate("english", s, e, shown, "⌫" .. input)
-      cand.quality = 1000
-      yield(cand)
-      return
-    end
+  end
+  -- A correction made on Space, shown but not committed yet: the last word
+  -- of the input as it was then. BackSpace brings back what was typed
+  -- (asus_english.lua).
+  local whole, pending = (ctx:get_property(AUTO_PROP) or ""):match("^(.-)\t(.+)$")
+  if whole == ctx.input and e == #whole then
+    local cand = Candidate("english", s, e, pending, "⌫" .. input)
+    cand.quality = 1000
+    yield(cand)
+    return
   end
   local entry = english(input:lower())
   -- Typed capitals are kept as typed. Lowercase input keeps the lexicon form
@@ -1306,24 +1333,30 @@ function translator.func(input, seg, env)
   elseif CONTRACTIONS[input] then
     shown = contraction_form(input)  -- i'm -> I'm
   end
-  -- The typed word, then guesses (completions, spelling corrections); the
-  -- first guess is marked ⇥: Tab takes it (asus_predict.lua, english_tab).
-  local cand = Candidate("english", s, e, shown, "")
-  cand.quality = 1000
-  yield(cand)
-  local q = 999
+  -- Inside a Chinese sentence, with something typed after it, a misspelt
+  -- word is finished: the word meant goes first. (The last word of the
+  -- input may still be growing; Space corrects that one, asus_keys.lua.)
+  -- (asus_enfix: the segmentor above. At the editing cursor, asus_open,
+  -- the segment runs to the end of the input and e is where the word ends.)
+  local fixed = (seg:has_tag("asus_enfix") or (seg:has_tag("asus_open") and e < #ctx.input))
+      and auto_on and not ctx:get_option(NOAUTO) and input:match("^%a+$") and autocorrect(input, true)
+  local q = 1000
   local function more(word, comment)
     local c = Candidate("english", s, e, word, comment)
     c.quality = q
     q = q - 1
     yield(c)
   end
+  if fixed then more(fixed, FIX_MARK) end
+  -- The typed word, then guesses (completions, spelling corrections); the
+  -- first guess is marked ⇥: Tab takes it (asus_predict.lua, english_tab).
+  more(shown, "")
   if entry and entry.word ~= shown then more(entry.word, "") end
   set_previous(env.engine.context)
   for i, word in ipairs(guesses(input:lower(), entry)) do
     -- Keep the typed capitalisation: Pyth -> Python.
     if input:match("^%u") and not word:match("%u") then word = word:sub(1, 1):upper() .. word:sub(2) end
-    if word ~= shown then more(word, i == 1 and "⇥" or "") end
+    if word ~= shown and word ~= fixed then more(word, i == 1 and "⇥" or "") end
   end
 end
 
@@ -1772,4 +1805,4 @@ return { segmentor = segmentor, translator = translator, plan_run = plan_run, di
          key_tick = key_tick,
          complete_english = complete_english,
          autocorrect = autocorrect, keep_word = keep_word, followers_of = followers_of,
-         AUTO_PROP = AUTO_PROP }
+         AUTO_PROP = AUTO_PROP, FIX_MARK = FIX_MARK }

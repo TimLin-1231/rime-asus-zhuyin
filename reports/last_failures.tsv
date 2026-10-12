@@ -141,6 +141,9 @@ asus	dev_swap	博物館推出新的特展	不4管推出新的特展
 asus	mixed	請先download這個檔案	請仙download這個檔案
 asus	mixed	測試case要再多一點	測試case要在多一點
 asus	mixed	server又當機了	serve就當機了
+asus	mixed_fix	那個document在哪裡	哪個document在哪裡
+asus	mixed_fix	把config改一下	把CONFIG改一下
+asus	mixed_fix	用utils裡的函式	用utils裡的韓式
 asus	particles	她唱得比我好聽	他唱得比我好聽
 asus	particles	她認真地讀完整本書	他認真地讀完整本書
 asus	particles	我們在討論下週的行程	我們再討論下週的形成
@@ -263,3 +266,27 @@ asus	english_next	york	new + [window and topic]
 asus	english_next	learning	machine + [and is to]
 asus	english_next	media	social + [and security services]
 asus	english_next	course	of + [the this their]
+asus	autofix_zh	tomorrow	tommorow
+asus	autofix_zh	useful	useful凹
+asus	autofix_zh	happened	happen開
+asus	autofix_zh	that	吃
+asus	autofix_zh	what	wah吃
+asus	autofix_zh	this	hsi
+asus	autofix_zh	just	無呢
+asus	autofix_zh	would	忒要
+asus	autofix_zh	people	people凹
+asus	autofix_zh	I'm	喔
+asus	autofix_zh	pytorch	ytorch
+asus	autofix_zh	kubectl	bec超
+asus	autofix_zh	config	CONFIG
+asus	autofix_zh	nginx	gin啦
+asus	autofix_zh	cuda	cud媽
+asus	autofix_zh	kwargs	wargs
+asus	autofix_zh	zhuyin	huy喔
+asus	autofix_zh	openai	open摸
+asus	autofix_zh	btw	吃
+asus	autofix_zh	pls	凹
+asus	autofix_zh	thx	疵
+asus	autofix_zh	tho	吹
+asus	autofix_zh	configs	confi師
+asus	autofix_zh	refactored	efactored

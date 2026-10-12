@@ -530,8 +530,10 @@ function processor.init(env)
     if ok and segs then
       for _, seg in ipairs(segs) do
         local cand = seg:get_selected_candidate()
-        if cand and cand.type == "english" and #cand.text >= 3 then
-          learn_english(cand.text, 0.5, now)
+        -- (A word corrected on Space carries that space, asus_keys.lua.)
+        local word = cand and cand.type == "english" and cand.text:match("^(.-)%s*$")
+        if word and #word >= 3 then
+          learn_english(word, 0.5, now)
         end
       end
     end

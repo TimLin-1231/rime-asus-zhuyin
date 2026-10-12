@@ -50,7 +50,8 @@
 | 注音縮寫，例如 ㄉㄓ | 快捷文字本的展開文字（`rime/shortcuts.txt`） |
 | 直接打英文，例如 `python` | 自動判斷成英文；可以夾在中文之間（我用python跑model）。`I'm`、`don't`、`e-mail`、`node.js`、`C++`、`www.google.com`、email 地址也都是英文；英文字後面的 `,` `.` 是半形標點（Hello, world.）；英文後面的數字按空白會照打送出（iPhone 15 Pro） |
 | 打 email 的前幾個字（至少 3 個） | 小框出現「⇥完整的 email」，按 Tab 送出；中文、英文模式都可以。用過的 email 會自動記住，也可以寫在 `rime/emails.txt`（一行一個） |
-| 打英文時的猜字 | 小框顯示「打的字＋最多 3 個猜字」：沒打完的字會補完（pyth → python），拼錯的字會更正（recieve → receive）；有 ⇥ 的那個按 Tab 就送出（拼錯的整個換掉），↓ 展開後用 1–9 選其他的，空白鍵照打的送出 |
+| 打英文時的猜字 | 小框顯示「打的字＋最多 3 個猜字」：沒打完的字會補完（pyth → python），拼錯的字會更正（recieve → receive）；有 ⇥ 的那個按 Tab 就送出（拼錯的整個換掉），↓ 展開後用 1–9 選其他的 |
+| 句子裡的英文字拼錯 | 後面接著打字之後自動換成對的（這個enviroment有問題 → environment）；英文字後面按空白也會修正，Backspace 還原。見「中文模式裡的英文」 |
 | Shift＋字母 | 大寫英文（GPU、Python） |
 | 中文模式直接打數字 | 2026、100、3.14 會直接變成數字，可以跟中文混打（2026年、3點、100元）；數字後面的量詞會依前後文選（2杯、18歲、第2章寫完了、第2張照片）。剛好是完整注音的數字（204＝但、283＝打）照樣是中文，按 ↓ 第二個就是數字；數字鍵盤（numpad）永遠輸出數字 |
 | 英文後按空白 | 送出目前打的內容（不自動加空格） |
@@ -94,7 +95,7 @@
 - **按 Enter 送出不會修正**：Enter 永遠是「照我打的」。
 - **程式編輯器**（VS Code、Cursor、Visual Studio、PyCharm、IntelliJ、Sublime Text）預設不修正、也不顯示下一個詞（變數名稱不是錯字），猜字照常。清單在 `rime/weasel.custom.yaml` 的 `asus_en_noauto`，刪掉那一行就會修正，照樣加一行就能關掉別的程式。
 - **全部關掉**：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_english/autocorrect: false`。
-- 只在英文模式有；中文模式裡打的英文字仍然是「空白照打的送出，Tab 選猜字」。
+- 中文模式裡打的英文字也會修正，做法不太一樣，見下面「中文模式裡的英文」。
 - 評估（`tests/eval/autofix*.txt`，英文模式打一個字再按空白；階段 14 之前全部是 0%，因為空白鍵不修正）：
 
 | | 拼錯的字修正了 | 拼錯的字被改成別的字 | 正確的字被改掉 |
@@ -104,6 +105,24 @@
 | 保留測試集（51 個錯字、84 個要保留的字） | 78.4% | 2.0%（1 個） | 0% |
 
   沒修正的多半是比較少用的字（cemetary、definate、persistant），或是有兩個差不多可能的答案（neice 是 nice 還是 niece、politican 是 political 還是 politician）；這些照打的送出，小框裡仍然有猜字。規則是照兩個開發集調的：第一版在保留測試集有 1 個正確的字被改掉，我沒有看是哪一個，而是另外寫了第二個開發集（多了 294 個要保留的字）把規則收緊，之後保留測試集才是 0。
+
+### 中文模式裡的英文（階段 17）
+同一套判斷規則，用在中文模式打的英文字上：
+
+- **句子中間的英文字**（後面已經接著打了別的字）：直接顯示修正後的字。例如 `這個enviroment有問題` 行內顯示「這個environment有問題」，Enter 送出的就是修正後的。
+  - 想要原本打的：← 把游標移到那個字，↓，清單是「現在的字、修正的字（標「更正」）、**你打的字**、其他猜字」，選你打的那個。**選過一次之後，這個字就不再修正**，直到小狼毫重新啟動；要永久保留，就把它加進 `lexicon/english_words.txt`，或單獨打這個字按 Ctrl+Enter 送出一次。
+- **正在打的最後一個字不會動**（可能還沒打完）：行內照打的顯示，小框照常列出猜字，Tab 選。這時按 **Enter 是照打的送出**。
+- **英文字後面按空白**（例如在中文模式連續打英文句子）：跟英文模式一樣，先顯示修正後的字（有底線、小框顯示 `⌫你打的字`），下一個鍵才送出；緊接著按 Backspace 或 Esc 還原，還原過的字不再修正。
+- 單獨一個 `i` 在句子中間不會變成 `I`（變數名稱）。程式編輯器（`asus_en_noauto`）和 `asus_english/autocorrect: false` 一樣會關掉這裡的修正。
+- 評估（`tests/eval/mixed_fix*.txt`：中文句子裡夾一個拼錯的英文字，以及夾著不該改的字；整句完全正確才算對）：
+
+| | 階段 16 | 階段 17 |
+|---|---:|---:|
+| 開發集（18 句有錯字、12 句不該改） | 33.3% | 90.0% |
+| 保留測試集（20 句有錯字、12 句不該改） | 28.1% | 68.8% |
+
+  開發集剩下的 3 句錯在別的地方（那個／哪個、函式／韓式，以及 `config` 被顯示成 `CONFIG`：詞庫裡有些一般的字只有全大寫的寫法，是既有的問題，還沒修）。原本的中英混打評估（`mixed`、`mixed_test`）92.5%／97.5% 不變。
+- 中文模式打一個英文字再按空白（`autofix_zh`，跟英文模式同一批字）：錯字修正了 0% → 78.7%（保留測試集 70.6%）。比英文模式低，是因為有些拼錯的字在中文模式會先被當成注音（taht、jsut），那是修正之前就有的情況。
 
 ### 下一個詞（階段 14）
 英文字用空白送出後，小框用灰色列出最常接在後面的三個詞（資料是階段 13 的詞對表 `asus_en_follow`）：
@@ -359,6 +378,7 @@ C:\Users\User\anaconda3\python.exe tests\test_stage12.py
 C:\Users\User\anaconda3\python.exe tests\test_stage13.py
 C:\Users\User\anaconda3\python.exe tests\test_stage14.py
 C:\Users\User\anaconda3\python.exe tests\test_stage16.py
+C:\Users\User\anaconda3\python.exe tests\test_stage17.py
 C:\Users\User\anaconda3\python.exe tests\test_backup.py
 C:\Users\User\anaconda3\python.exe tests\test_assist.py --llm
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py

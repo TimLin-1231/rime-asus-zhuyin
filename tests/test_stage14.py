@@ -131,7 +131,8 @@ def main() -> int:
     r.clear(); r.key(">", SHIFT_MASK); r.clear()
     r.type("recieve ")
     got = "".join(r.committed); snap = r.snapshot(); r.clear()
-    check("Chinese mode: Space after an English word commits it as typed", got == "recieve ", f"{got!r} {snap.preview!r}")
+    check("Chinese mode: Space corrects a misspelt word too (stage 17)",
+          got == "" and snap.preview == "receive ", f"{got!r} {snap.preview!r}")
 
     # -- Typing does not get slower -------------------------------------------
     r.set_option("ascii_mode", True)
