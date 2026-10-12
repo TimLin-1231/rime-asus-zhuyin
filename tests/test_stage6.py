@@ -69,8 +69,8 @@ def main() -> int:
     c = cands()
     check("after a pick the list moves on to the next character",
           r.get_option("_asus_expanded") and c[:1] == ["許要"], f"{c[:4]}")
-    r.key("Return"); s = r.snapshot()
-    check("Enter on the first row keeps the rest and closes the list",
+    r.key("space"); s = r.snapshot()
+    check("Space on the first row keeps the rest and closes the list",
           not s.committed and not r.get_option("_asus_expanded") and s.preview == "但感覺沒有那麼著急貨許要",
           f"{s.committed!r} {s.preview}")
     r.key("Return"); s = r.snapshot()
@@ -155,10 +155,8 @@ def main() -> int:
     check("a digit picks and moves on as well", s.preview == "我想再網路上買" and c[:1] == ["網路上買"],
           f"{s.preview} {c[:3]}")
     r.key("Return"); s = r.snapshot()
-    check("Enter on the first row keeps the rest; the list closes",
-          not s.committed and not r.get_option("_asus_expanded") and s.preview == "我想再網路上買", s.preview)
-    r.key("Return"); s = r.snapshot()
-    check("Enter then commits", s.committed == "我想再網路上買", f"{s.committed!r}")
+    check("Enter on the first row, the text as it is: the sentence is committed",
+          s.committed == "我想再網路上買" and not s.composing, f"{s.committed!r} {s.preview}")
     # Down at the end, a pick, and Down again: the list opens again.
     start(keys(sent)); r.key("Down"); r.key("Down"); r.key("space"); s = r.snapshot()
     check("picking the last word closes the list, nothing committed",
@@ -210,6 +208,26 @@ def main() -> int:
     ms = (time.perf_counter() - t0) * 1000 / 8
     check("moving the highlight stays fast (< 30 ms a key)", ms < 30, f"{ms:.1f} ms")
     r.key("Escape"); r.clear()
+
+    # The list at a character with an English word or a number after it.
+    start(keys("請先") + "download" + keys("這個檔案")); r.key("Home"); r.key("Right"); r.key("Down")
+    c = cands()
+    check("before an English word: its letters are not read as Zhuyin in the list (先 was on page two)",
+          "先" in c[:4] and not any(re.search("[a-z]", x) for x in c[1:]) and "先看" not in c, f"{c}")
+    if "先" in c:
+        r.key(str(c.index("先") + 1))
+    r.key("Escape"); r.key("Return")
+    out = "".join(r.committed); r.clear()
+    check("...and picking there changes that character only", out == "請先download這個檔案", out)
+    start(keys("請準備") + "22" + keys("碗")); shown = r.snapshot().preview
+    r.key("Left"); r.key("Down"); c = cands()
+    check("a digit key read with the next syllable (2 + ㄨㄢˇ): the other characters are offered with the number",
+          "2碗" in c and "2晚" in c, f"{shown} {c}")
+    if "2碗" in c:
+        r.key(str(c.index("2碗") + 1))
+    s = r.snapshot()
+    check("...picking one gives 22碗", s.preview == "請準備22碗", s.preview)
+    r.key("Return"); r.key("Return"); r.clear()
 
     # Typing in front of what is already there.
     def insert(first: str, nav: list[str], then: str) -> tuple[str, list[str]]:

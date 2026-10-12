@@ -95,9 +95,11 @@ class User:
         return bool(self.r.get_option("_asus_expanded"))
 
     def finish(self) -> str:
-        # After a pick the list has moved on to the next character and is
-        # still open: Esc closes it (a key more than before), Enter commits.
-        if self.r.snapshot().input and self.listing():
+        # After a pick the list has moved on to the next character with its
+        # first row, the text as it is, highlighted: Enter there commits.
+        if self.r.snapshot().input:
+            self.r.key("Return")
+        if self.r.snapshot().input and self.listing():  # (the first row was something else)
             self.press("Escape")
         if self.r.snapshot().input:
             self.r.key("Return")

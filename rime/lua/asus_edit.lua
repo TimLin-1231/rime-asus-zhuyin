@@ -9,7 +9,8 @@
 --                  one (1-9, Space, Enter) replaces only that part, the text
 --                  after it stays, and the list moves on to the next
 --                  character; Left / Right move it without picking, the
---                  first row keeps the rest as it is and ends, Esc closes
+--                  first row keeps the rest as it is (Enter there commits
+--                  the sentence, Space only closes the list), Esc closes
 --   BackSpace      deletes the character before the cursor
 --   typing         inserts at the cursor
 --   Esc            leaves the cursor (back to the end of the input)
@@ -411,7 +412,14 @@ function processor.func(key, env)
     if mods == 0 and (code == XK_space or code == 0xff0d) then
       -- (Enter only picks: committing here left no way to change the next
       -- character. With the list closed it commits as always.)
-      picked(ctx, st, ctx.composition:back().selected_index)
+      local seg = ctx.composition:back()
+      local cand = seg:get_candidate_at(seg.selected_index)
+      local as_it_is = cand ~= nil and cand.type == "edit"
+      picked(ctx, st, seg.selected_index)
+      -- ...but on the first row, the text as it is, there is nothing left
+      -- to change: Enter commits the sentence (it took an Esc and another
+      -- Enter, a key more for every sentence with one wrong character).
+      if as_it_is and code == 0xff0d and ctx:is_composing() then ctx:commit() end
       return kAccepted
     end
     if mods == 0 and (code == XK_Left or code == XK_Right) then
@@ -608,9 +616,55 @@ local function filter(input, env)
   -- No candidate twice (the current text, the sentence and the phrase are
   -- often the same word).
   local seen = {}
+  -- The list at a Chinese character: its segment runs to the end of the
+  -- input, and the letters of an English word or the digits of a number
+  -- after it read as Zhuyin too (先 + download: 先看, 先考, 仙客... and 先
+  -- itself on the second page). Nothing that reaches past the Chinese the
+  -- cursor is in is listed, but the text as it is.
+  local list_start, list_end
+  if st and ctx:get_option(EXPANDED) then
+    local u = st.units[st.caret]
+    if u and u.kind == "zh" and tonumber(ctx:get_property(SPAN) or "") == u.s then
+      local e = u.e
+      for i = st.caret + 1, #st.units do
+        local v = st.units[i]
+        if v.kind ~= "zh" or v.s ~= e then break end
+        e = v.e
+      end
+      if e < #st.input then list_start, list_end = u.s, e end
+    end
+  end
   local function out(c)
+    if list_end and c.start == list_start and c._end > list_end and c.type ~= "edit" and c.type ~= "fixed" then
+      return
+    end
     local key = c.start .. ":" .. c._end .. ":" .. c.text
     if not seen[key] then seen[key] = true; yield(c) end
+  end
+  -- A digit key and a syllable read as a number and a character (2晚 for
+  -- ㄉㄨㄢˇ: 2 + ㄨㄢˇ): the other characters of that syllable with the
+  -- number, or 2碗 could not be had from the list.
+  local function number_forms(a)
+    local u = st and ctx:get_option(EXPANDED) and st.units[st.caret]
+    if not u or u.kind ~= "zh" or u.s ~= a or tonumber(ctx:get_property(SPAN) or "") ~= a then return end
+    local digit = u.text:match("^(%d)")
+    local keys = st.input:sub(u.s + 1, u.e)
+    if not digit or keys:sub(1, 1) ~= digit or not zy.toned[keys:sub(2)] or not env.tr then return end
+    local rest = keys:sub(2)
+    local seg = Segment(0, #rest)
+    seg.tags = Set({ "abc" })
+    local t = env.tr:query(rest, seg)
+    if not t then return end
+    local n = 0
+    for c in t:iter() do
+      if c._end == #rest then
+        local text = c.text
+        if env.tw then text = env.tw:convert(text) or text end
+        out(Candidate("number_zh", u.s, u.e, digit .. text, ""))
+        n = n + 1
+      end
+      if n >= 12 then break end
+    end
   end
   for cand in input:iter() do
     if not first then
@@ -696,6 +750,7 @@ local function filter(input, env)
       end
       if cand then out(cand) end
       for _, c in ipairs(buffer) do out(c) end
+      number_forms(a)
     else
       out(cand)
     end
