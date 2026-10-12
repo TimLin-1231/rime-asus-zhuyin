@@ -1,0 +1,34 @@
+# Next English word, DEV set: word<TAB>the word expected next.
+# The word is typed in English mode and committed with Space; the expected
+# word should be among the (up to three) words offered next (Next3), or the
+# first of them (Next1). Written before the code (stage 14b).
+thank	you
+according	to
+each	other
+united	states
+new	york
+high	school
+machine	learning
+instead	of
+because	of
+due	to
+able	to
+going	to
+have	been
+would	be
+will	be
+lot	of
+kind	of
+number	of
+one	of
+at	least
+such	as
+rather	than
+more	than
+prime	minister
+credit	card
+hong	kong
+social	media
+last	year
+right	now
+of	course

@@ -1,0 +1,32 @@
+# Next English word, HELD-OUT set (same format as english_next.txt).
+# Written before the code (stage 14b); only its total scores are looked at.
+los	angeles
+san	francisco
+forward	to
+want	to
+has	been
+can	be
+should	be
+sort	of
+part	of
+as	well
+real	estate
+customer	service
+click	here
+privacy	policy
+next	week
+for	example
+order	to
+et	al
+web	site
+less	than
+based	on
+depends	on
+looking	for
+thanks	for
+need	to
+used	to
+supposed	to
+rest	of
+out	of
+north	america
