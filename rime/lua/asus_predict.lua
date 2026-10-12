@@ -99,9 +99,10 @@ local function prediction_segment(ctx)
   return nil
 end
 
-local function show(ctx, words)
+-- also: a second tag (asus_english.lua marks its English words with one).
+local function show(ctx, words, also)
   local seg = Segment(0, 0)
-  seg.tags = Set({ TAG })
+  seg.tags = Set({ TAG, also })
   local menu = Menu()
   menu:add_translation(Translation(function()
     for _, w in ipairs(words) do
@@ -236,4 +237,4 @@ function processor.func(key, env)
   return kNoop
 end
 
-return { processor = processor, complete = complete, predict = predict }
+return { processor = processor, complete = complete, predict = predict, show = show }

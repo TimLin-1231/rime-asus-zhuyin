@@ -36,6 +36,12 @@ Sets
   english / english_test  English prefixes and misspellings (tests/eval/english*.txt);
             Guess1 / Guess3 = expected word first / in the first three English
             guesses of the menu, Keep = correct words stay as typed
+  autofix / autofix_more / autofix_test  English mode, a word and Space
+            (tests/eval/autofix*.txt): Fix = misspellings corrected, Wrong =
+            misspellings turned into another word, FalseFix = words that
+            should stay as typed and were changed (lower is better)
+  english_next / english_next_test  English mode, a word and Space: Next1 /
+            Next3 = the expected next word is offered first / among the three
   dev_partial  partial inputs of dev sentences ending on a digit key; Digits =
             share whose preview shows a digit (a number leaking into Chinese)
   words     tests/eval/private/asus_words.tsv (personal ASUS dictionary), if present
@@ -233,6 +239,13 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
             rows = [line.split("	") for line in path.read_text(encoding="utf-8").splitlines()
                     if line.strip() and not line.startswith("#")]
             sets[stem] = [(f"{prev} {typed}", want) for prev, typed, want in rows]
+    # English mode: a word and Space (automatic correction, next words).
+    for stem in ("autofix", "autofix_more", "autofix_test", "english_next", "english_next_test"):
+        path = EVAL / f"{stem}.txt"
+        if path.exists():
+            sets[stem] = [tuple(line.split("\t")[:2]) for line in
+                          path.read_text(encoding="utf-8").splitlines()
+                          if line.strip() and not line.startswith("#")]
     words = EVAL / "private" / "asus_words.tsv"
     if words.exists():
         sets["words"] = load_set(words)
@@ -268,6 +281,10 @@ def worker(variant: str, sets_json: str) -> None:
             rime.clear()
             rime.key(">", SHIFT_MASK)
             rime.clear()
+            english_mode = name.startswith(("autofix", "english_next"))
+            if english_mode:
+                rime.set_option("ascii_mode", True)
+                keys += " "
             t0 = time.perf_counter()
             for ch in keys:  # capitals are typed with Shift
                 rime.key(ch, SHIFT_MASK if ch.isupper() else 0)
@@ -275,7 +292,14 @@ def worker(variant: str, sets_json: str) -> None:
             snap = rime.snapshot()
             preview = snap.committed + snap.preview
             page, final = [], preview
-            if name.startswith("english") or name in ("words", "moe_words"):
+            if english_mode:
+                # What is in the document after Space (a correction is shown
+                # there, to be committed by the next key), and the words on offer.
+                final = preview.strip()
+                page = [comment for text, comment in snap.candidates if text == ""]
+                rime.clear()
+                rime.set_option("ascii_mode", False)
+            elif name.startswith("english") or name in ("words", "moe_words"):
                 if schema == "asus_zhuyin":
                     rime.key("Down")  # expand the compact bubble to a full page
                 page = [c for c, _ in rime.snapshot().candidates]
@@ -327,7 +351,23 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
         # Digits = share of partial inputs showing a digit; lower is better.
         m = {"n": n, "Digits": sum(bool(re.search(r"[0-9]", r["preview"])) for r in res) / n,
              "ms/key": m["ms/key"]}
-    if name.startswith("english"):
+    if name.startswith("autofix"):
+        fix = wrong = nt = false = nk = 0
+        for (k, t), r in zip(cases, res):
+            if k == t:
+                nk += 1
+                false += r["final"] != t
+            else:
+                nt += 1
+                fix += r["final"] == t
+                wrong += r["final"] not in (t, k)
+        m = {"n": n, "Fix": fix / max(nt, 1), "Wrong": wrong / max(nt, 1),
+             "FalseFix": false / max(nk, 1), "ms/key": m["ms/key"]}
+    elif name.startswith("english_next"):
+        pages = [[w.lower() for w in r["page"]] for r in res]
+        m = {"n": n, "Next1": sum(p[:1] == [t] for (_, t), p in zip(cases, pages)) / n,
+             "Next3": sum(t in p[:3] for (_, t), p in zip(cases, pages)) / n, "ms/key": m["ms/key"]}
+    elif name.startswith("english"):
         # Guesses = English candidates other than the typed letters, in menu
         # order. Guess1/Guess3: expected word first / in the first three (for
         # prefixes and typos); Keep: a correct word stays as typed inline.
@@ -425,15 +465,19 @@ def main() -> None:
             if "test" in name or name in ("words", "moe_words", "dev_toneless", "dev_partial"):
                 continue
             for (keys, text), r in zip(sets[name], res[name]):
-                if r["final"] != text:
-                    failures.append((variant, name, text, r["final"]))
+                got = r["final"]
+                if name.startswith("english_next"):  # the words offered after `keys`
+                    offered = [w.lower() for w in r["page"][:3]]
+                    got = text if text in offered else f"{keys} + [{' '.join(offered)}]"
+                if got != text:
+                    failures.append((variant, name, text, got))
 
     # Markdown report: one table per set, previous run in parentheses.
     lines = [f"## Eval {stamp} @ {rev} sets={set_hash} {args.note}".rstrip(),
              "(previous run on the same eval sets in parentheses)", ""]
     for name in sets:
         keys = list(records[0]["metrics"][name].keys() - {"n"})
-        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Digits", "Guess1", "Guess3", "Keep", "Top1", "Top9", "ms/key"].index)
+        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Digits", "Guess1", "Guess3", "Keep", "Fix", "Wrong", "FalseFix", "Next1", "Next3", "Top1", "Top9", "ms/key"].index)
         lines.append(f"### {name} (n={records[0]['metrics'][name]['n']})")
         lines.append("| variant | " + " | ".join(keys) + " |")
         lines.append("|---|" + "---:|" * len(keys))

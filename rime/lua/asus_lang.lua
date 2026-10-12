@@ -119,6 +119,16 @@ local prefix_memo, prefix_memo_input = {}, nil
 local fix_cc
 local fix_memo, guess_memo = {}, {}
 
+-- The memos only serve one input: librime-lua collects garbage on every
+-- call, so whatever piles up here makes every later key slower.
+local function fresh_memos(input)
+  if memo_input ~= input then memo, memo_input = {}, input end
+  if prefix_memo_input ~= input then
+    prefix_memo, prefix_memo_input = {}, input
+    fix_memo, guess_memo = {}, {}
+  end
+end
+
 -- The words that most often follow an English word (opencc/asus_en_follow),
 -- and the previous English word: the last one committed (asus_keys.lua keeps
 -- it in the property asus_en_prev). After "machine", lea is learning.
@@ -404,6 +414,148 @@ local function guesses(key, entry)
     end
   end
   guess_memo[memo_key] = out
+  return out
+end
+
+-- Automatic correction (English mode, asus_english.lua) ------------------------
+-- Space after a misspelt word puts the word that was meant in its place, when
+-- that is safe to say. A correction costs log10(rank of the word) plus how
+-- unlikely the slip is; it is made when the cost is low enough for the length
+-- of what was typed and no other word comes close. What was typed is left
+-- alone when it is a word (any word of the lexicon with a frequency, a word
+-- the user taught, a word SymSpell's list has), when the user took the same
+-- correction back before, and when it has capitals other than the first.
+-- Tuned on tests/eval/autofix.txt and autofix_more.txt.
+local AUTO_PROP = "asus_en_auto"  -- "typed<Tab>shown": a correction not committed yet
+local KNOWN_RANK = 100000  -- lexicon words without a frequency rank above this
+local S_SWAP, S_DOUBLE, S_DOUBLED, S_MISSING = 0, 0.1, 0.2, 0.3  -- teh; occured; untill; goverment
+local S_VOWEL, S_NEAR, S_EXTRA_NEAR, S_OTHER = 0.4, 0.5, 0.6, 0.9  -- seperate; a neighbouring key
+local S_FIRST = 1.0   -- the first letter is rarely the wrong one (dtype is not type)
+local S_TWO = 0.7     -- two slips, long words only (tommorow)
+local TWO_MIN = 8
+local AUTO_LIMIT = { [4] = 2.5, [5] = 3.8 }  -- by length; short words have many neighbours (uint, cron)
+local AUTO_LIMIT_LONG = 4.1
+local AUTO_MARGIN = 0.5   -- the next best word must cost this much more
+local AUTO_CAPITAL = 0.5  -- Recieve: a capital may start a name
+-- Three-letter slips are only corrected from this list (aws is not was).
+local AUTO_SHORT = { teh = "the", hte = "the", adn = "and", nad = "and", yuo = "you", nto = "not",
+                     ofr = "for", wsa = "was", hsa = "has", hda = "had", btu = "but", aer = "are" }
+local kept = {}  -- corrections taken back (BackSpace): left alone until Weasel restarts
+
+local KEY_AT = {}
+for r, row in ipairs({ "qwertyuiop", "asdfghjkl", "zxcvbnm" }) do
+  for c = 1, #row do KEY_AT[row:sub(c, c)] = { r, c } end
+end
+-- Do the two letter keys touch? (Each row sits half a key to the right of
+-- the one above.)
+local function adjacent(a, b)
+  local p, q = KEY_AT[a], KEY_AT[b]
+  if not p or not q then return false end
+  local dr, dc = q[1] - p[1], q[2] - p[2]
+  if dr == 0 then return dc == 1 or dc == -1 end
+  if dr == 1 then return dc == 0 or dc == -1 end
+  if dr == -1 then return dc == 0 or dc == 1 end
+  return false
+end
+
+-- Cost of typing key for word, one slip apart; and whether the slip is one
+-- of the plain kinds (two letters swapped, a letter left out or doubled).
+local function slip(key, word)
+  local lk, lw = #key, #word
+  local i = 1
+  while i <= lk and i <= lw and key:byte(i) == word:byte(i) do i = i + 1 end
+  if lk == lw and key:sub(i, i) == word:sub(i + 1, i + 1) and key:sub(i + 1, i + 1) == word:sub(i, i)
+      and key:sub(i + 2) == word:sub(i + 2) then
+    return S_SWAP, true
+  end
+  local first = (i == 1) and S_FIRST or 0
+  if lk == lw then
+    local a, b = key:sub(i, i), word:sub(i, i)
+    if adjacent(a, b) then return S_NEAR + first, false end
+    -- A wrong vowel is a spelling slip in a later syllable (definately), not
+    -- in the first (futher is further, not father).
+    if a:match("[aeiou]") and b:match("[aeiou]") and key:sub(1, i - 1):find("[aeiou]") then
+      return S_VOWEL + first, false
+    end
+    return S_OTHER + first, false
+  elseif lw == lk + 1 then
+    local ch = word:sub(i, i)
+    if word:sub(i - 1, i - 1) == ch or word:sub(i + 1, i + 1) == ch then return S_DOUBLE + first, i > 1 end
+    return S_MISSING + first, i > 1
+  end
+  local ch = key:sub(i, i)
+  if key:sub(i - 1, i - 1) == ch or key:sub(i + 1, i + 1) == ch then return S_DOUBLED + first, i > 1 end
+  if adjacent(ch, key:sub(i - 1, i - 1)) or adjacent(ch, key:sub(i + 1, i + 1)) then
+    return S_EXTRA_NEAR + first, false
+  end
+  return S_OTHER + first, false
+end
+
+-- The word to put in place of typed (letters only), or nil to leave it.
+local function autocorrect(typed)
+  local capital = typed:match("^%u%l*$") ~= nil
+  if not capital and not typed:match("^%l+$") then return nil end
+  local key = typed:lower()
+  if kept[key] then return nil end
+  local function shaped(word)  -- Teh -> The
+    if capital and not word:match("^%u") then return word:sub(1, 1):upper() .. word:sub(2) end
+    return word
+  end
+  if key == "i" then return not capital and "I" or nil end
+  local short = CONTRACTION_OF[key] and contraction_form(CONTRACTION_OF[key]) or AUTO_SHORT[key]
+  if short then return shaped(short) end
+  load_english()
+  if #key < FIX_MIN or not fix_cc then return nil end
+  local entry = english(key)
+  if entry and entry.rank < KNOWN_RANK then return nil end
+  for _, e in ipairs(ranked(fix_cc:convert_word(key))) do
+    if e.word:lower() == key then return nil end
+  end
+  local stem = key:sub(1, -2)
+  local stem_entry = english(stem)
+  local grown = key:sub(-1) ~= key:sub(-2, -2)  -- (untill, usefull: a doubled last letter is a slip)
+  local best, second
+  for _, e in ipairs(corrections(key)) do
+    local lw = e.word:lower()
+    local cost
+    if e.dist == 1 then
+      local s, plain = slip(key, lw)
+      -- A word plus one more letter (systemd, repos, happend) is a word of
+      -- its own: that letter is neither dropped nor replaced.
+      local of_stem = grown and (lw == stem or (#lw == #key and lw:sub(1, -2) == stem
+                                                 and stem_entry and stem_entry.rank < KNOWN_RANK))
+      if not of_stem and (plain or #key > 5) then cost = math.log(e.rank + 1, 10) + s end
+    elseif #key >= TWO_MIN then
+      cost = math.log(e.rank + 1, 10) + S_TWO
+    end
+    if cost then
+      if not best or cost < best.cost then
+        best, second = { cost = cost, word = e.word }, best
+      elseif not second or cost < second.cost then
+        second = { cost = cost, word = e.word }
+      end
+    end
+  end
+  if not best then return nil end
+  local limit = (AUTO_LIMIT[#key] or AUTO_LIMIT_LONG) - (capital and AUTO_CAPITAL or 0)
+  if best.cost > limit or (second and second.cost - best.cost < AUTO_MARGIN) then return nil end
+  return shaped(best.word)
+end
+
+-- The user took a correction back: typed is what they meant.
+local function keep_word(typed)
+  kept[typed:lower()] = true
+end
+
+-- The words that most often follow word (asus_en_follow), at most limit.
+local function followers_of(word, limit)
+  load_english()
+  local out = {}
+  local forms = follow_cc and follow_cc:convert_word(word:lower())
+  for _, w in ipairs(forms or {}) do
+    if #out >= limit then break end
+    out[#out + 1] = w
+  end
   return out
 end
 
@@ -846,11 +998,7 @@ end
 local function plan_input(env, input, floor, en_ctx, final)
   local cache_key = (en_ctx and ("e" .. prev_word) or "z") .. (final and "f" or "") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
-  if memo_input ~= input then memo, memo_input = {}, input end
-  if prefix_memo_input ~= input then
-    prefix_memo, prefix_memo_input = {}, input
-    fix_memo, guess_memo = {}, {}
-  end
+  fresh_memos(input)
   local spans = {}
   -- Shortcut abbreviations (ㄉㄓ) are runs of lone initials by design; leave
   -- them to the stock segmentation so asus_shortcuts.lua can match them.
@@ -1132,6 +1280,20 @@ function translator.func(input, seg, env)
     return
   end
   if not seg:has_tag("asus_en") then return end
+  if seg:has_tag("asus_ascii") then
+    -- (English mode has no plan_input to do this; without it each key got
+    -- slower as words were typed: 2 ms -> 14 ms after 600 words.)
+    fresh_memos(input)
+    -- A correction made on Space, shown but not committed yet: BackSpace
+    -- brings back what was typed (asus_english.lua).
+    local typed, shown = (env.engine.context:get_property(AUTO_PROP) or ""):match("^(.-)\t(.+)$")
+    if typed == input then
+      local cand = Candidate("english", s, e, shown, "⌫" .. input)
+      cand.quality = 1000
+      yield(cand)
+      return
+    end
+  end
   local entry = english(input:lower())
   -- Typed capitals are kept as typed. Lowercase input keeps the lexicon form
   -- only for acronyms / inner capitals (API, PINN, iPhone), not for plain
@@ -1608,4 +1770,6 @@ return { segmentor = segmentor, translator = translator, plan_run = plan_run, di
          choice_key = choice_key,
          first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
          key_tick = key_tick,
-         complete_english = complete_english }
+         complete_english = complete_english,
+         autocorrect = autocorrect, keep_word = keep_word, followers_of = followers_of,
+         AUTO_PROP = AUTO_PROP }

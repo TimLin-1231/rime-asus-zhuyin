@@ -94,3 +94,13 @@ patch:
   app_options/powershell.exe: { asus_en_direct: true }
   app_options/pwsh.exe: { asus_en_direct: true }
   app_options/mintty.exe: { asus_en_direct: true }
+
+  # Code editors: English mode still shows its guesses, but Space corrects
+  # nothing and no next words are offered (an identifier is not a typo).
+  # Remove a line to have both there too; add a program the same way.
+  app_options/code.exe: { asus_en_noauto: true }
+  app_options/cursor.exe: { asus_en_noauto: true }
+  app_options/devenv.exe: { asus_en_noauto: true }
+  app_options/pycharm64.exe: { asus_en_noauto: true }
+  app_options/idea64.exe: { asus_en_noauto: true }
+  app_options/sublime_text.exe: { asus_en_noauto: true }

@@ -14,7 +14,7 @@
 | `rime/lua/asus_learn.lua` | 自我學習：改過的字詞、英文詞、常接的下一個詞；Shift+Del 忘記 |
 | `rime/lua/asus_edit.lua` | 句中改字：←/→ 游標、↓ 選游標處的詞、句中刪字插字 |
 | `rime/lua/asus_typo.lua` | 打錯鍵自動更正：按到旁邊的鍵、多按一個鍵 |
-| `rime/lua/asus_english.lua` | 英文模式的組字與猜字（補完、拼字更正、email） |
+| `rime/lua/asus_english.lua` | 英文模式的組字與猜字（補完、拼字更正、email）、空白鍵自動修正、下一個詞 |
 | `rime/lua/asus_email.lua` | Email 提示：打前幾個字就出現完整的 email，Tab 送出 |
 | `tools/eval_edit.py` | 改字評估：句子打錯時改到對要按幾個鍵、能不能改好 |
 | `tools/rime_harness.py` | 用 Python 驅動 `rime.dll`，在 `.harness/` 的複本上測試，不會碰到正在使用的設定 |
@@ -61,16 +61,53 @@
 
 | 按鍵 | 效果 |
 |---|---|
-| 空白 | 照打的送出，再打一個空格 |
+| 空白 | 送出，再打一個空格。**拼錯的字會自動修正**（recieve → receive），修正後的字先留在行內（有底線）；緊接著按 **Backspace 或 Esc 就還原**成你打的，按其他鍵就照修正的送出。送出後小框顯示**接下來可能要打的詞**（灰色），Tab 送出第一個 |
 | Tab | 送出 ⇥ 的猜字：補完（pyth → python）、拼字更正（recieve → receive）、縮寫（dont → don't）、用過的 email（tim → tim.lin@…）；沒有猜字時 Tab 照常送給程式 |
 | ↓ | 展開猜字，1–9 選字，空白鍵選反白的字（再加空格），Enter 選反白的字送出 |
 | Backspace | 刪掉最後一個字母 |
-| Enter、標點、方向鍵、Ctrl 快捷鍵 | 先把打的字送出，按鍵再照常送給程式（Enter 一次就能送出聊天訊息） |
+| Enter、方向鍵、Ctrl 快捷鍵 | 先把打的字**照打的**送出（不修正），按鍵再照常送給程式（Enter 一次就能送出聊天訊息） |
+| `, ; : ! ? ) "` | 拼錯的字一樣會修正（teh, → the,），其他情況照打的送出 |
 
 - 終端機（Windows Terminal、cmd、PowerShell、Git Bash）維持「直接輸出」：按鍵直接送進程式，沒有小框。
   其他想要直接輸出的程式（例如遊戲）：在 `rime/weasel.custom.yaml` 照樣加一行 `app_options/程式.exe: { asus_en_direct: true }`（小寫檔名），重新部署。
 - 全部改回直接輸出：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_english/compose: false`。
 - 英文模式**只記 email 地址**，其他打的字都不記（見「隱私」）。
+
+### 空白鍵自動修正（階段 14）
+只在「很有把握是打錯」的時候才改，其他時候照打的送出，猜字照樣列在小框裡（Tab 可以選）。
+
+- **會修正的**：兩個字母順序顛倒（teh、thier、wierd）、少打或多打一個重複的字母（occured、untill）、少一個字母（goverment）、後面音節的母音拼錯（definately、seperate）；沒有撇號的縮寫（dont → don't、im → I'm）、單獨的 i → I。字首大寫照樣修正並保留大寫（Becuase → Because）。
+- **不會動的**：
+  - 詞庫裡有的字，就算可能是別的字打錯（form／from、quite／quiet）。
+  - 程式名稱、地名、聊天用語、新詞：numpy、config、github、uint、taipei、gonna。判斷的方法是修正的字要夠常用、打錯的方式要夠常見，而且沒有第二個差不多可能的字；四、五個字母的字條件更嚴（uint 不會變 unit、cron 不會變 corn）。
+  - 一個字後面多一個字母（systemd、repos、configs）；第一個字母通常不會是打錯的那一個，所以差在第一個字母的幾乎不改（dtype 不是 type）。
+  - 有其他大寫的字（GPU、iPhone）、有數字或符號的字（x86、node.js、e-mail）、email。
+  - 三個字母的字只修正固定的幾個（teh、hte、adn、yuo、nto…），所以 aws 不會變 was。
+- **還原**：修正後緊接著按 Backspace（或 Esc），行內變回你打的字，再按空白就照打的送出。**還原過的字之後不再修正**，直到小狼毫重新啟動（重開機、重新部署）；要永久保留就把它加進 `lexicon/english_words.txt`，或在中文模式打這個字後按 Ctrl+Enter。
+- **按 Enter 送出不會修正**：Enter 永遠是「照我打的」。
+- **程式編輯器**（VS Code、Cursor、Visual Studio、PyCharm、IntelliJ、Sublime Text）預設不修正、也不顯示下一個詞（變數名稱不是錯字），猜字照常。清單在 `rime/weasel.custom.yaml` 的 `asus_en_noauto`，刪掉那一行就會修正，照樣加一行就能關掉別的程式。
+- **全部關掉**：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_english/autocorrect: false`。
+- 只在英文模式有；中文模式裡打的英文字仍然是「空白照打的送出，Tab 選猜字」。
+- 評估（`tests/eval/autofix*.txt`，英文模式打一個字再按空白；階段 14 之前全部是 0%，因為空白鍵不修正）：
+
+| | 拼錯的字修正了 | 拼錯的字被改成別的字 | 正確的字被改掉 |
+|---|---:|---:|---:|
+| 開發集（47 個錯字、79 個要保留的字） | 100% | 0% | 0% |
+| 第二個開發集（96 個錯字、294 個要保留的字） | 69.8% | 0% | 0% |
+| 保留測試集（51 個錯字、84 個要保留的字） | 78.4% | 2.0%（1 個） | 0% |
+
+  沒修正的多半是比較少用的字（cemetary、definate、persistant），或是有兩個差不多可能的答案（neice 是 nice 還是 niece、politican 是 political 還是 politician）；這些照打的送出，小框裡仍然有猜字。規則是照兩個開發集調的：第一版在保留測試集有 1 個正確的字被改掉，我沒有看是哪一個，而是另外寫了第二個開發集（多了 294 個要保留的字）把規則收緊，之後保留測試集才是 0。
+
+### 下一個詞（階段 14）
+英文字用空白送出後，小框用灰色列出最常接在後面的三個詞（資料是階段 13 的詞對表 `asus_en_follow`）：
+
+- **Tab** 送出第一個詞和一個空格，接著再預測下一個；按其他任何鍵預測就消失，按鍵照常作用。接著打字時，猜字也會優先猜常接在前一個字後面的詞（thank + y → you）。
+- 句號之後不預測。方案選單裡的「預測開／預測關」開關（中文的預測也是它）、`asus_english/predict: false` 都可以關掉。
+- 評估（`tests/eval/english_next*.txt`，各 30 組，例如 thank → you、according → to；之前沒有這個功能）：開發集第一個就對 76.7%、前三個內 86.7%；保留測試集 80%／86.7%。
+- 只看前一個字，所以 the、of 這類字後面的預測很籠統；看整句的續寫要等之後的本機模型。
+
+### 英文模式打久了不再變慢
+階段 14 順便修掉的問題：猜字用的暫存資料在英文模式從來不會清掉，打過的字越多、每個按鍵越慢（評估時連續打 650 個字，每鍵從 2.4 ms 漲到 14 ms；小狼毫不重開的話會一直累積）。現在每鍵固定約 2 ms。
 
 ## Email
 - 打過一次的 email（中文模式裡打的，或英文模式打完送出的）會記在 `rime/asus_learn.userdb`。
@@ -252,6 +289,7 @@ C:\Users\User\anaconda3\python.exe tests\test_stage10.py
 C:\Users\User\anaconda3\python.exe tests\test_stage11.py
 C:\Users\User\anaconda3\python.exe tests\test_stage12.py
 C:\Users\User\anaconda3\python.exe tests\test_stage13.py
+C:\Users\User\anaconda3\python.exe tests\test_stage14.py
 C:\Users\User\anaconda3\python.exe tests\test_backup.py
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
@@ -298,6 +336,7 @@ C:\Users\User\anaconda3\python.exe tools\backup_learn.py --uninstall  取消每�
 
 ## 隱私
 - 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
+- 英文模式還原過的自動修正只記在記憶體裡（小狼毫重新啟動就忘記），不寫進磁碟。
 - 英文詞的學習只從中文模式送出的文字學。英文模式雖然會組字，但只記長得像 email 地址的字（name@host.com），其他打的字一律不記，所以就算某個程式的密碼欄位沒有關掉輸入法，密碼也不會被存下來（除非它長得像 email）。終端機是直接輸出，完全不經過組字。
 - 記住的 email 存在 `rime/asus_learn.userdb`（只在本機），`rime/emails.txt` 不進 git。
 - 沒有設定任何雲端同步目錄。舊設定裡的 Google Drive 同步路徑沒有沿用。
