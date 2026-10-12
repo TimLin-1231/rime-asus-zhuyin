@@ -43,6 +43,9 @@ Sets
   autofix_zh / autofix_zh_test  the same words typed in Chinese mode, then Space
   mixed_fix / mixed_fix_test  Chinese with a misspelt English word in it
             (tests/eval/mixed_fix*.txt), and with words that must stay
+  en_case / en_case_test  an English word typed in lowercase inside Chinese
+            (tests/eval/en_case*.txt): Lower = ordinary words and names that
+            come out as typed, Caps = acronyms that come out in capitals
   english_next / english_next_test  English mode, a word and Space: Next1 /
             Next3 = the expected next word is offered first / among the three
   dev_partial  partial inputs of dev sentences ending on a digit key; Digits =
@@ -220,6 +223,7 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     sets["test_swap"] = [(inject_swap(k, random.Random(7007 + i)), t) for i, (k, t) in enumerate(test)]
     for stem, name in (("mixed", "mixed"), ("mixed_test", "mixed_test"),
                        ("mixed_fix", "mixed_fix"), ("mixed_fix_test", "mixed_fix_test"),
+                       ("en_case", "en_case"), ("en_case_test", "en_case_test"),
                        ("particles", "particles"), ("particles_test", "particles_test"),
                        ("numbers", "numbers"), ("numbers_test", "numbers_test"),
                        ("numbers_more", "numbers_more"),
@@ -352,6 +356,14 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
                     tot += 1
                     hit += len(r["final"]) == len(t) and r["final"][i] == ch
         m["PartAcc"] = hit / tot if tot else 0.0
+    if name.startswith("en_case"):
+        # Lower: words typed in lowercase that come out as typed; Caps:
+        # acronyms typed in lowercase that come out in capitals.
+        caps = [bool(re.search(r"[A-Z]", t)) for _, t in cases]
+        ok = [r["final"] == t for (_, t), r in zip(cases, res)]
+        m = {"n": n, "Lower": sum(o for o, c in zip(ok, caps) if not c) / max(caps.count(False), 1),
+             "Caps": sum(o for o, c in zip(ok, caps) if c) / max(caps.count(True), 1),
+             "ms/key": m["ms/key"]}
     if name == "dev_toneless":
         # ASCII = share of outputs with Latin letters (English hallucinated
         # into toneless Chinese); lower is better.
@@ -487,7 +499,7 @@ def main() -> None:
              "(previous run on the same eval sets in parentheses)", ""]
     for name in sets:
         keys = list(records[0]["metrics"][name].keys() - {"n"})
-        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "ASCII", "Digits", "Guess1", "Guess3", "Keep", "Fix", "Wrong", "FalseFix", "Next1", "Next3", "Top1", "Top9", "ms/key"].index)
+        keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "Lower", "Caps", "ASCII", "Digits", "Guess1", "Guess3", "Keep", "Fix", "Wrong", "FalseFix", "Next1", "Next3", "Top1", "Top9", "ms/key"].index)
         lines.append(f"### {name} (n={records[0]['metrics'][name]['n']})")
         lines.append("| variant | " + " | ".join(keys) + " |")
         lines.append("|---|" + "---:|" * len(keys))

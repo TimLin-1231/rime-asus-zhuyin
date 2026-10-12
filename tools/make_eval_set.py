@@ -169,6 +169,7 @@ if __name__ == "__main__":
     print("mixed dev:", build_mixed("mixed"))
     print("mixed test (held out):", build_mixed("mixed_test"))
     print("misspelt English in Chinese dev / test:", build_mixed("mixed_fix"), build_mixed("mixed_fix_test"))
+    print("capitals of English words dev / test:", build_mixed("en_case"), build_mixed("en_case_test"))
     print("particles dev:", build_particles("particles"))
     print("particles test (held out):", build_particles("particles_test"))
     print("numbers dev:", build_mixed("numbers"))

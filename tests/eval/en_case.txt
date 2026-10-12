@@ -1,0 +1,54 @@
+# Capitals of English words typed in lowercase inside Chinese, DEV set
+# (written before the code). [word]: an ordinary word or a name, it must
+# come out exactly as typed; [typed=>MEANT]: an acronym, typed in lowercase
+# and expected in capitals. Committed with Enter.
+這個[core]很好
+把[config]改一下
+這個[alice]很好
+這個[aids]很好
+這個[adams]很好
+這個[americas]很好
+我覺得[max]不錯
+他說[admin]有問題
+把[rims]改一下
+這個[aces]很好
+我覺得[fax]不錯
+他說[var]有問題
+把[int]改一下
+這個[pets]很好
+我覺得[trips]不錯
+他說[sec]有問題
+把[vol]改一下
+這個[del]很好
+我覺得[vines]不錯
+他說[dec]有問題
+把[bool]改一下
+這個[func]很好
+我覺得[branson]不錯
+他說[model]有問題
+把[check]改一下
+這個[python]很好
+我覺得[china]不錯
+他說[report]有問題
+把[server]改一下
+這個[paper]很好
+這個[unix=>UNIX]很好
+把[html=>HTML]改一下
+我覺得[nato=>NATO]不錯
+他說[risc=>RISC]有問題
+這個[bios=>BIOS]很好
+我覺得[usa=>USA]不錯
+他說[ibm=>IBM]有問題
+把[cctv=>CCTV]改一下
+這個[posix=>POSIX]很好
+我覺得[dna=>DNA]不錯
+他說[nasa=>NASA]有問題
+把[sql=>SQL]改一下
+這個[ascii=>ASCII]很好
+我覺得[http=>HTTP]不錯
+他說[bbc=>BBC]有問題
+把[fbi=>FBI]改一下
+這個[gdp=>GDP]很好
+我覺得[unesco=>UNESCO]不錯
+他說[atm=>ATM]有問題
+把[rpm=>RPM]改一下
