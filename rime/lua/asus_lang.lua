@@ -1890,8 +1890,115 @@ function numbers.func(input, env)
 end
 numbers.init, numbers.fini = context.init, context.fini
 
+-- Steady text while a syllable is being typed ----------------------------------
+-- Every key converts the whole input again, and an unfinished syllable is
+-- little to go by: the first key of 雨 after 外面在下 made the sentence
+-- 外面最愛血液 for one key (each key of it read as the first of a syllable),
+-- then 外面在下 came back. 13% of the keys that finish no syllable changed
+-- characters already shown (tools/eval_flicker.py).
+-- So what was shown when the last syllable was finished stays until the next
+-- one is: the best candidate is remembered whenever the input ends with a
+-- tone key, and while keys of an unfinished syllable follow it, the text is
+-- that, plus one character for the syllable being typed where the new
+-- conversion has one to offer. The finished syllable then converts all of it
+-- afresh; that is where the text may change.
+-- Only the best candidate of plain Chinese at the end of the input, in the
+-- compact bubble: an open list, the editing cursor, English and numbers are
+-- left alone. asus_lang/steady: false switches it off.
+local steady = {}
+local STEADY_MAX = 200
+
+function steady.init(env)
+  local on = env.engine.schema.config:get_bool("asus_lang/steady")
+  env.enabled = (on == nil) or on
+  env.seen, env.seen_n = {}, 0
+end
+
+local function char_at(text, i)
+  local a = utf8.offset(text, i)
+  local b = a and utf8.offset(text, i + 1)
+  return (a and b) and text:sub(a, b - 1) or ""
+end
+
+-- cand is the first candidate of a translation. Its steady text, or nil to
+-- leave it as it is.
+local function steady_text(env, ctx, cand)
+  local input = ctx.input
+  if cand._end ~= #input or ctx.caret_pos ~= #input then return nil end
+  local seg = ctx.composition:back()
+  if not seg or seg.start ~= cand.start or cand.start >= #input or seg:has_tag("asus_en")
+      or seg:has_tag("asus_num") or seg:has_tag("asus_stray") or seg:has_tag("asus_symbol")
+      or not seg:has_tag("abc") then
+    return nil
+  end
+  -- A typo syllable in it (asus_typo.lua): the keys after the last tone key
+  -- may be the end of a syllable whose tone key came early (ㄇㄧˋㄢ for 面),
+  -- not an unfinished one, and that is decided on the whole input.
+  if seg:has_tag("asus_fix") then return nil end
+  local keys = input:sub(cand.start + 1)
+  if not keys:match("^[%l%d ,./;%-]+$") then return nil end
+  local tail = keys:match("[^ 6347]*$")
+  if tail == "" then
+    -- Every syllable finished: this is what is shown from here on.
+    if env.seen_n >= STEADY_MAX then env.seen, env.seen_n = {}, 0 end
+    local key = cand.start .. ":" .. keys
+    if env.seen[key] == nil then env.seen_n = env.seen_n + 1 end
+    env.seen[key] = cand.text
+    return nil
+  end
+  local head_key = cand.start .. ":" .. keys:sub(1, #keys - #tail)
+  local shown = env.seen[head_key]
+  if not shown then return nil end
+  local n, total = utf8.len(shown), utf8.len(cand.text)
+  if not n or not total then return nil end
+  -- The character just finished may still change with what follows it (名
+  -- becomes 明 when 天 is begun): a conversion that keeps everything before
+  -- it, and has one character for the syllable being typed, is taken as it is.
+  local keep = utf8.offset(shown, n)  -- byte where the last character shown begins
+  if keep and cand.text:sub(1, keep - 1) == shown:sub(1, keep - 1) and (total == n or total == n + 1) then
+    -- (...and is what stays from now on, or the next key could bring 名 back.)
+    local stop = utf8.offset(cand.text, n + 1)
+    env.seen[head_key] = stop and cand.text:sub(1, stop - 1) or cand.text
+    return nil
+  end
+  -- One character for the syllable being typed: the one right after the
+  -- text shown where the new conversion begins with that text (it may run
+  -- on for several, each key read as a syllable of its own), else its last.
+  local more = ""
+  if cand.text:sub(1, #shown) == shown then
+    more = char_at(cand.text, n + 1)
+  elseif total == n + 1 then
+    more = char_at(cand.text, total)
+  end
+  return shown .. more
+end
+
+function steady.func(input, env)
+  local ctx = env.engine.context
+  if not env.enabled or ctx:get_option("_asus_expanded") or ctx:get_option("ascii_mode")
+      or (ctx:get_property("asus_edit") or "") ~= "" then
+    for cand in input:iter() do yield(cand) end
+    return
+  end
+  if #ctx.input <= 1 and env.seen_n > 0 then env.seen, env.seen_n = {}, 0 end  -- a new composition
+  local first = true
+  for cand in input:iter() do
+    if first then
+      first = false
+      local text = (cand.type ~= "english" and cand.type ~= "number") and steady_text(env, ctx, cand) or nil
+      if text and text ~= cand.text then
+        yield(ShadowCandidate(cand, cand.type, text, cand.comment))
+      else
+        yield(cand)
+      end
+    else
+      yield(cand)
+    end
+  end
+end
+
 return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
-         context = context, numbers = numbers, NUMBER_MARK = NUMBER_MARK,
+         context = context, numbers = numbers, steady = steady, NUMBER_MARK = NUMBER_MARK,
          choice_key = choice_key,
          first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
          key_tick = key_tick,

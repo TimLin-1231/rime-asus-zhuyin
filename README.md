@@ -326,6 +326,25 @@
 - 還是沒改到時，用 ← 把游標移過去，↓ 選字。
 - 關閉：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_typo/enabled: false`。
 
+## 打字時已經顯示的字不亂跳
+每按一個鍵，整串輸入都會重新轉換一次。一個字還沒打完的時候（聲調還沒按），那幾個鍵能提供的資訊很少，卻常常讓前面已經顯示的字整段變掉：打「外面在下雨」的 ㄩ 時，「外面在下」會變成「外面最愛血液」（把每個鍵都當成一個字的開頭），下一個鍵又變回來。
+
+- **作法**：每打完一個字（按了聲調）時記下當時顯示的字；下一個字還沒打完之前，前面就維持那個樣子，後面最多接一個「正在打的字」的猜測。字打完的那一刻才整句重新轉換，這時候前面的字才可能改（看到一 → 看電影）。
+- **剛打完的那一個字還是可以被修正**：「你名」打了「天」的第一個鍵就變成「你明天」，然後固定住。只有更前面的字不動。
+- 只管行內的首選：展開的清單、句中改字的游標、英文字、數字都不受影響；送出的結果也完全不變，只是打字途中比較穩。
+- 評估（`tools/eval_flicker.py`：把評估句子一個鍵一個鍵打進去，數「已經顯示的字（最後一個字除外）變掉」的按鍵）：
+
+| 一般句子，保留測試集 | 原廠小狼毫 | 之前 | 現在 |
+|---|---:|---:|---:|
+| 會讓前面的字變掉的按鍵 | 10.9% | 14.0% | 3.3% |
+| 其中一次跳掉三個字以上（每 100 鍵） | 2.2 | 4.7 | 0.6 |
+| 字還沒打完的鍵就讓前面變掉 | 12.5% | 12.3% | 2.7% |
+| 打字途中至少跳一次的句子 | 88% | 95% | 54% |
+
+  開發集幾乎一樣（14.9% → 3.5%、5.3 → 0.7、13.2% → 2.8%、91% → 52%）。中英混打的句子 7.9% → 4.7%（保留測試集）。
+- 還會跳的主要是兩種：字打完時整句重新轉換（這是應該的），以及英文字和中文的交界（`這個app` 打到下一個字的第一個鍵時會閃一下）。
+- 關掉：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_lang/steady: false`。
+
 ## 句中改字
 一長串打完才發現中間有錯字時：← 移到錯的字前面（或 Home 到開頭再 →），↓，選字，Enter 送出。
 - 游標前面的字會被「鎖住」（選成固定的字），後面的字照原樣顯示，所以只有你選的那一段會變。
@@ -500,6 +519,8 @@ C:\Users\User\anaconda3\python.exe tests\test_stage17.py
 C:\Users\User\anaconda3\python.exe tests\test_en_case.py
 C:\Users\User\anaconda3\python.exe tests\test_en_short.py
 C:\Users\User\anaconda3\python.exe tests\test_en_edge.py
+C:\Users\User\anaconda3\python.exe tests\test_steady.py
+C:\Users\User\anaconda3\python.exe tools\eval_flicker.py --variants asus stock
 C:\Users\User\anaconda3\python.exe tests\test_backup.py
 C:\Users\User\anaconda3\python.exe tests\test_assist.py --llm
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py

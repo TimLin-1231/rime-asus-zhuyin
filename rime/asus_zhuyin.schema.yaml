@@ -65,6 +65,7 @@ engine:
     - lua_filter@*asus_grammar  # 的/得/地, 在/再 context rules
     - lua_filter@*asus_learn*filter  # learned corrections (after the rules)
     - lua_filter@*asus_lang*digits  # 204 -> 但, digits second
+    - lua_filter@*asus_lang*steady  # text shown stays while the next syllable is being typed
     - lua_filter@*asus_edit*filter  # text after the editing cursor stays as it was
     - lua_filter@*asus_compact  # must stay last
 
