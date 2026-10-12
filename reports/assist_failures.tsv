@@ -1,0 +1,40 @@
+set	backend	what	sentence	got
+grammar	harper	missed	I look forward to hear from you.	I look forward to hear from you.
+grammar	harper	missed	This are my books.	This are my books.
+grammar	harper	missed	I am agree with you.	I am agree with you.
+grammar	harper	missed	There is many people in the room.	There is many people in the room.
+grammar	harper	missed	He suggested me to take a break.	He suggested me to take a break.
+grammar	harper	missed	I am interesting in machine learning.	I am interesting in machine learning.
+grammar	harper	missed	I will call you when I will arrive.	I will call you when I will arrive.
+grammar	harper	missed	Can you explain me how it works?	Can you explain me how it works?
+grammar	harper	other	I have a few advice for you.	I have a little advice for you.
+grammar	harper	other	The datas are stored in the database.	The data's are stored in the database.
+grammar	harper	missed	Me and him went to the store.	Me and him went to the store.
+grammar	harper	other	The meeting was cancelled due to the manager was sick.	The meeting was canceled due to the manager was sick.
+grammar	harper	missed	I am working in this company since 2020.	I am working in this company since 2020.
+grammar	harper	missed	Every students need to submit the homework.	Every students need to submit the homework.
+grammar	harper	missed	I enjoy to read books.	I enjoy to read books.
+grammar	harper	missed	She said me that she was busy.	She said me that she was busy.
+grammar	harper	missed	We need to discuss this issue more detail.	We need to discuss this issue more detail.
+grammar	harper	missed	The results was better than we expected.	The results was better than we expected.
+grammar	harper	missed	I want to thanks you for your help.	I want to thanks you for your help.
+grammar	harper	missed	Could you please to check the attached file?	Could you please to check the attached file?
+grammar	harper	missed	Although it was raining, but we went out.	Although it was raining, but we went out.
+grammar	harper	missed	I am looking forward your reply.	I am looking forward your reply.
+grammar	harper	other	He don't know nothing about it.	He doesn't know nothing about it.
+grammar	harper	missed	The model perform well on the test set.	The model perform well on the test set.
+grammar	harper	missed	I very like this movie.	I very like this movie.
+grammar	harper	missed	Please reply me as soon as possible.	Please reply me as soon as possible.
+grammar	harper	missed	One of my friend lives in Taipei.	One of my friend lives in Taipei.
+grammar	harper	missed	Yesterday I go to the office and finish the report.	Yesterday I go to the office and finish the report.
+grammar	llm	other	The meeting was cancelled due to the manager was sick.	The meeting was cancelled due to the manager being sick.
+grammar	llm	other	She said me that she was busy.	She said to me that she was busy.
+grammar	llm	other	The results was better than we expected.	The result was better than we expected.
+grammar	llm	other	He don't know nothing about it.	He doesn't know nothing about it.
+grammar	llm	other	I very like this movie.	I very much like this movie.
+grammar	both	other	I have a few advice for you.	I have a little advice for you.
+grammar	both	other	The meeting was cancelled due to the manager was sick.	The meeting was canceled due to the manager being sick.
+grammar	both	other	She said me that she was busy.	She said to me that she was busy.
+grammar	both	other	The results was better than we expected.	The result was better than we expected.
+grammar	both	other	He don't know nothing about it.	He knows nothing about it.
+grammar	both	other	I very like this movie.	I very much like this movie.

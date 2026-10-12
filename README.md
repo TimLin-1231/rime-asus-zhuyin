@@ -17,6 +17,11 @@
 | `rime/lua/asus_english.lua` | 英文模式的組字與猜字（補完、拼字更正、email）、空白鍵自動修正、下一個詞 |
 | `rime/lua/asus_email.lua` | Email 提示：打前幾個字就出現完整的 email，Tab 送出 |
 | `tools/eval_edit.py` | 改字評估：句子打錯時改到對要按幾個鍵、能不能改好 |
+| `assist/` | 寫作小幫手：選取文字按 Ctrl+Alt+G，文法修正、改寫、續寫（獨立的小程式，不經過小狼毫） |
+| `start_assist.bat` | 啟動寫作小幫手 |
+| `tools/fetch_assist.py` | 下載小幫手用的 Harper、llama.cpp 和模型（不進 git） |
+| `tools/eval_assist.py` | 小幫手的文法修正評估 |
+| `tools/assist_test.py` | 在真的記事本裡測小幫手的快捷鍵、取字、貼回 |
 | `tools/rime_harness.py` | 用 Python 驅動 `rime.dll`，在 `.harness/` 的複本上測試，不會碰到正在使用的設定 |
 | `tools/eval_ime.py` | 量化評估（整句正確率、字正確率、個人詞 Top1／Top9、每鍵延遲） |
 | `tools/eval_learn.py` | 學習評估：模擬一位使用者連續打字、改字，量測學到的東西有沒有用、有沒有改壞 |
@@ -108,6 +113,44 @@
 
 ### 英文模式打久了不再變慢
 階段 14 順便修掉的問題：猜字用的暫存資料在英文模式從來不會清掉，打過的字越多、每個按鍵越慢（評估時連續打 650 個字，每鍵從 2.4 ms 漲到 14 ms；小狼毫不重開的話會一直累積）。現在每鍵固定約 2 ms。
+
+## 寫作小幫手（階段 15）
+輸入法只看得到「正在打的那個字」，整句的文法、改寫要另一個程式來做。`assist/` 是一個常駐的小程式，在任何程式裡都能用：
+
+1. 執行 `start_assist.bat`（畫面上會閃一下「寫作小幫手已啟動」）。
+2. 在任何地方**選取一段英文**，按 **Ctrl+Alt+G**。沒有選取時，會自動選「這一行從開頭到游標」。
+3. 滑鼠旁邊出現小視窗，裡面是修正後的文字，**改過的地方有黃色底**，下面列出 Harper 找到的問題。
+4. **Enter** 把視窗裡的文字貼回去取代原本選取的；**Esc** 什麼都不改。
+
+| 按鍵／按鈕 | 效果 |
+|---|---|
+| Enter | 套用視窗裡的文字（點進文字框自己再改幾個字也可以，這時用 Ctrl+Enter 套用） |
+| Esc | 取消，原文不動 |
+| 1 修正 | 只改文法、拼字、標點，盡量不動你的用字（預設） |
+| 2 自然／3 精簡／4 正式／5 親切 | 整段改寫成那種語氣 |
+| 6 續寫 | 在後面接一句 |
+| 結束小幫手 | 關掉程式，把顯示卡記憶體還回去 |
+
+- **全部在本機**：文法規則用 [Harper](https://github.com/Automattic/harper)（Apache 2.0），修正和改寫用 [llama.cpp](https://github.com/ggml-org/llama.cpp) 跑的 Qwen3.5-4B（4-bit，Apache 2.0）。模型只聽 `127.0.0.1`，沒有任何文字離開這台電腦，也不記錄你檢查過的內容。
+- **速度**（RTX 3070 Laptop）：第一次按要載入模型約 4 秒，之後一句話約 0.25 秒、一封五句的 email 約 1.2 秒。模型佔約 3 GB 顯示卡記憶體，10 分鐘沒用就自動卸載（下次再用又要等 4 秒）。
+- **中英夾雜**：「修正」會保留中文、只改英文（我明天會 recieve 那個 package → receive）；「改寫」是給整段英文用的，夾中文時會被一起改成英文。
+- **剪貼簿**：取字和貼回是用 Ctrl+C／Ctrl+V 做的。剪貼簿原本的**文字**會還原；如果原本放的是圖片或檔案，會被蓋掉。
+- **終端機不能用**（Ctrl+C 在那裡是中斷程式），小幫手會直接提示、不送按鍵。
+- 設定（選用）：建立 `assist/config.json`，例如 `{"hotkey": "ctrl+alt+g", "idle_minutes": 10, "line_if_empty": true}`。快捷鍵被別的程式佔用時啟動會提示。
+- 想要開機自動啟動：把 `start_assist.bat` 的捷徑放進「啟動」資料夾（Win+R 輸入 `shell:startup`）。預設沒有幫你設。
+- 第一次使用（或換電腦）：`python tools/fetch_assist.py` 下載約 3.4 GB 到 `third_party/` 和 `models/`，每個檔案都會核對發行者公布的 SHA-256。只要文法規則、不要模型：`python tools/fetch_assist.py harper`（12 MB），這時只有「修正」能用，而且只改 Harper 有規則的錯。
+
+評估（`tests/eval/grammar*.txt`：40 句各有一個華語使用者常犯的文法錯誤＋20 句正確的句子；「修好」是指結果跟我事先列的正確寫法完全一樣）：
+
+| 保留測試集 | 修好 | 改成別的寫法 | 沒改到 | 正確的句子被改 | 每句秒數 |
+|---|---:|---:|---:|---:|---:|
+| 只用 Harper（規則） | 25% | 10% | 65% | 0% | 0.76 |
+| 只用模型 | 85% | 12.5% | 2.5% | 5%（1 句） | 0.23 |
+| Harper 先改、模型再改 | 87.5% | 10% | 2.5% | 5%（1 句） | 1.01 |
+
+- 開發集：Harper 30%／模型 87.5%／兩者 85%，正確的句子都沒有被改。模型「改成別的寫法」的 5 句裡 4 句其實也對（due to the manager being sick、said to me that…），1 句沒改完（He doesn't know nothing）。
+- 所以小幫手顯示的修正用**模型**的結果，Harper 只負責在下面**說明**它找到的問題（它快、不會亂改，但像 look forward to hear、He go to school 這類錯它沒有規則）。沒下載模型時才退回用 Harper 的建議。
+- 模型有 5% 的機會動到本來就對的句子，所以**不會自動套用**：一定是你看過黃色的地方、按 Enter 才貼回去。
 
 ## Email
 - 打過一次的 email（中文模式裡打的，或英文模式打完送出的）會記在 `rime/asus_learn.userdb`。
@@ -291,6 +334,7 @@ C:\Users\User\anaconda3\python.exe tests\test_stage12.py
 C:\Users\User\anaconda3\python.exe tests\test_stage13.py
 C:\Users\User\anaconda3\python.exe tests\test_stage14.py
 C:\Users\User\anaconda3\python.exe tests\test_backup.py
+C:\Users\User\anaconda3\python.exe tests\test_assist.py --llm
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py
 C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
 C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改了什麼"
@@ -339,4 +383,5 @@ C:\Users\User\anaconda3\python.exe tools\backup_learn.py --uninstall  取消每�
 - 英文模式還原過的自動修正只記在記憶體裡（小狼毫重新啟動就忘記），不寫進磁碟。
 - 英文詞的學習只從中文模式送出的文字學。英文模式雖然會組字，但只記長得像 email 地址的字（name@host.com），其他打的字一律不記，所以就算某個程式的密碼欄位沒有關掉輸入法，密碼也不會被存下來（除非它長得像 email）。終端機是直接輸出，完全不經過組字。
 - 記住的 email 存在 `rime/asus_learn.userdb`（只在本機），`rime/emails.txt` 不進 git。
+- 寫作小幫手（`assist/`）的模型和文法檢查都在本機執行，只在你按快捷鍵時讀取選取的文字，不存檔、不連網。
 - 沒有設定任何雲端同步目錄。舊設定裡的 Google Drive 同步路徑沒有沿用。

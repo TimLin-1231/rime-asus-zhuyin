@@ -62,3 +62,10 @@ rime/opencc/asus_en_fix.txt
 rime/opencc/asus_en_fix.json
 rime/opencc/asus_en_follow.txt
 rime/opencc/asus_en_follow.json
+
+# The writing helper's model (tools/fetch_assist.py)
+models/
+*.part
+
+# The writing helper's own settings
+assist/config.json
