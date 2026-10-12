@@ -27,7 +27,7 @@
 幫我看一下這個[doc]
 今天要跑一個[job]
 這是誰的[dog]
-這台電腦的[cpu=>CPU]
+這部電腦的[cpu=>CPU]
 我也不知道[how]
 每天都要[run]
 # Guards: a first tone typed without its Space, where the keys happen to

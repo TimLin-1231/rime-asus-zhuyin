@@ -1016,11 +1016,65 @@ local function lm_weight(env, keys)
   return w or nil
 end
 
+-- Where does an English word end? ---------------------------------------------
+-- The key after a word is the first key of the next syllable, and often a
+-- letter that makes another word while the rest still is a syllable: tim +
+-- 改 (ㄍㄞˇ) is time + 矮 (ㄞˇ), your + 有 (ㄧㄡˇ) is you + 酒 (ㄐㄧㄡˇ), files + 有
+-- is file + 鈕. Both readings cost the same but for the rank of the word, so
+-- the commoner word always won. The Chinese tells them apart: the first
+-- EDGE_SYLLABLES syllables after the word are converted both ways and the
+-- other reading is taken when the language model's weight for it is higher
+-- by EDGE_MARGIN, after allowing EDGE_RANK per factor of ten that its word
+-- is rarer (weights are natural logarithms, so 2.3 would be the word's
+-- frequency taken at face value; easy_en's ranks are too rough for that:
+-- every plural has the same poor one).
+-- Decided in the plan, unlike a digit before a syllable: the two readings
+-- are different segments, so the other one cannot be offered as a second
+-- candidate. Space after the word ends it there whatever comes next.
+local EDGE_SYLLABLES = 3  -- two cannot tell 改一(下) from 矮一(下)
+local EDGE_MARGIN = 2.0
+local EDGE_RANK = 1.0
+
+-- How far the end of the English token en moves into (+1) or away from (-1)
+-- the Zhuyin token zh after it; 0 to leave the plan as it is.
+local function edge_shift(env, run, en, zh)
+  local word, rest = run:sub(en.i, en.j), run:sub(zh.i, zh.j)
+  local entry = word:match("^%l+$") and english(word)
+  if not entry or not env.tr then return 0 end
+  local syls, used = head_syllables(rest)
+  if #syls == 0 then return 0 end
+  local n = math.min(#syls, EDGE_SYLLABLES)
+  local base
+  local best, best_gain = 0, EDGE_MARGIN
+  local function try(shift, word2, rest2)
+    local entry2 = #word2 >= 3 and word2:match("^%l+$") and english(word2)
+    if not entry2 then return end
+    local syls2, used2 = head_syllables(rest2)
+    -- The same syllables after the first one, or it is another sentence.
+    if #syls2 ~= #syls or used2 ~= used - shift then return end
+    base = base or lm_weight(env, table.concat(syls, "", 1, n))
+    local other = lm_weight(env, table.concat(syls2, "", 1, n))
+    if not base or not other then return end
+    local gain = other - base
+      - EDGE_RANK * (math.log(entry2.rank + 1, 10) - math.log(entry.rank + 1, 10))
+    if env.debug then
+      log.info(string.format("asus_lang edge %s|%s %.2f / %s|%s %.2f gain=%.2f", word,
+        table.concat(syls, "", 1, n), base, word2, table.concat(syls2, "", 1, n), other, gain))
+    end
+    if gain > best_gain then best, best_gain = shift, gain end
+  end
+  try(1, word .. rest:sub(1, 1), rest:sub(2))      -- the word takes a key
+  try(-1, word:sub(1, -2), word:sub(-1) .. rest)   -- the word gives its last letter
+  return best
+end
+
 -- Plan for input[floor:], cached; positions are 0-based [start, end) in input.
 local function plan_input(env, input, floor, en_ctx, final)
   local cache_key = (en_ctx and ("e" .. prev_word) or "z") .. (final and "f" or "") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
   fresh_memos(input)
+  -- (Weights change with what was committed: none are kept across inputs.)
+  if #input <= 1 and env.lm_n > 0 then env.lm, env.lm_n = {}, 0 end
   local spans = {}
   -- Shortcut abbreviations (ㄉㄓ) are runs of lone initials by design; leave
   -- them to the stock segmentation so asus_shortcuts.lua can match them.
@@ -1035,6 +1089,13 @@ local function plan_input(env, input, floor, en_ctx, final)
       while e < #input and in_run_at(input, e + 1) do e = e + 1 end
       -- English context only applies to the run the composition starts with.
       local toks, special, cost = plan_run(input:sub(pos, e), en_ctx and pos == 1, final and e == #input)
+      for k = 1, #(toks or {}) - 1 do
+        local en, zh = toks[k], toks[k + 1]
+        if en.kind == "en" and zh.kind == "zh" then
+          local shift = edge_shift(env, input:sub(pos, e), en, zh)
+          en.j, zh.i = en.j + shift, zh.i + shift
+        end
+      end
       if env.debug then
         local parts = {}
         for _, t in ipairs(toks or {}) do parts[#parts + 1] = t.kind .. ":" .. input:sub(pos + t.i - 1, pos + t.j - 1) end
@@ -1171,6 +1232,19 @@ function segmentor.init(env)
   env.debug = env.engine.schema.config:get_bool("asus_lang/debug") or false
   env.guard_input, env.guard_since, env.guard_count, env.guard_off = nil, 0, 0, false
   env.guard_key, env.guard_key_count = -1, 0
+  -- A translator of its own, for the language model (edge_shift).
+  local config = env.engine.schema.config
+  local on = config:get_bool("asus_lang/edge")
+  if on == nil or on then
+    local ok, tr = pcall(function()
+      return Component.Translator(env.engine, "", "script_translator@translator")
+    end)
+    env.tr = ok and tr or nil
+  end
+  env.lm, env.lm_n = {}, 0
+  EDGE_MARGIN = tonumber(config:get_string("asus_lang/edge_margin") or "") or EDGE_MARGIN
+  EDGE_RANK = tonumber(config:get_string("asus_lang/edge_rank") or "") or EDGE_RANK
+  EDGE_SYLLABLES = tonumber(config:get_string("asus_lang/edge_syllables") or "") or EDGE_SYLLABLES
 end
 
 function segmentor.func(segmentation, env)
