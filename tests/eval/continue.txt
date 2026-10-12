@@ -1,0 +1,38 @@
+# Continuation after a pause, DEV set: text typed so far<TAB>first word that may come next( | another ...)
+# The text is English mode input ending in a space; the first word of the
+# continuation offered must be one of the listed words (letter case ignored).
+# Written before the code (stage 16): phrases whose next word is hardly open.
+I look forward to hearing from	you
+Please let me know if you have any	questions | concerns | further | other | issues | problems | feedback
+Sorry for the late	reply | response
+I hope this email finds you	well
+As you can	see | imagine | tell
+I will get back to you as soon as	possible | I
+On the other	hand
+Thanks in	advance
+It would be great if you	could | can | would
+Let me know what you	think
+Please feel free to	contact | reach | ask | let | call | email | share | send | get
+I am looking forward to	hearing | seeing | meeting | working | your | our | the
+Could you please let me	know
+We apologize for any	inconvenience
+Please find the attached	file | files | document | documents | report | invoice | resume | pdf | slides | copy | spreadsheet | presentation | draft | agenda
+Best	regards | wishes
+I just wanted to follow up	on | with | regarding | about | to
+Thank you very	much
+The model was trained for 10	epochs
+We use the Adam optimizer with a learning	rate
+The experimental results are shown in	Table | Figure | Fig | the | Tables | Figures | Section
+To the best of our	knowledge
+I have a quick	question
+Does that make	sense
+Let's schedule a	meeting | call | time | quick | follow | short | brief
+I'm afraid I can't make	it
+Nice to meet	you
+See you	tomorrow | soon | later | then | next | there | at | on | in | guys | again | all
+How are you	doing | today | feeling
+Please do not hesitate to	contact | reach | ask | call | let | get | email
+With regard	to
+As far as I	know | can | am | understand | remember | recall
+I couldn't agree	more | with
+Take your	time

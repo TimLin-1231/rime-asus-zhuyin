@@ -1,0 +1,37 @@
+# Continuation after a pause, HELD-OUT set (same format as continue.txt).
+# Written before the code (stage 16); only its total scores are looked at.
+I am looking forward to working with	you
+Don't hesitate to reach	out
+Apologies for the	delay | late | inconvenience | confusion | delayed | mistake | error | slow
+Hope you are doing	well | great | good | fine | okay
+As I mentioned	earlier | before | in | above | previously | yesterday | last
+I'll let you know as soon as I	can | have | get | hear | know | am | find | receive
+At the same	time
+Thank you so	much
+Would it be possible	to | for
+What do you	think | mean | want | need | suggest | recommend
+If you have any questions, please feel	free
+I'm happy to	help | answer | discuss | hear | share | provide | assist | announce | see | join | do | meet | report | be
+Can you please let me	know
+Sorry for any	inconvenience | confusion
+Please see the attached	file | files | document | documents | report | invoice | pdf | slides | copy | spreadsheet | presentation | draft | agenda | resume
+Kind	regards | of
+I wanted to check in	with | on | and | to | about | regarding
+Thanks a	lot | million | bunch | ton
+We fine-tuned the model for three	epochs
+We set the batch	size
+The results are summarized in	Table | Figure | Fig | the | Tables | Section
+As shown in	Figure | Table | Fig | the | Section | Figures | Tables | Eq | Equation
+Our method achieves state-of-the-art	performance | results | accuracy
+I have a few	questions | comments | suggestions | things | ideas | concerns | points | more | thoughts | minutes | items | updates | friends | options | requests
+Does this work for	you
+Let's have a quick	call | chat | meeting | sync | look | discussion | talk | catch | word
+I won't be able to	attend | make | join | come | do | go | finish | complete | help | meet | get | be | participate | work | answer | send | reply | respond | take
+Nice to see	you
+Talk to you	soon | later | tomorrow | then | next
+How is it	going
+Feel free to reach out if you need	any | anything | further | more | help | assistance | additional | me | to | a | clarification | support
+In terms	of
+As far as I can	tell | see | remember | recall | understand
+That sounds	good | great | like | perfect | fine | interesting | reasonable | nice | awesome | fun | exciting | amazing | wonderful | right | lovely | cool
+Keep up the good	work
