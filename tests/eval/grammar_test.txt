@@ -1,0 +1,62 @@
+# Writing helper, grammar HELD-OUT set (same format as grammar.txt).
+# Written before the helper (stage 15); only its total scores are looked at.
+I am used to wake up early.	I am used to waking up early.
+She didn't came to the party.	She didn't come to the party.
+He have two brothers.	He has two brothers.
+I am here since morning.	I have been here since morning. | I have been here since this morning.
+Those kind of problems are common.	Those kinds of problems are common. | That kind of problem is common. | These kinds of problems are common.
+Your welcome.	You're welcome. | You are welcome.
+I am boring in this class.	I am bored in this class.
+We arrived to the airport at noon.	We arrived at the airport at noon.
+This is the most easiest way.	This is the easiest way.
+Did you finished the report?	Did you finish the report?
+There are a lot of informations online.	There is a lot of information online.
+My boss let me to leave early.	My boss let me leave early.
+I am exciting about the trip.	I am excited about the trip.
+She gave me many good advices.	She gave me a lot of good advice. | She gave me much good advice. | She gave me lots of good advice. | She gave me good advice. | She gave me some good advice.
+I will tell you when I will finish.	I will tell you when I finish.
+I have lived here since three years.	I have lived here for three years.
+He explained me the rules.	He explained the rules to me.
+I could of done better.	I could have done better.
+The equipments are expensive.	The equipment is expensive.
+Me and my sister likes pizza.	My sister and I like pizza.
+Whose going to the meeting?	Who's going to the meeting? | Who is going to the meeting?
+I prefer coffee than tea.	I prefer coffee to tea.
+He is married with a doctor.	He is married to a doctor.
+I am studying English since two years.	I have been studying English for two years.
+Each of the options have advantages.	Each of the options has advantages.
+She is afraid from dogs.	She is afraid of dogs.
+I finished to write the email.	I finished writing the email.
+He told that he would come.	He said that he would come. | He told me that he would come. | He said he would come.
+Please describe about your experience.	Please describe your experience.
+The number of users are increasing.	The number of users is increasing.
+I am looking forward to meet you.	I am looking forward to meeting you.
+Would you mind to open the window?	Would you mind opening the window?
+Because it was late, so we went home.	Because it was late, we went home. | It was late, so we went home.
+I want to apply this job.	I want to apply for this job.
+She can't hardly wait.	She can hardly wait.
+The code run without errors.	The code runs without errors.
+I am very appreciate your help.	I really appreciate your help. | I appreciate your help very much. | I very much appreciate your help. | I greatly appreciate your help.
+Please contact with me tomorrow.	Please contact me tomorrow.
+One of the reason is cost.	One of the reasons is cost.
+Last week I visit my grandparents and stay for two days.	Last week I visited my grandparents and stayed for two days.
+I am used to waking up early.	I am used to waking up early.
+There is a lot of information online.	There is a lot of information online.
+Would you mind opening the window?	Would you mind opening the window?
+We deployed the fix to production last night.	We deployed the fix to production last night.
+The number of users is increasing.	The number of users is increasing.
+Can we reschedule the call to next Tuesday?	Can we reschedule the call to next Tuesday?
+I've attached the latest version of the document.	I've attached the latest version of the document.
+Had I known about the bug, I would have fixed it sooner.	Had I known about the bug, I would have fixed it sooner.
+The server restarts automatically after a crash.	The server restarts automatically after a crash.
+Both of the candidates have strong backgrounds.	Both of the candidates have strong backgrounds.
+I'm sorry for the late reply.	I'm sorry for the late reply.
+What do you think about this proposal?	What do you think about this proposal?
+The function takes two arguments and returns a list.	The function takes two arguments and returns a list.
+It doesn't matter which option you choose.	It doesn't matter which option you choose.
+She told me that she would be late.	She told me that she would be late.
+Please let me know when you're available.	Please let me know when you're available.
+Most of the feedback was positive.	Most of the feedback was positive.
+The loss stopped decreasing after ten epochs.	The loss stopped decreasing after ten epochs.
+I'd appreciate it if you could review my pull request.	I'd appreciate it if you could review my pull request.
+None of the tests failed.	None of the tests failed.

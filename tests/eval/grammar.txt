@@ -1,0 +1,64 @@
+# Writing helper, grammar DEV set: sentence<TAB>correct sentence( | another correct one ...)
+# A line whose two sides are the same is a correct sentence: it must come back
+# unchanged. Written before the helper (stage 15); mistakes a Mandarin speaker
+# typically makes in English, one per sentence.
+I look forward to hear from you.	I look forward to hearing from you.
+She don't like coffee.	She doesn't like coffee.
+He go to school every day.	He goes to school every day.
+I have went there before.	I have gone there before. | I have been there before.
+This are my books.	These are my books.
+Their going to be late.	They're going to be late. | They are going to be late.
+I am agree with you.	I agree with you.
+We discussed about the problem yesterday.	We discussed the problem yesterday.
+She is more taller than her brother.	She is taller than her brother.
+I didn't went to the meeting.	I didn't go to the meeting.
+There is many people in the room.	There are many people in the room.
+He suggested me to take a break.	He suggested that I take a break. | He suggested I take a break. | He suggested taking a break.
+I am interesting in machine learning.	I am interested in machine learning.
+Please send me the informations.	Please send me the information.
+I will call you when I will arrive.	I will call you when I arrive.
+She has been working here since five years.	She has been working here for five years.
+Can you explain me how it works?	Can you explain to me how it works? | Can you explain how it works?
+I have a few advice for you.	I have some advice for you. | I have a few pieces of advice for you. | I have a piece of advice for you.
+The datas are stored in the database.	The data are stored in the database. | The data is stored in the database.
+Me and him went to the store.	He and I went to the store.
+I should of called you earlier.	I should have called you earlier.
+Its a good idea to test the code first.	It's a good idea to test the code first. | It is a good idea to test the code first.
+The meeting was cancelled due to the manager was sick.	The meeting was cancelled because the manager was sick. | The meeting was canceled because the manager was sick.
+I am working in this company since 2020.	I have been working in this company since 2020. | I have been working at this company since 2020. | I have worked in this company since 2020. | I have worked at this company since 2020.
+Every students need to submit the homework.	Every student needs to submit the homework.
+He is good in math.	He is good at math.
+I enjoy to read books.	I enjoy reading books.
+She said me that she was busy.	She told me that she was busy. | She said that she was busy. | She told me she was busy.
+We need to discuss this issue more detail.	We need to discuss this issue in more detail.
+The results was better than we expected.	The results were better than we expected.
+I want to thanks you for your help.	I want to thank you for your help.
+Could you please to check the attached file?	Could you please check the attached file?
+Although it was raining, but we went out.	Although it was raining, we went out.
+I am looking forward your reply.	I am looking forward to your reply.
+He don't know nothing about it.	He doesn't know anything about it.
+The model perform well on the test set.	The model performs well on the test set.
+I very like this movie.	I really like this movie. | I like this movie very much. | I like this movie a lot.
+Please reply me as soon as possible.	Please reply to me as soon as possible.
+One of my friend lives in Taipei.	One of my friends lives in Taipei.
+Yesterday I go to the office and finish the report.	Yesterday I went to the office and finished the report.
+I look forward to hearing from you.	I look forward to hearing from you.
+The data is stored in a PostgreSQL database.	The data is stored in a PostgreSQL database.
+Could you send me the updated slides by Friday?	Could you send me the updated slides by Friday?
+She has been working here for five years.	She has been working here for five years.
+We trained the model on 10,000 examples and evaluated it on a held-out set.	We trained the model on 10,000 examples and evaluated it on a held-out set.
+Thanks for your quick reply.	Thanks for your quick reply.
+I'll get back to you once I've checked with the team.	I'll get back to you once I've checked with the team.
+The meeting has been moved to 3 p.m. tomorrow.	The meeting has been moved to 3 p.m. tomorrow.
+Neither of the two approaches works well on long inputs.	Neither of the two approaches works well on long inputs.
+If I had known earlier, I would have joined the call.	If I had known earlier, I would have joined the call.
+Let me know if you have any questions.	Let me know if you have any questions.
+The results were better than we expected.	The results were better than we expected.
+He suggested that we postpone the release.	He suggested that we postpone the release.
+It's been a while since we last talked.	It's been a while since we last talked.
+Who should I contact about the invoice?	Who should I contact about the invoice?
+There are a few things I'd like to discuss.	There are a few things I'd like to discuss.
+The API returns a JSON object with three fields.	The API returns a JSON object with three fields.
+I'm not sure whether this is the right approach.	I'm not sure whether this is the right approach.
+Please find the report attached.	Please find the report attached.
+Each of the students has a laptop.	Each of the students has a laptop.
