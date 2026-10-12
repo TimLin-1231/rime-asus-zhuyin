@@ -123,7 +123,11 @@ class Typist:
         for _ in range(40):
             if done == target or not self.r.snapshot().input:
                 break
-            self.r.key("Down")
+            # (After a pick the list has moved on and is open already; Down
+            # would move its highlight, and the highlighted row is shown with
+            # the text after it.)
+            if not self.r.get_option("_asus_expanded"):
+                self.r.key("Down")
             rest = target[len(done):]
             pick = None
             for _page in range(MAX_PAGES):
@@ -140,6 +144,8 @@ class Typist:
             done += pick[1]
             picks += 1
         if self.r.snapshot().input:  # could not reach the target: commit as is
+            if self.r.get_option("_asus_expanded"):
+                self.r.key("Escape")
             self.r.key("Return")
         out = "".join(self.r.committed)
         if not keep:

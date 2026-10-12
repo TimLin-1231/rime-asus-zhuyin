@@ -20,6 +20,7 @@
 local EXPANDED = "_asus_expanded"
 local EN_GUESSES = 3
 local complete = require("asus_predict").complete
+local list = require("asus_list")
 local email_match = require("asus_email").match
 
 -- Keyboard key -> Zhuyin symbol, from bopomofo.schema.yaml preedit_format.
@@ -78,8 +79,15 @@ local function func(input, env)
   local seg = ctx.composition:back()
   local keep_rare = ctx:get_option("extended_charset")
   if ctx:get_option(EXPANDED) or (seg and seg:has_tag("asus_symbol")) then
+    -- (The highlighted row may stand in for a shorter candidate, with the
+    -- text after it: asus_list.lua.)
+    local row, first = -1, nil
     for cand in input:iter() do
-      if keep_rare or not is_rare(cand.text) then yield(cand) end
+      if keep_rare or not is_rare(cand.text) then
+        row = row + 1
+        first = first or cand
+        yield(list.wrap(ctx, row, first, cand))
+      end
     end
     return
   end

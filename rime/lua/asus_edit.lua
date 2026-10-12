@@ -142,6 +142,7 @@ end
 
 -- Composition control --------------------------------------------------------
 local function set_list(ctx, expanded)
+  require("asus_list").clear(ctx)  -- another list: no row of it is marked
   ctx:set_option(EXPANDED, expanded)
   ctx:set_option("_linear", false)  -- a vertical list, see asus_keys.lua
   ctx:set_option("_auto_commit", false)
@@ -655,4 +656,11 @@ local function translator(input, seg, env)
   end
 end
 
-return { processor = processor, filter = filter, translator = translator }
+-- Current text of the units after key offset `p` (asus_list.lua), or nil
+-- without an editing cursor.
+local function text_after(ctx, p)
+  local st = load(ctx)
+  return st and text_between(st, p, #st.input) or nil
+end
+
+return { processor = processor, filter = filter, translator = translator, text_after = text_after }

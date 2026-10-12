@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import re
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
@@ -164,6 +166,50 @@ def main() -> int:
     r.key("Down"); c = cands()
     check("Down opens it again although everything is picked", r.get_option("_asus_expanded") and len(c) > 1, f"{c[:3]}")
     r.key("Escape"); r.key("Return"); r.clear()
+
+    # The highlighted row shows the text after it: the inline text never
+    # falls back to the keys typed (it read 我想再往xj4g;4a93).
+    start(keys(sent)); r.key("Home"); r.key("Right"); r.key("Right"); r.key("Down")
+    plain_rows = cands()
+    short = next((i for i, x in enumerate(plain_rows) if 0 < i and len(x) < len("在網路上買")), None)
+    for _ in range(short or 0):
+        r.key("Down")
+    s = r.snapshot()
+    pick = plain_rows[short] if short else ""
+    check("highlight on a shorter candidate: the inline text has no typed keys in it",
+          short is not None and s.highlighted == short and not re.search(r"[ -~]", s.preview)
+          and s.preview.startswith("我想" + pick) and len(s.preview) == len(sent), f"{pick!r} {s.preview!r}")
+    check("...its row says which part is the candidate",
+          short is not None and s.candidates[short][1].split(" ")[0] == pick
+          and s.candidates[short][0].startswith(pick), f"{s.candidates[short] if short else None}")
+    r.key("Up"); s = r.snapshot()
+    check("...and is itself again when the highlight leaves it",
+          short is not None and [c for c, _ in s.candidates][short] == pick,
+          f"{[c for c, _ in s.candidates][:4]}")
+    r.key("Down"); r.key("space"); s = r.snapshot()
+    check("picking it picks the candidate, not the row's text",
+          short is not None and s.preview.startswith("我想" + pick) and r.get_option("_asus_expanded")
+          and not s.committed, f"{s.preview!r}")
+    r.key("Escape"); r.key("Return"); r.clear()
+    start(keys("時間")); r.key("Down"); rows = cands()
+    one = rows.index("時") if "時" in rows else None
+    for _ in range(one or 0):
+        r.key("Down")
+    s = r.snapshot()
+    check("the same in the list of a single word (時 of 時間 shows 時間 inline)",
+          one is not None and s.preview == "時間" and s.highlighted == one, f"{s.preview!r} {rows[:5]}")
+    r.key("Return"); s = r.snapshot()
+    check("...and Enter picks 時, then lists 間", not s.committed and cands()[:1] == ["間"], f"{cands()[:3]}")
+    r.key("Escape"); r.clear()
+    start(keys(sent)); r.key("Home"); r.key("Down")
+    t0 = time.perf_counter()
+    for _ in range(4):
+        r.key("Down")
+    for _ in range(4):
+        r.key("Up")
+    ms = (time.perf_counter() - t0) * 1000 / 8
+    check("moving the highlight stays fast (< 30 ms a key)", ms < 30, f"{ms:.1f} ms")
+    r.key("Escape"); r.clear()
 
     # Ordinary typing is unaffected.
     for text in ("我今天晚上要去吃飯", "謝謝你的幫忙"):

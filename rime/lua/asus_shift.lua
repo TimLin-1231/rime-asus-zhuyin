@@ -13,7 +13,8 @@
 -- Shift+K typed quickly counted as two taps and "OK" ended in Chinese mode.
 --
 -- Being first, it also tells asus_lang.lua where one key event ends and the
--- next begins (key_tick, for the segmentation guard).
+-- next begins (key_tick, for the segmentation guard), and asus_list.lua that
+-- a key is coming.
 --
 --   processor  lua_processor@*asus_shift  (first)
 
@@ -73,7 +74,12 @@ end
 
 local function func(key, env)
   local code = key.keycode
-  if not key:release() then require("asus_lang").key_tick() end
+  if not key:release() then
+    require("asus_lang").key_tick()
+    -- (...and the open list gets its real candidates back before anything
+    -- else looks at them.)
+    require("asus_list").before_key(key, env.engine.context)
+  end
   if code == XK_Shift_L or code == XK_Shift_R then
     if track_shift(env, key) then
       toggle_ascii(env.engine.context)

@@ -20,7 +20,8 @@ local XK_Shift_L, XK_Shift_R = 0xffe1, 0xffe2
 local XK_Control_L, XK_Control_R = 0xffe3, 0xffe4
 local XK_Escape = 0xff1b
 local XK_Down = 0xff54
-local XK_Left, XK_Right = 0xff51, 0xff53
+local XK_Left, XK_Right, XK_Up = 0xff51, 0xff53, 0xff52
+local XK_Page_Up, XK_Page_Down = 0xff55, 0xff56
 local XK_BackSpace = 0xff08
 local XK_Return = 0xff0d
 
@@ -43,6 +44,7 @@ local NAV_KEYS = {
 
 local EXPANDED = "_asus_expanded"
 local toggle_ascii = require("asus_shift").toggle_ascii
+local list = require("asus_list")
 
 -- Options tied to the expanded candidate list:
 --   _linear       off: the list is vertical (weasel.custom.yaml, as in ASUS
@@ -56,14 +58,14 @@ local function set_list_options(ctx, value)
   ctx:set_option("_auto_commit", value)
 end
 
--- Left / Right in an open list: the first candidate of the previous / next
--- page (Page_Up / Page_Down do the same in librime's selector).
+-- Left / Right, Page_Up / Page_Down in an open list: the first candidate of
+-- the previous / next page. (The highlight is moved here, not by librime's
+-- selector: asus_list.lua shows the text after the highlighted candidate.)
 local function turn_page(ctx, env, step)
   local seg = ctx.composition:back()
   if not seg or not seg.menu then return end
   local page_size = env.engine.schema.page_size
-  local first = seg.selected_index - seg.selected_index % page_size + step * page_size
-  if first >= 0 and seg.menu:prepare(first + 1) > first then seg.selected_index = first end
+  list.highlight(ctx, seg.selected_index - seg.selected_index % page_size + step * page_size)
 end
 
 local set_expanded
@@ -77,6 +79,7 @@ local function pick(ctx, index)
 end
 
 set_expanded = function(ctx, value)
+  list.clear(ctx)
   if ctx:get_option(EXPANDED) == value then return end
   ctx:set_option(EXPANDED, value)
   set_list_options(ctx, value)
@@ -232,8 +235,13 @@ local function func(key, env)
     if seg.menu:prepare(index + 1) > index then pick(ctx, index) end
     return kAccepted  -- never insert the digit as Zhuyin while expanded
   end
-  if key.modifier == 0 and (code == XK_Left or code == XK_Right) then
-    turn_page(ctx, env, code == XK_Right and 1 or -1)
+  if key.modifier == 0 and (code == XK_Left or code == XK_Right
+                            or code == XK_Page_Up or code == XK_Page_Down) then
+    turn_page(ctx, env, (code == XK_Right or code == XK_Page_Down) and 1 or -1)
+    return kAccepted
+  end
+  if key.modifier == 0 and (code == XK_Up or code == XK_Down) then
+    list.highlight(ctx, ctx.composition:back().selected_index + (code == XK_Down and 1 or -1))
     return kAccepted
   end
   if (code == XK_space or code == XK_Return) and key.modifier == 0 then
