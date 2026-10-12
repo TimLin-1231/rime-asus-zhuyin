@@ -64,6 +64,13 @@ def main() -> int:
     check("picking replaces only that part; the rest stays", s.preview == "但感覺沒有那麼著急貨許要",
           s.preview)
     check("nothing is committed by a pick in the middle", not s.committed, f"{s.committed!r}")
+    c = cands()
+    check("after a pick the list moves on to the next character",
+          r.get_option("_asus_expanded") and c[:1] == ["許要"], f"{c[:4]}")
+    r.key("Return"); s = r.snapshot()
+    check("Enter on the first row keeps the rest and closes the list",
+          not s.committed and not r.get_option("_asus_expanded") and s.preview == "但感覺沒有那麼著急貨許要",
+          f"{s.committed!r} {s.preview}")
     r.key("Return"); s = r.snapshot()
     check("Enter commits the edited sentence", s.committed == "但感覺沒有那麼著急貨許要", f"{s.committed!r}")
 
@@ -122,6 +129,41 @@ def main() -> int:
     r.key("Escape"); s = r.snapshot()
     check("Esc closes the list without changes", s.preview == "我用python寫的", s.preview)
     r.clear()
+
+    # The list moves on after a pick: one character after the other, from
+    # the first, with Enter (it used to commit the sentence at the first pick).
+    sent = "我想在網路上買"
+    start(keys(sent)); r.key("Home"); r.key("Down")
+    c = cands()
+    if "我" in c:
+        for _ in range(c.index("我")):
+            r.key("Down")
+    r.key("Return"); s = r.snapshot(); c = cands()
+    check("Home, Down, Enter on 我: nothing committed, the list is at 想",
+          not s.committed and r.get_option("_asus_expanded") and c[:1] == ["想在網路上買"], f"{s.committed!r} {c[:3]}")
+    r.key("Right"); c = cands()
+    check("Right moves the list to the next character without picking", c[:1] == ["在網路上買"], f"{c[:3]}")
+    r.key("Left"); c = cands()
+    check("Left moves it back", c[:1] == ["想在網路上買"], f"{c[:3]}")
+    r.key("Right")
+    c = cands()
+    if "再" in c:
+        r.key(str(c.index("再") + 1))
+    s = r.snapshot(); c = cands()
+    check("a digit picks and moves on as well", s.preview == "我想再網路上買" and c[:1] == ["網路上買"],
+          f"{s.preview} {c[:3]}")
+    r.key("Return"); s = r.snapshot()
+    check("Enter on the first row keeps the rest; the list closes",
+          not s.committed and not r.get_option("_asus_expanded") and s.preview == "我想再網路上買", s.preview)
+    r.key("Return"); s = r.snapshot()
+    check("Enter then commits", s.committed == "我想再網路上買", f"{s.committed!r}")
+    # Down at the end, a pick, and Down again: the list opens again.
+    start(keys(sent)); r.key("Down"); r.key("Down"); r.key("space"); s = r.snapshot()
+    check("picking the last word closes the list, nothing committed",
+          not s.committed and not r.get_option("_asus_expanded"), f"{s.committed!r}")
+    r.key("Down"); c = cands()
+    check("Down opens it again although everything is picked", r.get_option("_asus_expanded") and len(c) > 1, f"{c[:3]}")
+    r.key("Escape"); r.key("Return"); r.clear()
 
     # Ordinary typing is unaffected.
     for text in ("我今天晚上要去吃飯", "謝謝你的幫忙"):

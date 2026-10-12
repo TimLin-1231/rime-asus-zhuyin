@@ -6,7 +6,10 @@
 --                  English word is one step); the bubble shows the text
 --                  around the cursor and the reading of the next character
 --   Down           candidates for the words starting at the cursor; picking
---                  one replaces only that part, the text after it stays
+--                  one (1-9, Space, Enter) replaces only that part, the text
+--                  after it stays, and the list moves on to the next
+--                  character; Left / Right move it without picking, the
+--                  first row keeps the rest as it is and ends, Esc closes
 --   BackSpace      deletes the character before the cursor
 --   typing         inserts at the cursor
 --   Esc            leaves the cursor (back to the end of the input)
@@ -348,13 +351,34 @@ local function picked(ctx, st, index)
   for i = #new, 1, -1 do table.insert(keep, first, new[i]) end
   st.units = keep
   st.caret = first + #new
+  -- (A pick is kept: Esc no longer puts back what Down at the end found.)
+  ctx:set_property("asus_edit_auto", "")
+  -- On to the next character, as in ASUS Smart Input: its list opens at
+  -- once. After the last one the list closes; Enter then commits.
+  while st.caret <= #st.units and st.units[st.caret].text == "" do st.caret = st.caret + 1 end
+  if st.caret <= #st.units and open_list(ctx, st) then return end
   set_list(ctx, false)
-  if st.caret > #st.units then
-    leave(ctx)
-  else
-    save(ctx, st)
-  end
+  leave(ctx)
   ctx:refresh_non_confirmed_composition()
+end
+
+-- Left / Right in the list at the cursor: the list of the character before /
+-- after it, nothing picked. Right after the last one ends the editing.
+local function step_list(ctx, st, step)
+  local caret = st.caret
+  repeat caret = caret + step until caret < 1 or caret > #st.units or st.units[caret].text ~= ""
+  if caret < 1 then return end
+  ctx:set_property("asus_edit_auto", "")
+  ctx:set_property(SPAN, "")
+  ctx:set_property(OPEN_END, "")
+  if caret > #st.units then
+    set_list(ctx, false)
+    lock_to(ctx, st, #st.input)
+    leave(ctx)
+    return
+  end
+  st.caret = caret
+  open_list(ctx, st)
 end
 
 function processor.func(key, env)
@@ -378,9 +402,13 @@ function processor.func(key, env)
       return kAccepted
     end
     if mods == 0 and (code == XK_space or code == 0xff0d) then
+      -- (Enter only picks: committing here left no way to change the next
+      -- character. With the list closed it commits as always.)
       picked(ctx, st, ctx.composition:back().selected_index)
-      -- Enter also commits the whole input, as in the plain list.
-      if code == 0xff0d and ctx:is_composing() then ctx:commit() end
+      return kAccepted
+    end
+    if mods == 0 and (code == XK_Left or code == XK_Right) then
+      step_list(ctx, st, code == XK_Right and 1 or -1)
       return kAccepted
     end
     if code == XK_Escape then
@@ -418,13 +446,15 @@ function processor.func(key, env)
   end
   -- Down at the end of the input: the list for the last word, the one just
   -- typed, instead of a list that starts at the beginning of a long input.
-  if code == XK_Down and not st and ctx:has_menu() then
+  if code == XK_Down and not st then
+    -- (No menu: every character was picked already. The last word again.)
+    local menu = ctx:has_menu()
     local units = units_of(ctx)
-    local caret = last_word_start(ctx, units)
-    if caret and caret > 1 then
+    local caret = last_word_start(ctx, units) or (not menu and #units > 0 and #units) or nil
+    if caret and (caret > 1 or not menu) then
       st = { input = ctx.input, caret = caret, units = units }
       open_list(ctx, st)
-      ctx:set_property("asus_edit_auto", "1")
+      ctx:set_property("asus_edit_auto", menu and "1" or "")
       return kAccepted
     end
     return kNoop  -- a single word: the ordinary list (asus_keys)

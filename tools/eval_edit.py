@@ -91,7 +91,14 @@ class User:
             self.press("Page_Down")
         return None
 
+    def listing(self) -> bool:
+        return bool(self.r.get_option("_asus_expanded"))
+
     def finish(self) -> str:
+        # After a pick the list has moved on to the next character and is
+        # still open: Esc closes it (a key more than before), Enter commits.
+        if self.r.snapshot().input and self.listing():
+            self.press("Escape")
         if self.r.snapshot().input:
             self.r.key("Return")
         out = "".join(self.r.committed)
@@ -122,14 +129,16 @@ class User:
             d = next((i for i, (a, b) in enumerate(zip(shown, want)) if a != b),
                      min(len(shown), len(want)))
             here = len(shown) if caret is None else caret
-            if 1 + d < abs(here - d):
+            listing = self.listing()  # open after a pick: Left / Right move it
+            if not listing and 1 + d < abs(here - d):
                 self.press("Home")
                 here = 0
             for _ in range(here - d):
                 self.press("Left")
             for _ in range(d - here):
                 self.press("Right")
-            self.press("Down")
+            if not listing:
+                self.press("Down")
             got = self.pick("".join(want[d:]))
             if got is None:
                 break

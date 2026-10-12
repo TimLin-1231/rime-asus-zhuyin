@@ -66,7 +66,17 @@ local function turn_page(ctx, env, step)
   if first >= 0 and seg.menu:prepare(first + 1) > first then seg.selected_index = first end
 end
 
-local function set_expanded(ctx, value)
+local set_expanded
+
+-- Pick candidate `index` of the open list. What is left of the input comes
+-- next and its list stays open, as in ASUS Smart Input (a pick that completes
+-- the input commits it, _auto_commit).
+local function pick(ctx, index)
+  ctx:select(index)
+  if not (ctx:is_composing() and ctx:has_menu()) then set_expanded(ctx, false) end
+end
+
+set_expanded = function(ctx, value)
   if ctx:get_option(EXPANDED) == value then return end
   ctx:set_option(EXPANDED, value)
   set_list_options(ctx, value)
@@ -219,29 +229,19 @@ local function func(key, env)
     local page_size = env.engine.schema.page_size
     local page_start = seg.selected_index - seg.selected_index % page_size
     local index = page_start + (code - 0x31)
-    if seg.menu:prepare(index + 1) > index then
-      ctx:select(index)
-      set_expanded(ctx, false)
-    end
+    if seg.menu:prepare(index + 1) > index then pick(ctx, index) end
     return kAccepted  -- never insert the digit as Zhuyin while expanded
   end
   if key.modifier == 0 and (code == XK_Left or code == XK_Right) then
     turn_page(ctx, env, code == XK_Right and 1 or -1)
     return kAccepted
   end
-  if code == XK_space and key.modifier == 0 then
+  if (code == XK_space or code == XK_Return) and key.modifier == 0 then
     -- select() (not confirm_current_selection) so Engine::OnSelect runs and
-    -- _auto_commit can commit a completed input.
-    ctx:select(ctx.composition:back().selected_index)
-    set_expanded(ctx, false)
-    return kAccepted
-  end
-  if code == XK_Return and key.modifier == 0 then
-    -- The highlighted candidate, not librime's default (the input as
-    -- converted, i.e. the first candidate).
-    ctx:select(ctx.composition:back().selected_index)
-    set_expanded(ctx, false)
-    if ctx:is_composing() then ctx:commit() end
+    -- _auto_commit can commit a completed input. Enter picks the highlighted
+    -- candidate like Space (librime's default would commit the first one);
+    -- it does not commit what is left: that could not be changed any more.
+    pick(ctx, ctx.composition:back().selected_index)
     return kAccepted
   end
   if code == XK_Escape then

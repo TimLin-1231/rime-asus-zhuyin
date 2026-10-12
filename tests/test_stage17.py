@@ -75,7 +75,7 @@ def main() -> int:
     got, snap, _ = run(keys("這個"), "mesage", keys("要回嗎"), "Home", "Right", "Right", "Down")
     check("at the word, Down lists the text as it is, the correction, then what was typed",
           snap.candidates[1:3] == [("message", "更正"), ("mesage", "")], f"{snap.candidates[:3]}")
-    r.key("3"); r.key("Return")
+    r.key("3"); r.key("Escape"); r.key("Return")  # (the list moves on after a pick: close it)
     got = "".join(r.committed)
     check("picking what was typed keeps it", got == "這個mesage要回嗎", got)
     got, snap, _ = run(keys("這個"), "mesage", keys("要回嗎"))

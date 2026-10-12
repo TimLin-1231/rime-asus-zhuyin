@@ -114,8 +114,13 @@ def main() -> int:
         for _ in range(c.index(alt)):
             press("Down")
         press("Return")
+    s = r.snapshot()
+    check("Enter in the list at the cursor picks the highlighted word and moves on",
+          alt is not None and not r.committed and s.preview.startswith("我" + alt)
+          and r.get_option("_asus_expanded"), f"{alt!r} -> {s.preview!r} {r.committed}")
+    press("Escape"); press("Return")
     out = "".join(r.committed); s = r.snapshot(); r.clear()
-    check("Enter in the list at the cursor picks the highlighted word and commits",
+    check("...Esc closes the list and Enter commits the sentence",
           alt is not None and out.startswith("我" + alt) and not s.composing, f"{alt!r} -> {out!r}")
 
     # -- Email addresses --------------------------------------------------------
