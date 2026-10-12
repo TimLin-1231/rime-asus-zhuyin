@@ -10,8 +10,13 @@ Everything runs on this machine: Harper (rules, explains what it found) and a
 small language model served by llama.cpp on 127.0.0.1 (assist/llm.py). The
 model is loaded on first use and unloaded after a while unused.
 
+While it runs, the input method's English mode also gets its continuations
+from the same model (assist/bridge.py): a pause after a word, and the bubble
+offers the next few words.
+
 Settings (optional file assist/config.json):
-    {"hotkey": "ctrl+alt+w", "idle_minutes": 10, "line_if_empty": true, "port": 8719}
+    {"hotkey": "ctrl+alt+w", "idle_minutes": 10, "line_if_empty": true, "port": 8719,
+     "continue_in_ime": true, "pause_ms": 600}
 """
 
 from __future__ import annotations
@@ -28,11 +33,12 @@ import time
 import tkinter as tk
 from pathlib import Path
 
-from . import harper, llm, selection
+from . import bridge, harper, llm, selection
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = Path(__file__).resolve().parent / "config.json"
-DEFAULTS = {"hotkey": "ctrl+alt+w", "idle_minutes": 10, "line_if_empty": True, "port": 8719}
+DEFAULTS = {"hotkey": "ctrl+alt+w", "idle_minutes": 10, "line_if_empty": True, "port": 8719,
+            "continue_in_ime": True, "pause_ms": 600}
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -449,6 +455,11 @@ def main() -> int:
         user32.MessageBoxW(None, f"快捷鍵 {cfg['hotkey']} 已經被別的程式用了。\n請在 assist\\config.json 換一個。",
                            "寫作小幫手", 0x30)
         return 1
+    if app.model is not None and cfg["continue_in_ime"]:
+        try:  # the input method's continuations (kept alive by its threads)
+            bridge.Bridge(app.model, app.llm_lock, pause=float(cfg["pause_ms"]) / 1000)
+        except OSError as e:
+            print(e, file=sys.stderr)
     app.toast(f"寫作小幫手已啟動：選取文字後按 {cfg['hotkey'].upper()}")
     try:
         app.root.mainloop()

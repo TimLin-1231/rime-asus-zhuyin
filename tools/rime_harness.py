@@ -46,7 +46,7 @@ XK = {
     "Tab": 0xFF09, "Left": 0xFF51, "Up": 0xFF52, "Right": 0xFF53, "Down": 0xFF54,
     "Page_Up": 0xFF55, "Page_Down": 0xFF56, "Home": 0xFF50, "End": 0xFF57,
     "Shift_L": 0xFFE1, "Shift_R": 0xFFE2, "Control_L": 0xFFE3, "Control_R": 0xFFE4,
-    "Caps_Lock": 0xFFE5,
+    "Caps_Lock": 0xFFE5, "F24": 0xFFD5,
 }
 SHIFT_MASK, CONTROL_MASK, RELEASE_MASK = 1 << 0, 1 << 2, 1 << 30
 

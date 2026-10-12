@@ -48,6 +48,13 @@ CONTINUE = (
 )
 
 
+NEXT = (
+    "The user is typing. Reply with only the next few words that most naturally continue their text "
+    "(do not repeat any of it, do not explain, no quotation marks)."
+)
+NEXT_CONTEXT, NEXT_TOKENS, NEXT_WORDS = 600, 12, 6
+
+
 def available() -> bool:
     return SERVER.exists() and MODEL.exists()
 
@@ -114,6 +121,37 @@ class Model:
         self.last_used = time.monotonic()
         return data["choices"][0]["message"].get("content") or ""
 
+    def complete(self, prompt: str, max_tokens: int) -> str:
+        """Plain continuation of prompt (no chat template), up to the end of the line."""
+        self.start()
+        self.last_used = time.monotonic()
+        body = json.dumps({"prompt": prompt, "n_predict": max_tokens, "temperature": 0.0,
+                           "stop": ["\n"], "cache_prompt": True}).encode("utf-8")
+        req = urllib.request.Request(self.url + "/completion", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        self.last_used = time.monotonic()
+        return data.get("content") or ""
+
+    def next_words(self, text: str, how: str = "raw") -> str:
+        """The few words that most likely come next after text (what the input
+        method shows after a pause, assist/bridge.py): up to the end of the
+        sentence, at most NEXT_WORDS words. "" when the model has nothing."""
+        text = text[-NEXT_CONTEXT:]
+        if how == "raw":
+            # Asked without the space the user ended on (a token carries the
+            # space before it): an answer that does not start with one goes
+            # on with the last word (10 -> "0 epochs"), and that piece is dropped.
+            out = self.complete(text.rstrip(), NEXT_TOKENS)
+            if out[:1] not in (" ", ""):
+                out = out.partition(" ")[2]
+        else:
+            out = self.chat(NEXT, text.rstrip(), NEXT_TOKENS)
+        phrase = _phrase(out)
+        # (Punctuation first would land after the space already typed.)
+        return phrase if phrase[:1].isalnum() or phrase[:1] in "'\"(" else ""
+
     # -- the three jobs ------------------------------------------------------
     def fix(self, text: str) -> str:
         return _shaped(text, self.chat(FIX, text.strip(), _budget(text)))
@@ -125,6 +163,18 @@ class Model:
     def continue_text(self, text: str) -> str:
         out = self.chat(CONTINUE, text.strip()[-1500:], 40, temperature=0.3).strip()
         return out.splitlines()[0].strip() if out else ""
+
+
+def _phrase(answer: str) -> str:
+    """A model continuation cut down to a phrase: one line, to the end of the
+    sentence at most, NEXT_WORDS words at most, nothing half-finished."""
+    line = answer.strip().splitlines()[0].strip() if answer.strip() else ""
+    words = []
+    for word in line.split():
+        words.append(word)
+        if len(words) >= NEXT_WORDS or word[-1] in ".!?":
+            break
+    return " ".join(words)
 
 
 def _budget(text: str) -> int:

@@ -20,6 +20,17 @@
 -- After Space the words that usually come next are offered (gray, as after
 -- Chinese text; data: opencc/asus_en_follow): Tab types the first one and a
 -- space, any other key dismisses them.
+-- After a pause the bubble offers a whole phrase instead, written by the
+-- local model of the writing helper (assist/bridge.py) from the text typed
+-- so far; Tab types it. This only happens while that program is running:
+--   * the English text committed here since the caret was last moved is
+--     kept in memory (env.typed, a few hundred characters; any key that may
+--     move the caret - arrows, Enter, shortcuts - empties it);
+--   * after a word and Space it is written to a named pipe, numbered;
+--   * the helper answers by pressing F24: this processor takes that key,
+--     reads the phrase from a second pipe and shows it, if nothing was
+--     typed in between. (Lua has no timer; the key is the only way in.)
+-- asus_english/continue: false turns it off.
 -- Programs listed with asus_en_direct: true under app_options in
 -- weasel.custom.yaml (terminals by default) keep the plain direct output,
 -- as does asus_english/compose: false in the schema patch. asus_en_noauto:
@@ -34,6 +45,9 @@
 local kAccepted, kNoop = 1, 2
 local XK_space, XK_Tab, XK_Return, XK_BackSpace = 0x20, 0xff09, 0xff0d, 0xff08
 local XK_Escape, XK_Down = 0xff1b, 0xff54
+local XK_F24 = 0xffd5         -- pressed by assist/bridge.py: an answer is ready
+local TYPED_MAX = 600         -- characters of typed text kept for the model
+local TYPED_STALE = 120       -- seconds without typing after which it is dropped
 local EXPANDED = "_asus_expanded"  -- asus_keys.lua
 local DIRECT = "asus_en_direct"
 local NOAUTO = "asus_en_noauto"
@@ -73,6 +87,62 @@ local function init(env)
     return (v == nil) or v
   end
   env.compose, env.auto, env.predict = flag("compose"), flag("autocorrect"), flag("predict")
+  env.live = flag("continue")
+  env.pipe = "\\\\.\\pipe\\" .. (config:get_string("asus_english/pipe") or "asus_zhuyin_assist")
+  env.typed, env.typed_at, env.asked, env.waiting = "", 0, 0, nil
+end
+
+-- The text typed so far, for the model ---------------------------------------
+local function forget(env)
+  env.typed = ""
+end
+
+local function note(env, text)
+  local now = os.time()
+  if now - env.typed_at > TYPED_STALE then env.typed = "" end
+  env.typed_at = now
+  env.typed = (env.typed .. text):sub(-TYPED_MAX)
+end
+
+local function commit_text(env, text)
+  env.engine:commit_text(text)
+  note(env, text)
+end
+
+local function send(env, message)
+  local f = io.open(env.pipe .. "_in", "wb")  -- fails at once without the helper
+  if not f then return false end
+  f:write(message)
+  f:close()
+  return true
+end
+
+-- Ask for a continuation of what was typed (at least two words of it).
+local function ask(env, ctx)
+  if not env.live or ctx:get_option(NOAUTO) or not env.typed:match("%a%s+%S*%a") then return end
+  env.asked = env.asked % 1000000 + 1
+  env.waiting = send(env, env.asked .. "\t" .. env.typed) and env.asked or nil
+end
+
+-- The user typed on: the answer to the last request is not wanted any more.
+local function cancel(env)
+  if env.waiting then
+    env.waiting = nil
+    send(env, "0")
+  end
+end
+
+-- F24: the phrase for the request still waiting, or nil.
+local function answer(env)
+  local waiting = env.waiting
+  env.waiting = nil
+  if not waiting then return nil end
+  local f = io.open(env.pipe .. "_out", "rb")
+  if not f then return nil end
+  local data = f:read("l") or ""  -- (one line: reading on into the closed pipe is an error)
+  f:close()
+  local number, phrase = data:match("^(%d+)\t(.+)$")
+  return tonumber(number) == waiting and phrase or nil
 end
 
 -- The correction shown but not committed yet: what was typed, or nil.
@@ -106,6 +176,7 @@ local function offer_next(ctx, env, word)
   end
   local words = lang.followers_of(word, NEXT_SHOW)
   if #words > 0 then require("asus_predict").show(ctx, words, NEXT_TAG) end
+  ask(env, ctx)
 end
 
 local function next_words(ctx)
@@ -113,13 +184,44 @@ local function next_words(ctx)
   return seg and seg:has_tag(NEXT_TAG) and seg or nil
 end
 
-local processor = { init = init }
+local processor = {}
 
-function processor.func(key, env)
+function processor.init(env)
+  init(env)
+  -- Everything committed through the context in English mode is typed text
+  -- (what engine:commit_text sends is noted where it is sent).
+  env.commit_conn = env.engine.context.commit_notifier:connect(function(c)
+    if active(c, env) then note(env, c:get_commit_text() or "") end
+  end)
+end
+
+function processor.fini(env)
+  if env.commit_conn then env.commit_conn:disconnect() end
+end
+
+local function handle(key, env)
   local ctx = env.engine.context
-  if key:release() or not active(ctx, env) then return kNoop end
   local code = key.keycode
-  if MODIFIERS[code] then return kNoop end
+  if code == XK_F24 then
+    -- From assist/bridge.py, never for the program: taken in every mode.
+    local phrase = not key:release() and active(ctx, env) and ctx.input == "" and answer(env)
+    if phrase then
+      local words, offer = { phrase }, next_words(ctx)
+      for i = 0, NEXT_SHOW - 2 do  -- the single words offered so far stay behind it
+        local cand = offer and offer:get_candidate_at(i)
+        if cand and cand.comment ~= phrase:match("^%S+") then words[#words + 1] = cand.comment end
+      end
+      ctx:clear()
+      require("asus_predict").show(ctx, words, NEXT_TAG)
+    end
+    return kAccepted
+  end
+  if key:release() or MODIFIERS[code] then return kNoop end
+  if not active(ctx, env) then
+    forget(env)  -- Chinese mode, or a program typed into directly
+    return kNoop
+  end
+  cancel(env)
   local plain = not key:ctrl() and not key:alt() and not key:super()
 
   -- A corrected word is waiting: BackSpace / Esc bring back what was typed,
@@ -143,16 +245,17 @@ function processor.func(key, env)
     local word = cand and cand.comment or ""
     ctx:clear()
     if key.modifier == 0 and code == XK_Tab and word ~= "" then
-      env.engine:commit_text(word .. " ")
-      ctx:set_property("asus_en_prev", word:lower())
-      offer_next(ctx, env, word)
+      commit_text(env, word .. " ")
+      local last = word:match("(%a[%a']*)$") or ""  -- (of a phrase; none after a full stop)
+      ctx:set_property("asus_en_prev", last:lower())
+      offer_next(ctx, env, last)
       return kAccepted
     end
     -- A character that is not composed is committed here rather than passed
     -- on: Weasel has a (empty) composition open for the bubble, and a key
     -- the program inserts itself while it closes can be lost.
     if plain and code >= 0x20 and code < 0x7f and not string.char(code):match("[%w'@._+#%-]") then
-      env.engine:commit_text(string.char(code))
+      commit_text(env, string.char(code))
       return kAccepted
     end
   end
@@ -165,7 +268,7 @@ function processor.func(key, env)
       if code == XK_space then
         local cand = ctx:get_selected_candidate()
         ctx:commit()  -- the highlighted guess
-        env.engine:commit_text(" ")
+        commit_text(env, " ")
         offer_next(ctx, env, cand and cand.text or "")
         return kAccepted
       end
@@ -188,7 +291,7 @@ function processor.func(key, env)
     if correct(ctx, env, " ") then return kAccepted end
     local word = ctx.input
     ctx:commit()
-    env.engine:commit_text(" ")
+    commit_text(env, " ")
     offer_next(ctx, env, word)
     return kAccepted
   end
@@ -222,6 +325,29 @@ function processor.func(key, env)
   -- Enter, punctuation, arrows, shortcuts...: commit, then the key goes on.
   ctx:commit()
   return kNoop
+end
+
+-- Keys that go on to the program change the text there too: a character is
+-- added to what was typed, BackSpace takes one off, and any key that may
+-- move the caret or do something else (arrows, Enter, Tab, shortcuts)
+-- means the text before the caret is no longer known.
+function processor.func(key, env)
+  local result = handle(key, env)
+  local ctx = env.engine.context
+  local code = key.keycode
+  if result == kNoop and not key:release() and not MODIFIERS[code] and active(ctx, env)
+      and not ctx:is_composing() then
+    if key:ctrl() or key:alt() or key:super() then
+      forget(env)
+    elseif code >= 0x20 and code < 0x7f then
+      note(env, string.char(code))
+    elseif code == XK_BackSpace then
+      env.typed = env.typed:sub(1, -2)
+    else
+      forget(env)
+    end
+  end
+  return result
 end
 
 -- One English segment over the whole input, without the Chinese reading.

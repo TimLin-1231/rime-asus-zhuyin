@@ -22,6 +22,8 @@
 | `tools/fetch_assist.py` | 下載小幫手用的 Harper、llama.cpp 和模型（不進 git） |
 | `tools/eval_assist.py` | 小幫手的文法修正評估 |
 | `tools/assist_test.py` | 在真的記事本裡測小幫手的快捷鍵、取字、貼回 |
+| `tools/ime_continue_test.py` | 在真的記事本裡測停頓後續寫（輸入法＋小幫手＋模型） |
+| `tools/eval_continue.py` | 續寫評估：詞對表和模型比 |
 | `tools/rime_harness.py` | 用 Python 驅動 `rime.dll`，在 `.harness/` 的複本上測試，不會碰到正在使用的設定 |
 | `tools/eval_ime.py` | 量化評估（整句正確率、字正確率、個人詞 Top1／Top9、每鍵延遲） |
 | `tools/eval_learn.py` | 學習評估：模擬一位使用者連續打字、改字，量測學到的東西有沒有用、有沒有改壞 |
@@ -76,7 +78,7 @@
 - 終端機（Windows Terminal、cmd、PowerShell、Git Bash）維持「直接輸出」：按鍵直接送進程式，沒有小框。
   其他想要直接輸出的程式（例如遊戲）：在 `rime/weasel.custom.yaml` 照樣加一行 `app_options/程式.exe: { asus_en_direct: true }`（小寫檔名），重新部署。
 - 全部改回直接輸出：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_english/compose: false`。
-- 英文模式**只記 email 地址**，其他打的字都不記（見「隱私」）。
+- 英文模式**只記 email 地址**，其他打的字都不記（見「隱私」）。寫作小幫手開著時，游標前的英文會暫時留在記憶體裡給續寫用（見下面「停頓後續寫」），一樣不存檔。
 
 ### 空白鍵自動修正（階段 14）
 只在「很有把握是打錯」的時候才改，其他時候照打的送出，猜字照樣列在小框裡（Tab 可以選）。
@@ -110,6 +112,29 @@
 - 句號之後不預測。方案選單裡的「預測開／預測關」開關（中文的預測也是它）、`asus_english/predict: false` 都可以關掉。
 - 評估（`tests/eval/english_next*.txt`，各 30 組，例如 thank → you、according → to；之前沒有這個功能）：開發集第一個就對 76.7%、前三個內 86.7%；保留測試集 80%／86.7%。
 - 只看前一個字，所以 the、of 這類字後面的預測很籠統；看整句的續寫要等之後的本機模型。
+
+### 停頓後續寫（階段 16）
+寫作小幫手（`start_assist.bat`，見下一節）開著的時候，英文模式多一件事：**打完一個字按空白後停一下（約 0.6 秒），小框的第一個提示會換成一整段**，是本機模型看你這一句前面打的內容寫的。例如打完 `I look forward to hearing from ` 停一下，出現 `you`；`Thank you very ` 出現 `much for your help.`。
+
+- **Tab** 送出整段和一個空格，接著再預測；按其他任何鍵就消失、照常打字。繼續打字不停頓的話什麼都不會出現。
+- 最多 6 個字，到句尾為止。原本的單字預測（下一個詞）排在它後面。
+- **小幫手沒開就沒有這個功能**，其他一切照舊（只剩單字預測）。模型第一次用要載入約 4 秒，所以開始打字後的第一次停頓通常來不及。
+- 評估（`tests/eval/continue*.txt`：一句話的開頭，第一個接的字幾乎是固定的，例如 `Sorry for the late` → reply／response）：
+
+| 第一個字就對 | 只看前一個字的詞對表（階段 14） | 本機模型看整句 |
+|---|---:|---:|
+| 開發集（34 句） | 17.6% | 94.1% |
+| 保留測試集（35 句） | 31.4% | 80.0% |
+
+  模型每次約 0.2 秒，加上 0.6 秒的停頓，大約停下來 1 秒內出現。
+
+- **怎麼做到的**：輸入法的 Lua 沒有計時器、不能連網，只在按鍵時執行。所以：
+  1. 英文模式把「游標前面、經由輸入法打出來的英文」記在記憶體裡（最多 600 個字元）。按方向鍵、Enter、Tab、任何 Ctrl／Alt 快捷鍵，或切到中文模式，就清掉（游標可能移走了）；超過兩分鐘沒打字也清掉。
+  2. 每次「字＋空白」之後，把這段文字寫進一條**具名管道**（`\\.\pipe\asus_zhuyin_assist_in`）交給小幫手；你接著打字就通知取消。
+  3. 小幫手等 0.6 秒沒有新的請求才問模型，答案準備好後**替你按一下 F24**。輸入法收到 F24 就從另一條管道讀回答案、顯示在小框裡；F24 永遠被輸入法吃掉，不會送進你的程式。只有發出請求的那個視窗還在最前面時才會按。
+- **隱私**：這段文字只在記憶體和本機管道裡，不寫進任何檔案，管道拒絕遠端連線，模型只聽 `127.0.0.1`。但要知道：開著小幫手時，你在英文模式打的英文會交給本機的模型程式。終端機（直接輸出）和程式編輯器（`asus_en_noauto`）不會送。密碼欄位通常會自己關掉輸入法；不放心的話可以關掉這個功能。
+- **關掉**：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_english/continue: false`（輸入法不送），或 `assist/config.json` 加上 `"continue_in_ime": false`（小幫手不接）。停頓長度：`"pause_ms": 600`。
+- 限制：滑鼠點到別的位置輸入法不會知道，那之後的第一次續寫可能接錯地方（按任何鍵就消失）；只看得到經由輸入法打的字，貼上的、原本就在文件裡的看不到；只有英文模式。
 
 ### 英文模式打久了不再變慢
 階段 14 順便修掉的問題：猜字用的暫存資料在英文模式從來不會清掉，打過的字越多、每個按鍵越慢（評估時連續打 650 個字，每鍵從 2.4 ms 漲到 14 ms；小狼毫不重開的話會一直累積）。現在每鍵固定約 2 ms。
@@ -333,6 +358,7 @@ C:\Users\User\anaconda3\python.exe tests\test_stage11.py
 C:\Users\User\anaconda3\python.exe tests\test_stage12.py
 C:\Users\User\anaconda3\python.exe tests\test_stage13.py
 C:\Users\User\anaconda3\python.exe tests\test_stage14.py
+C:\Users\User\anaconda3\python.exe tests\test_stage16.py
 C:\Users\User\anaconda3\python.exe tests\test_backup.py
 C:\Users\User\anaconda3\python.exe tests\test_assist.py --llm
 C:\Users\User\anaconda3\python.exe tests\test_numbers.py
@@ -380,6 +406,7 @@ C:\Users\User\anaconda3\python.exe tools\backup_learn.py --uninstall  取消每�
 
 ## 隱私
 - 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
+- 停頓後續寫：小幫手開著時，英文模式打的英文會經由本機的具名管道交給本機模型（只在記憶體，不存檔、不連網）；見「停頓後續寫」。
 - 英文模式還原過的自動修正只記在記憶體裡（小狼毫重新啟動就忘記），不寫進磁碟。
 - 英文詞的學習只從中文模式送出的文字學。英文模式雖然會組字，但只記長得像 email 地址的字（name@host.com），其他打的字一律不記，所以就算某個程式的密碼欄位沒有關掉輸入法，密碼也不會被存下來（除非它長得像 email）。終端機是直接輸出，完全不經過組字。
 - 記住的 email 存在 `rime/asus_learn.userdb`（只在本機），`rime/emails.txt` 不進 git。
