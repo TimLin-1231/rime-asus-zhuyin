@@ -81,6 +81,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--variants", nargs="+", default=["asus"], choices=list(eval_ime.VARIANTS))
     ap.add_argument("--show", type=int, default=0, help="examples to list per dev set")
+    ap.add_argument("--no-save", action="store_true", help="no-op for compatibility with eval_ime")
     ap.add_argument("--worker", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.worker:

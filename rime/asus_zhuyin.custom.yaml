@@ -1,0 +1,18 @@
+# ASUS-style Zhuyin schema customization
+# encoding: utf-8
+#
+# Custom settings for rime/asus_zhuyin.schema.yaml.
+# Applied via: - asus_zhuyin.custom:/patch?
+
+patch:
+  # "Raw keys first" inline preedit mode (lua/asus_lang.lua):
+  # While typing Chinese, incomplete syllables (before pressing a tone key)
+  # display raw English letter keys inline, while the candidate bubble displays
+  # Zhuyin notation (注音符號, e.g. ㄙㄨ). Only when a tone key completes a
+  # syllable do both the inline text and candidate bubble switch to Chinese characters.
+  # Pressing Enter commits exactly what is shown inline (e.g. raw English letters
+  # if no tone was pressed).
+  #
+  # Default: false (immediate Chinese conversion).
+  # Set to true to enable raw keys first mode:
+  asus_lang/raw_keys: true

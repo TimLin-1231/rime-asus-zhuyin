@@ -92,6 +92,16 @@ local function load_costs(config)
   C_NUM_OPEN = get("num_open", C_NUM_OPEN)
 end
 
+-- "Raw keys first" inline preedit mode configuration (Milestone 1).
+-- Reads asus_lang/raw_keys from schema config and checks ctx:get_option("raw_keys"),
+-- returning a boolean defaulting to false when nil.
+local function load_raw_keys(env)
+  local raw = env.engine.schema.config:get_bool("asus_lang/raw_keys")
+  local ctx = env.engine.context
+  local opt = ctx and ctx:get_option("raw_keys")
+  return (raw == true) or (opt == true)
+end
+
 local ZHUYIN_KEYS = "1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/- 6347"
 local INITIAL_KEYS = "1qaz2wsxedcrfv5tgbyhn"
 local IS_KEY, IS_INITIAL = {}, {}
@@ -1137,7 +1147,11 @@ end
 -- new tail. Typing on can change the best plan for keys already segmented
 -- ("bec" is a word, "because" too), so kept segments before `start` must
 -- still agree with the plan; otherwise segmentation is rewound to `floor`.
-local function kept_matches(segmentation, spans, start, new_input, input)
+local function kept_matches(segmentation, spans, start, new_input, input, raw_keys)
+  -- Raw keys mode (asus_compact.lua): a segment after the last tone key shows
+  -- its keys, one before it Chinese. A kept segment next to that line may
+  -- have changed sides (a tone key typed, or taken back) and is redone.
+  local raw_line = raw_keys and new_input and (input:sub(1, -2):find("[ 6347'][^ 6347']*$") or 0)
   local by_start = {}
   for _, sp in ipairs(spans) do
     -- With a number in the plan, segments kept from the previous key are
@@ -1147,6 +1161,7 @@ local function kept_matches(segmentation, spans, start, new_input, input)
   end
   for _, seg in ipairs(segmentation:get_segments()) do
     if seg.start >= start then break end
+    if raw_line and not is_fixed(seg) and seg._end > raw_line then return false end
     if not is_fixed(seg) then
       local special = seg:has_tag("asus_en") or seg:has_tag("asus_stray") or seg:has_tag("asus_num")
       local sp = by_start[seg.start]
@@ -1228,6 +1243,7 @@ end
 function segmentor.init(env)
   load_english()
   load_costs(env.engine.schema.config)
+  env.raw_keys = load_raw_keys(env)
   env.shortcuts = require("asus_shortcuts").load(rime_api.get_user_data_dir() .. "/shortcuts.txt")
   env.debug = env.engine.schema.config:get_bool("asus_lang/debug") or false
   env.guard_input, env.guard_since, env.guard_count, env.guard_off = nil, 0, 0, false
@@ -1292,7 +1308,7 @@ function segmentor.func(segmentation, env)
   local new_input = env.seg_input ~= input
   env.seg_input = input
   local call_start = start
-  if not kept_matches(segmentation, spans, start, new_input, input) then
+  if not kept_matches(segmentation, spans, start, new_input, input, load_raw_keys(env)) then
     if guard_tripped(env, input) then return true end
     rewind(segmentation)
     start = segmentation:get_current_start_position()
@@ -1794,6 +1810,7 @@ function context.init(env)
   env.conv, env.conv_n = {}, 0
   local ok_tw, tw = pcall(Opencc, "t2tw.json")
   env.tw = ok_tw and tw or nil
+  env.raw_keys = load_raw_keys(env)
   local config = env.engine.schema.config
   local on = config:get_bool("asus_lang/number_context")
   env.enabled = (on == nil) or on
@@ -1911,7 +1928,18 @@ local STEADY_MAX = 200
 function steady.init(env)
   local on = env.engine.schema.config:get_bool("asus_lang/steady")
   env.enabled = (on == nil) or on
+  env.raw_keys = load_raw_keys(env)
+  local ctx = env.engine.context
+  if ctx and ctx.update_notifier then
+    env.update_conn = ctx.update_notifier:connect(function()
+      env.raw_keys = load_raw_keys(env)
+    end)
+  end
   env.seen, env.seen_n = {}, 0
+end
+
+function steady.fini(env)
+  if env.update_conn then env.update_conn:disconnect() end
 end
 
 local function char_at(text, i)
@@ -1946,8 +1974,21 @@ local function steady_text(env, ctx, cand)
     env.seen[key] = cand.text
     return nil
   end
-  local head_key = cand.start .. ":" .. keys:sub(1, #keys - #tail)
+  local head = keys:sub(1, #keys - #tail)
+  local head_key = cand.start .. ":" .. head
   local shown = env.seen[head_key]
+  if env.raw_keys then
+    if not shown and #head > 0 then
+      local _, num_tones = head:gsub("[ 6347]", "")
+      if num_tones > 0 and cand.text then
+        local stop = utf8.offset(cand.text, num_tones + 1)
+        shown = stop and cand.text:sub(1, stop - 1) or cand.text
+        if env.seen[head_key] == nil then env.seen_n = env.seen_n + 1 end
+        env.seen[head_key] = shown
+      end
+    end
+    return (shown or "") .. tail
+  end
   if not shown then return nil end
   local n, total = utf8.len(shown), utf8.len(cand.text)
   if not n or not total then return nil end
@@ -1975,7 +2016,8 @@ end
 
 function steady.func(input, env)
   local ctx = env.engine.context
-  if not env.enabled or ctx:get_option("_asus_expanded") or ctx:get_option("ascii_mode")
+  env.raw_keys = load_raw_keys(env)
+  if not (env.enabled or env.raw_keys) or ctx:get_option("_asus_expanded") or ctx:get_option("ascii_mode")
       or (ctx:get_property("asus_edit") or "") ~= "" then
     for cand in input:iter() do yield(cand) end
     return
@@ -1999,6 +2041,7 @@ end
 
 return { segmentor = segmentor, translator = translator, plan_run = plan_run, digits = digits,
          context = context, numbers = numbers, steady = steady, NUMBER_MARK = NUMBER_MARK,
+         load_raw_keys = load_raw_keys,
          choice_key = choice_key,
          first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
          key_tick = key_tick,

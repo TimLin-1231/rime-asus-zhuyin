@@ -133,6 +133,7 @@ VARIANTS = {
     "asus+wx": ("project", "asus_zhuyin", (), WX_RECOMMENDED),  # Wanxiang LM, its settings
     "asus+wx-ours": ("project", "asus_zhuyin", (), WX_OURS),  # Wanxiang LM, our settings
     "asus": ("project", "asus_zhuyin", (), {}),                # current project config
+    "asus-raw": ("project", "asus_zhuyin", (), {"asus_zhuyin.custom.yaml": "patch:\n  asus_lang/raw_keys: true\n"}),
 }
 DEFAULT_VARIANTS = ["stock", "stage3", "asus-rules", "asus"]
 
