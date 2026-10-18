@@ -1,13 +1,15 @@
 diff --git a/WeaselTSF/Composition.cpp b/WeaselTSF/Composition.cpp
-index e94cea0..0fee3dd 100644
+index e94cea0..6538f6b 100644
 --- a/WeaselTSF/Composition.cpp
 +++ b/WeaselTSF/Composition.cpp
-@@ -3,6 +3,30 @@
+@@ -3,6 +3,32 @@
  #include "EditSession.h"
  #include "ResponseParser.h"
  #include "CandidateList.h"
++#include <algorithm>
 +#include <cstdarg>
 +#include <cstdio>
++#include <vector>
 +
 +// Diagnostics for tools/tsf_test.py of the input method project: start the
 +// application with WEASEL_TSF_LOG set to a file path and the composition
@@ -33,9 +35,48 @@ index e94cea0..0fee3dd 100644
  
  /* Start Composition */
  class CStartCompositionEditSession : public CEditSession {
-@@ -113,8 +137,9 @@ STDAPI CEndCompositionEditSession::DoEditSession(TfEditCookie ec) {
-   if (_clear && _pComposition->GetRange(&pCompositionRange) == S_OK)
-     pCompositionRange->SetText(ec, 0, L"", 0);
+@@ -40,9 +66,11 @@ STDAPI CStartCompositionEditSession::DoEditSession(TfEditCookie ec) {
+   if (_pContext->QueryInterface(IID_ITfContextComposition,
+                                 (LPVOID*)&pContextComposition) != S_OK)
+     return hr;
+-  if ((pContextComposition->StartComposition(
+-           ec, pRangeComposition, _pTextService, &pComposition) == S_OK) &&
+-      (pComposition != NULL)) {
++  HRESULT hrStart = pContextComposition->StartComposition(
++      ec, pRangeComposition, _pTextService, &pComposition);
++  if (hrStart != S_OK || pComposition == NULL)
++    TsfDebugLog(L"start: hr=%08x composition=%d", hrStart, pComposition != NULL);
++  if ((hrStart == S_OK) && (pComposition != NULL)) {
+     _pTextService->_SetComposition(pComposition);
+ 
+     /* WORKAROUND:
+@@ -54,6 +82,7 @@ STDAPI CStartCompositionEditSession::DoEditSession(TfEditCookie ec) {
+     if (!_inlinePreeditEnabled) {
+       pRangeComposition->SetText(ec, TF_ST_CORRECTION, L" ", 1);
+     }
++    _pTextService->_SetShownText(_inlinePreeditEnabled ? L"" : L" ");
+ 
+     /* set selection */
+     TF_SELECTION tfSelection;
+@@ -109,12 +138,22 @@ STDAPI CEndCompositionEditSession::DoEditSession(TfEditCookie ec) {
+ 
+   _pTextService->_ClearCompositionDisplayAttributes(ec, _pContext);
+ 
+-  ITfRange* pCompositionRange;
+-  if (_clear && _pComposition->GetRange(&pCompositionRange) == S_OK)
+-    pCompositionRange->SetText(ec, 0, L"", 0);
++  // Only what this service wrote there is removed. In a browser the page
++  // may rewrite its text right after a commit, and the composition range
++  // can then grow over text that is already committed: clearing it took
++  // the whole line with it.
++  com_ptr<ITfRange> pCompositionRange;
++  if (_clear && _pComposition->GetRange(&pCompositionRange) == S_OK &&
++      pCompositionRange != nullptr) {
++    if (_pTextService->_IsShownText(ec, pCompositionRange))
++      pCompositionRange->SetText(ec, 0, L"", 0);
++    else
++      TsfDebugLog(L"end session: composition holds other text, kept");
++  }
  
 -  _pComposition->EndComposition(ec);
 -  _pTextService->_FinalizeComposition();
@@ -45,7 +86,7 @@ index e94cea0..0fee3dd 100644
    return S_OK;
  }
  
-@@ -122,11 +147,27 @@ void WeaselTSF::_EndComposition(com_ptr<ITfContext> pContext, BOOL clear) {
+@@ -122,11 +161,27 @@ void WeaselTSF::_EndComposition(com_ptr<ITfContext> pContext, BOOL clear) {
    CEndCompositionEditSession* pEditSession;
    HRESULT hr;
  
@@ -75,7 +116,82 @@ index e94cea0..0fee3dd 100644
      pEditSession->Release();
    }
  }
-@@ -395,10 +436,51 @@ STDAPI WeaselTSF::OnCompositionTerminated(TfEditCookie ecWrite,
+@@ -265,14 +320,30 @@ STDAPI CInlinePreeditEditSession::DoEditSession(TfEditCookie ec) {
+   std::wstring preedit = _context->preedit.str;
+ 
+   com_ptr<ITfRange> pRangeComposition;
+-  if (_pComposition == nullptr)
++  if (_pComposition == nullptr) {
++    TsfDebugLog(L"preedit %u: no composition", (unsigned)preedit.length());
+     return E_FAIL;
+-  if ((_pComposition->GetRange(&pRangeComposition)) != S_OK)
++  }
++  // (Requested while an end session was pending: that composition is
++  // over, and its text is no longer ours to rewrite.)
++  if (!_pTextService->_IsCurrentComposition(_pComposition.p)) {
++    TsfDebugLog(L"preedit %u: composition already ended", (unsigned)preedit.length());
++    return S_OK;
++  }
++  if ((_pComposition->GetRange(&pRangeComposition)) != S_OK) {
++    TsfDebugLog(L"preedit %u: GetRange failed", (unsigned)preedit.length());
+     return E_FAIL;
++  }
+ 
+-  if ((pRangeComposition->SetText(ec, 0, preedit.c_str(),
+-                                  static_cast<LONG>(preedit.length()))) != S_OK)
++  HRESULT hrSet = pRangeComposition->SetText(
++      ec, 0, preedit.c_str(), static_cast<LONG>(preedit.length()));
++  if (hrSet != S_OK)
++    TsfDebugLog(L"preedit %u: SetText hr=%08x", (unsigned)preedit.length(), hrSet);
++  if (hrSet != S_OK) {
++    _pTextService->_ForgetShownText();
+     return E_FAIL;
++  }
++  _pTextService->_SetShownText(preedit);
+ 
+   /* TODO: Check the availability and correctness of these values */
+   int sel_cursor = -1;
+@@ -341,13 +412,22 @@ STDMETHODIMP CInsertTextEditSession::DoEditSession(TfEditCookie ec) {
+   TF_SELECTION tfSelection;
+   HRESULT hRet = S_OK;
+ 
+-  if (_pComposition == nullptr)
++  if (_pComposition == nullptr) {
++    TsfDebugLog(L"insert %u: no composition", (unsigned)_text.length());
+     return E_FAIL;
+-  if (FAILED(_pComposition->GetRange(&pRange)))
++  }
++  HRESULT hrRange = _pComposition->GetRange(&pRange);
++  if (FAILED(hrRange)) {
++    TsfDebugLog(L"insert %u: GetRange hr=%08x", (unsigned)_text.length(), hrRange);
+     return E_FAIL;
++  }
+ 
+-  if (FAILED(pRange->SetText(ec, 0, _text.c_str(),
+-                             static_cast<LONG>(_text.length()))))
++  HRESULT hrSet = pRange->SetText(ec, 0, _text.c_str(),
++                                  static_cast<LONG>(_text.length()));
++  if (FAILED(hrSet))
++    TsfDebugLog(L"insert %u: SetText hr=%08x", (unsigned)_text.length(), hrSet);
++  _pTextService->_ForgetShownText();
++  if (FAILED(hrSet))
+     return E_FAIL;
+ 
+   /* update the selection to an insertion point just past the inserted text. */
+@@ -382,9 +462,11 @@ void WeaselTSF::_UpdateComposition(com_ptr<ITfContext> pContext) {
+ 
+   _pEditSessionContext = pContext;
+ 
+-  _pEditSessionContext->RequestEditSession(
++  HRESULT hrRequest = _pEditSessionContext->RequestEditSession(
+       _tfClientId, this, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hr);
+   _async_edit = !!(hr == TF_S_ASYNC);
++  if (FAILED(hrRequest))
++    TsfDebugLog(L"update: request=%08x", hrRequest);
+   _UpdateCompositionWindow(pContext);
+ }
+ 
+@@ -395,10 +477,51 @@ STDAPI WeaselTSF::OnCompositionTerminated(TfEditCookie ecWrite,
    // This will be called when an edit session ended up with an empty composition
    // string, Even if it is closed normally. Silly M$.
  
@@ -128,10 +244,29 @@ index e94cea0..0fee3dd 100644
  void WeaselTSF::_AbortComposition(bool clear) {
    m_client.ClearComposition();
    if (_IsComposing()) {
-@@ -410,10 +492,17 @@ void WeaselTSF::_AbortComposition(bool clear) {
+@@ -408,12 +531,36 @@ void WeaselTSF::_AbortComposition(bool clear) {
+   _cand->Destroy();
+ }
  
++BOOL WeaselTSF::_IsShownText(TfEditCookie ec, ITfRange* pRange) {
++  if (!_shownKnown)
++    return FALSE;
++  // One character more than expected is read, so a longer text differs.
++  std::vector<WCHAR> buf(_shownText.size() + 2);
++  ULONG cch = 0;
++  if (FAILED(pRange->GetText(ec, 0, buf.data(), static_cast<ULONG>(buf.size()),
++                             &cch)))
++    return FALSE;
++  std::wstring got(buf.data(), cch), want = _shownText;
++  // (contenteditable turns spaces into no-break spaces)
++  std::replace(got.begin(), got.end(), L'\u00a0', L' ');
++  std::replace(want.begin(), want.end(), L'\u00a0', L' ');
++  return got == want;
++}
++
  void WeaselTSF::_FinalizeComposition() {
    _pComposition = nullptr;
++  _shownKnown = FALSE;
 +  _pEndingComposition = nullptr;
 +}
 +
@@ -147,20 +282,38 @@ index e94cea0..0fee3dd 100644
  
  BOOL WeaselTSF::_IsComposing() {
 diff --git a/WeaselTSF/EditSession.cpp b/WeaselTSF/EditSession.cpp
-index 8f4d503..6c407b1 100644
+index 8f4d503..49bc502 100644
 --- a/WeaselTSF/EditSession.cpp
 +++ b/WeaselTSF/EditSession.cpp
-@@ -35,6 +35,10 @@ STDAPI WeaselTSF::DoEditSession(TfEditCookie ec) {
-     } else if (!_status.composing && _IsComposing()) {
+@@ -29,13 +29,25 @@ STDAPI WeaselTSF::DoEditSession(TfEditCookie ec) {
+     } else {
+       _committed = FALSE;
+     }
+-    if (_status.composing && !_IsComposing()) {
++    // Rime can be composing with nothing to show inline: right after a
++    // commit, while only the next-word bubble is up. No composition is
++    // opened for that: an empty one in a browser could later be cleared
++    // over the text just committed, and keys Rime passes on (Enter) would
++    // reach the page in the middle of a composition.
++    const bool wantComposition =
++        _status.composing &&
++        !(config.inline_preedit && context->preedit.str.empty());
++    if (wantComposition && !_IsComposing()) {
+       _StartComposition(_pEditSessionContext,
+                         _fCUASWorkaroundEnabled && !config.inline_preedit);
+-    } else if (!_status.composing && _IsComposing()) {
++    } else if (!wantComposition && _IsComposing()) {
        _EndComposition(_pEditSessionContext, true);
      }
+-    if (_IsComposing() && config.inline_preedit) {
 +    // (Not "&& _IsComposing()": for the first key the composition is still
 +    // being started, and the flag has to be right when the focus leaves
 +    // after that one key.)
 +    _inlinePreedit = config.inline_preedit;
-     if (_IsComposing() && config.inline_preedit) {
++    if (wantComposition && _IsComposing() && config.inline_preedit) {
        _ShowInlinePreedit(_pEditSessionContext, context);
      }
+     _UpdateCompositionWindow(_pEditSessionContext);
 diff --git a/WeaselTSF/KeyEventSink.cpp b/WeaselTSF/KeyEventSink.cpp
 index c885ddd..769de14 100644
 --- a/WeaselTSF/KeyEventSink.cpp
@@ -208,7 +361,7 @@ index 590d3b8..7390766 100644
  }
  BOOL WeaselTSF::_InitThreadFocusSink() {
 diff --git a/WeaselTSF/WeaselTSF.h b/WeaselTSF/WeaselTSF.h
-index 696d3cc..3e4ad1b 100644
+index 696d3cc..316750b 100644
 --- a/WeaselTSF/WeaselTSF.h
 +++ b/WeaselTSF/WeaselTSF.h
 @@ -8,6 +8,8 @@ class CCandidateList;
@@ -220,19 +373,31 @@ index 696d3cc..3e4ad1b 100644
  class WeaselTSF : public ITfTextInputProcessorEx,
                    public ITfThreadMgrEventSink,
                    public ITfTextEditSink,
-@@ -121,7 +123,11 @@ class WeaselTSF : public ITfTextInputProcessorEx,
+@@ -121,7 +123,23 @@ class WeaselTSF : public ITfTextInputProcessorEx,
    void _SetCompositionPosition(const RECT& rc);
    BOOL _UpdateCompositionWindow(com_ptr<ITfContext> pContext);
    void _FinalizeComposition();
 +  // only if pComposition is still the current one (a pending end session of
 +  // an older composition must not drop a newer one)
 +  void _FinalizeComposition(ITfComposition* pComposition);
++  // The text this service last wrote into the current composition (the
++  // inline preedit, or the placeholder); a clearing end session removes the
++  // composition's text only while it is exactly that.
++  void _SetShownText(const std::wstring& text) {
++    _shownText = text;
++    _shownKnown = TRUE;
++  }
++  void _ForgetShownText() { _shownKnown = FALSE; }
++  BOOL _IsCurrentComposition(ITfComposition* p) {
++    return p != nullptr && _pComposition.p == p && _pEndingComposition != p;
++  }
++  BOOL _IsShownText(TfEditCookie ec, ITfRange* pRange);
    void _AbortComposition(bool clear = true);
 +  void _KeepComposition(com_ptr<ITfContext> pContext);
  
    /* Language bar */
    HWND _GetFocusedContextWindow();
-@@ -232,5 +238,11 @@ class WeaselTSF : public ITfTextInputProcessorEx,
+@@ -232,5 +250,13 @@ class WeaselTSF : public ITfTextInputProcessorEx,
    TfGuidAtom _gaDisplayAttributeInput;
    BOOL _async_edit = false;
    BOOL _committed = false;
@@ -242,5 +407,7 @@ index 696d3cc..3e4ad1b 100644
 +  // the composition an end session has been requested for; identity only,
 +  // never dereferenced (see _EndComposition)
 +  ITfComposition* _pEndingComposition = nullptr;
++  std::wstring _shownText;
++  BOOL _shownKnown = FALSE;
    BOOL _isToOpenClose = false;
  };
