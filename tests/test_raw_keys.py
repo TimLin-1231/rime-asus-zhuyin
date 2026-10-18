@@ -470,6 +470,26 @@ def main() -> int:
     check("Tier 2", "T2_split_keys_return_commits_dc", "".join(r.committed).endswith("dc"),
           f"committed={r.committed!r}")
 
+    # 2.8c Numpad keys while composing: what is shown is committed, then the
+    # character (top-row digits are Zhuyin keys); in an open list 1-9 pick.
+    for keys, kp, want in (("su3cl4", "KP_1", "你好1"), ("su3cl", "KP_5", "你cl5"),
+                           ("dc", "KP_Decimal", "dc."), ("ji3", "KP_Add", "我+")):
+        r.clear()
+        r.type(keys)
+        r.key(kp)
+        s = r.snapshot()
+        got = "".join(r.committed)
+        check("Tier 2", f"T2_numpad_{keys}_{kp}", got == want and s.input == "",
+              f"committed={got!r}, want {want!r}, input={s.input!r}")
+    r.clear()
+    r.type("su3")
+    r.key("Down")
+    expanded = r.snapshot().candidates
+    r.key("KP_2")
+    want = expanded[1][0] if len(expanded) > 1 else "?"
+    check("Tier 2", "T2_numpad_picks_in_open_list", "".join(r.committed) == want,
+          f"committed={r.committed!r}, want {want!r}")
+
     # 2.9 Punctuation and Escape cancellation
     r.clear()
     r.key(",", CONTROL_MASK)

@@ -30,7 +30,10 @@ RIME_SRC = ROOT / "rime"
 HARNESS_DIR = ROOT / ".harness"
 
 # Files in rime/ that are runtime state, not configuration.
-SKIP_NAMES = {"build", "sync", "installation.yaml", "user.yaml"}
+# asus_zhuyin.custom.yaml holds the live IME's personal settings (raw_keys):
+# tests and evals measure the schema's defaults, and write their own with
+# extra= when they need one.
+SKIP_NAMES = {"build", "sync", "installation.yaml", "user.yaml", "asus_zhuyin.custom.yaml"}
 SKIP_SUFFIXES = (".userdb",)
 
 # A key that librime does not finish within this many seconds ends the
@@ -46,7 +49,9 @@ XK = {
     "Tab": 0xFF09, "Left": 0xFF51, "Up": 0xFF52, "Right": 0xFF53, "Down": 0xFF54,
     "Page_Up": 0xFF55, "Page_Down": 0xFF56, "Home": 0xFF50, "End": 0xFF57,
     "Shift_L": 0xFFE1, "Shift_R": 0xFFE2, "Control_L": 0xFFE3, "Control_R": 0xFFE4,
-    "Caps_Lock": 0xFFE5, "F24": 0xFFD5,
+    "Caps_Lock": 0xFFE5, "F24": 0xFFD5, "KP_Enter": 0xFF8D,
+    "KP_Multiply": 0xFFAA, "KP_Add": 0xFFAB, "KP_Subtract": 0xFFAD, "KP_Decimal": 0xFFAE,
+    "KP_Divide": 0xFFAF, **{f"KP_{i}": 0xFFB0 + i for i in range(10)},
 }
 SHIFT_MASK, CONTROL_MASK, RELEASE_MASK = 1 << 0, 1 << 2, 1 << 30
 
