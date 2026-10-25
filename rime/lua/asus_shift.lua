@@ -23,16 +23,9 @@ local XK_Shift_L, XK_Shift_R = 0xffe1, 0xffe2
 local TAP_MAX_MS = 300     -- a Shift press held longer than this is not a tap
 local DOUBLE_TAP_MS = 400  -- max gap between the two taps
 
--- Wall-clock milliseconds. rime_api.get_time_ms is missing from the
--- librime-lua bundled with Weasel 0.17.4; on Windows the MSVC CRT clock()
--- behind os.clock() measures elapsed wall time (not CPU time), so it is a
--- valid fallback there.
-local now_ms
-if rime_api.get_time_ms then
-  now_ms = function() return rime_api.get_time_ms() end
-else
-  now_ms = function() return os.clock() * 1000 end
-end
+-- Wall-clock milliseconds on Windows and macOS (asus_clock.lua: os.clock()
+-- is wall time only with the Microsoft C runtime).
+local now_ms = require("asus_clock").now_ms
 
 local function toggle_ascii(ctx)
   local to_ascii = not ctx:get_option("ascii_mode")

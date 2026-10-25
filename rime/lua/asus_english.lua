@@ -30,7 +30,8 @@
 --   * the helper answers by pressing F24: this processor takes that key,
 --     reads the phrase from a second pipe and shows it, if nothing was
 --     typed in between. (Lua has no timer; the key is the only way in.)
--- asus_english/continue: false turns it off.
+-- asus_english/continue: false turns it off. Windows only (named pipes, F24);
+-- on other systems it is always off.
 -- Programs listed with asus_en_direct: true under app_options in
 -- weasel.custom.yaml (terminals by default) keep the plain direct output,
 -- as does asus_english/compose: false in the schema patch. asus_en_noauto:
@@ -89,9 +90,16 @@ local function init(env)
     return (v == nil) or v
   end
   env.compose, env.auto, env.predict = flag("compose"), flag("autocorrect"), flag("predict")
-  env.live = flag("continue")
   settings.auto = env.auto
-  env.pipe = "\\\\.\\pipe\\" .. (config:get_string("asus_english/pipe") or "asus_zhuyin_assist")
+  -- Windows named pipes. Elsewhere "\\.\pipe\..." would be an ordinary file
+  -- name (created in the working directory, the app bundle on macOS), so the
+  -- continuation is off there until the helper has a macOS channel.
+  if require("asus_clock").windows then
+    env.live = flag("continue")
+    env.pipe = "\\\\.\\pipe\\" .. (config:get_string("asus_english/pipe") or "asus_zhuyin_assist")
+  else
+    env.live, env.pipe = false, nil
+  end
   env.typed, env.typed_at, env.asked, env.waiting = "", 0, 0, nil
 end
 
@@ -113,6 +121,7 @@ local function commit_text(env, text)
 end
 
 local function send(env, message)
+  if not env.pipe then return false end
   local f = io.open(env.pipe .. "_in", "wb")  -- fails at once without the helper
   if not f then return false end
   f:write(message)
@@ -139,7 +148,7 @@ end
 local function answer(env)
   local waiting = env.waiting
   env.waiting = nil
-  if not waiting then return nil end
+  if not waiting or not env.pipe then return nil end
   local f = io.open(env.pipe .. "_out", "rb")
   if not f then return nil end
   local data = f:read("l") or ""  -- (one line: reading on into the closed pipe is an error)

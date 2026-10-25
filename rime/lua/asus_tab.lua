@@ -38,13 +38,8 @@ local FORCE = "asus_force"  -- read by asus_lang.lua's segmentor
 
 local zy = require("asus_zhuyin_data")
 
--- Wall-clock milliseconds (see asus_shift.lua: os.clock is wall time on MSVC).
-local now_ms
-if rime_api.get_time_ms then
-  now_ms = function() return rime_api.get_time_ms() end
-else
-  now_ms = function() return os.clock() * 1000 end
-end
+-- Wall-clock milliseconds on Windows and macOS (asus_clock.lua).
+local now_ms = require("asus_clock").now_ms
 
 local function is_cjk(s)
   local any = false

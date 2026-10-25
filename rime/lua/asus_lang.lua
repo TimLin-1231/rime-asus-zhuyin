@@ -1332,8 +1332,13 @@ local function key_tick()
   key_serial = key_serial + 1
 end
 
+local fast_ms = require("asus_clock").fast_ms
+
 local function guard_tripped(env, input)
-  local now = os.clock()  -- wall time on Windows (MSVC CRT)
+  -- (Called for every rewind, so a clock that never blocks: wall time on
+  -- Windows / with rime_api.get_time_ms, else CPU time, which a busy loop
+  -- spends at the same rate.)
+  local now = fast_ms() / 1000
   if env.guard_input ~= input or now - env.guard_since > GUARD_SECONDS then
     env.guard_input, env.guard_since, env.guard_count, env.guard_off = input, now, 0, env.guard_off
         and env.guard_input == input
