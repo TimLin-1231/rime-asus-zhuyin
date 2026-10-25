@@ -1406,6 +1406,33 @@ function segmentor.func(segmentation, env)
                             s = edit_span, e = #input }
     spans = before
   end
+  -- Tab switched a word between English and Chinese (asus_tab.lua):
+  -- "<input then>\t<start>\t<end>\t<zh|en>", kept while the input still
+  -- starts with what it was then (typing on keeps the switch).
+  local force = ctx:get_property("asus_force") or ""
+  if force ~= "" then
+    local at, fs, fe, fkind = force:match("^(.*)\t(%d+)\t(%d+)\t(%a+)$")
+    fs, fe = tonumber(fs), tonumber(fe)
+    if at and input:sub(1, #at) == at and fe <= #input then
+      -- Spans that overlap the switched word give way; the gaps they leave
+      -- (and pure Chinese input, which has no plan) are Chinese.
+      local out, pos = {}, 0
+      local function gap(to)
+        if to > pos then out[#out + 1] = { kind = "zh", s = pos, e = to } end
+      end
+      for _, sp in ipairs(spans) do
+        if sp.e <= fs then gap(sp.s); out[#out + 1] = sp; pos = sp.e end
+      end
+      gap(fs)
+      out[#out + 1] = { kind = fkind, s = fs, e = fe }
+      pos = fe
+      for _, sp in ipairs(spans) do
+        if sp.s >= fe then gap(sp.s); out[#out + 1] = sp; pos = sp.e end
+      end
+      gap(#input)
+      spans = out
+    end
+  end
   -- A misspelt English word with something typed after it is finished: its
   -- segment is tagged asus_enfix and the translator puts the word meant
   -- first. (The tag is what makes librime translate the segment again when

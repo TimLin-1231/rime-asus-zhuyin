@@ -92,14 +92,14 @@ def main() -> int:
     s, out = typed("recieve")
     check("misspelt English word: the correction is the first guess",
           s.preview == "recieve" and s.candidates[1:2] == [("receive", "⇥")], f"{s.candidates}")
-    r.clear(); r.type("ji3m/4recieve"); r.key("Tab"); s = r.snapshot()
-    check("Tab replaces a misspelt word with the correction", s.committed == "我用receive",
+    r.clear(); r.type("ji3m/4recieve"); r.key("Tab"); r.key("Tab"); s = r.snapshot()
+    check("double Tab replaces a misspelt word with the correction", s.committed == "我用receive",
           f"committed={s.committed!r}")
     r.clear(); r.type("model"); r.key("Down"); r.key("2"); s = r.snapshot()
     check("Down, then a digit picks a guess", s.committed.startswith("model") and s.committed != "model",
           f"committed={s.committed!r}")
-    r.clear(); r.type("ji3m/4pyth"); r.key("Tab"); s = r.snapshot()
-    check("Tab completes the English word (no space added)", s.committed == "我用python",
+    r.clear(); r.type("ji3m/4pyth"); r.key("Tab"); r.key("Tab"); s = r.snapshot()
+    check("double Tab completes the English word (no space added)", s.committed == "我用python",
           f"committed={s.committed!r}")
     s, out = typed("python")
     check("a complete common word shows no completion hint", s.candidates[:1] == [("python", "")],

@@ -63,9 +63,9 @@ def main() -> int:
     g = guesses("lea")
     check("without a previous word lea is not learning first", g[:1] != ["learning"], f"{g[:3]}")
     r.clear(); r.key(">", SHIFT_MASK); r.clear()
-    r.type("machine lea"); r.key("Tab")
+    r.type("machine lea"); r.key("Tab"); r.key("Tab")
     got = "".join(r.committed); r.clear()
-    check("Tab takes the guess that follows the previous word", got == "machine learning", got)
+    check("double Tab takes the guess that follows the previous word", got == "machine learning", got)
     # English mode.
     r.clear(); r.set_option("ascii_mode", True)
     r.type("machine lea"); r.key("Tab")

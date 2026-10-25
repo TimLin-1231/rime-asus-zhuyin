@@ -537,9 +537,10 @@ def main() -> int:
         f"committed={s.committed!r}, composing={s.composing}",
     )
 
-    # 3.3 English autocomplete with Tab
+    # 3.3 English autocomplete with a double Tab (one Tab switches, asus_tab.lua)
     r.clear()
     r.type("ji3m/4pyth")
+    r.key("Tab")
     r.key("Tab")
     s = r.snapshot()
     check(

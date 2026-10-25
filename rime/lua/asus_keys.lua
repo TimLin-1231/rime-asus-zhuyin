@@ -16,6 +16,7 @@
 local kRejected, kAccepted, kNoop = 0, 1, 2
 
 local XK_space = 0x20
+local XK_Tab = 0xff09
 local XK_Shift_L, XK_Shift_R = 0xffe1, 0xffe2
 local XK_Control_L, XK_Control_R = 0xffe3, 0xffe4
 local XK_Escape = 0xff1b
@@ -161,6 +162,13 @@ local function func(key, env)
   end
   if ctx.input:sub(1, 1) == "`" then
     return kNoop  -- symbol keyboard (asus_symbols.lua) owns these keys
+  end
+
+  -- Tab while composing is asus_tab.lua's; a double Tab that nothing could
+  -- complete ends here (librime's key_binder would move the caret a word).
+  if code == XK_Tab and key.modifier == 0 and ctx.caret_pos == #ctx.input
+      and not ctx:get_option(EXPANDED) then
+    return kAccepted
   end
 
   -- BackSpace deletes a whole character once its syllable is complete (ends

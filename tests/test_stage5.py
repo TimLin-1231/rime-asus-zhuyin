@@ -130,8 +130,8 @@ def main() -> int:
     check("the word is English from then on", t.preview("kubectl") == "kubectl", t.preview("kubectl"))
     mixed = keys("我用") + "kubectl" + keys("部署")
     check("...also between Chinese", t.preview(mixed) == "我用kubectl部署", t.preview(mixed))
-    t.reset_context(); t.type("kube"); r.key("Tab"); s = r.snapshot(); r.clear()
-    check("Tab completes a learned word", s.committed == "kubectl", f"committed={s.committed!r}")
+    t.reset_context(); t.type("kube"); r.key("Tab"); r.key("Tab"); s = r.snapshot(); r.clear()
+    check("double Tab completes a learned word", s.committed == "kubectl", f"committed={s.committed!r}")
     t.reset_context(); t.type("kubectl"); r.key("Down")
     handled = r.key("Delete", CONTROL_MASK); r.clear()
     check("Ctrl+Delete on the English candidate forgets it",

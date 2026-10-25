@@ -48,8 +48,8 @@ def main() -> int:
           s.candidates and "⇥" in s.candidates[0][1], f"{s.candidates[:1]}")
     # Comment: "⇥<continuation>　<typed keys>"
     hint = s.candidates[0][1].split("⇥")[-1].split("　")[0].strip() if s.candidates else ""
-    r.key("Tab"); s = r.snapshot()
-    check("Tab accepts conversion + continuation", s.committed == "機器" + hint and hint,
+    r.key("Tab"); r.key("Tab"); s = r.snapshot()
+    check("double Tab accepts conversion + continuation", s.committed == "機器" + hint and hint,
           f"committed={s.committed!r} hint={hint!r}")
 
     # Prediction after a commit ------------------------------------------

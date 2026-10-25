@@ -27,6 +27,7 @@ engine:
     - lua_processor@*asus_english*processor  # English mode: words with guesses
     - lua_processor@*asus_email*processor  # Tab types a remembered email address
     - lua_processor@*asus_quick*processor  # Tab on a number: 1,234 / 壹仟… / 新臺幣…元整
+    - lua_processor@*asus_tab  # Tab: last word English <-> Chinese (ai -> 摸); double Tab completes
     - lua_processor@*asus_predict*processor  # next-word prediction, Tab autocomplete
     - lua_processor@*asus_symbols*processor  # ` symbol keyboard, Ctrl+punctuation, ASCII after letters
     - lua_processor@*asus_edit*processor  # Left/Right cursor, Down at cursor, edit inside, Shift+BackSpace forgets
