@@ -474,6 +474,10 @@ function processor.func(key, env)
     end
     return kNoop  -- a single word: the ordinary list (asus_keys)
   end
+  -- Right with the cursor already at the end: nothing to move to. (librime
+  -- wrapped its own caret round to the start and showed a half-converted
+  -- reading, ㄨi3cl3.)
+  if code == XK_Right and not st then return kAccepted end
   if not st then return kNoop end
 
   if code == XK_Right then

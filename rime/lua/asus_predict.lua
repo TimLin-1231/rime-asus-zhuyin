@@ -3,9 +3,11 @@
 --
 --   * After a commit, the likely next words are shown in the bubble (as gray
 --     comments with empty candidate text, so nothing appears inline in the
---     document). Tab or Right accepts the highlighted one, Up/Down move the
---     highlight. Any other key dismisses the prediction and is processed
---     normally (Enter / BackSpace / punctuation go to the app).
+--     document). Tab accepts the first one. Any other key dismisses the
+--     prediction and is processed normally (Enter / BackSpace / punctuation
+--     / the arrow keys go to the app: after a commit the arrows move the
+--     caret in the document, e.g. to fix a character there; Right used to
+--     accept, so every press added another predicted word).
 --   * While composing (>= 2 characters converted), asus_compact.lua shows
 --     "⇥ continuation"; Tab commits conversion + continuation (autocomplete).
 --   * An unfinished English word shows "⇥ word" (asus_lang.lua); Tab completes it.
@@ -18,7 +20,7 @@
 -- The option "prediction" (switch) turns it off.
 
 local kRejected, kAccepted, kNoop = 0, 1, 2
-local XK_Tab, XK_Right, XK_Up, XK_Down = 0xff09, 0xff53, 0xff52, 0xff54
+local XK_Tab = 0xff09
 local XK_Shift_L, XK_Shift_R, XK_Control_L, XK_Control_R = 0xffe1, 0xffe2, 0xffe3, 0xffe4
 
 local learn = require("asus_learn")
@@ -214,8 +216,8 @@ function processor.func(key, env)
   if code == XK_Shift_L or code == XK_Shift_R or code == XK_Control_L or code == XK_Control_R then
     return kNoop  -- modifiers alone keep the prediction (double-Shift still works)
   end
-  local count = seg.menu:prepare(SHOW)
-  if key.modifier == 0 and (code == XK_Tab or code == XK_Right) then
+  if key.modifier == 0 and code == XK_Tab then
+    seg.menu:prepare(SHOW)
     local cand = seg:get_candidate_at(seg.selected_index)
     local word = cand and cand.comment or ""
     ctx:clear()
@@ -223,11 +225,6 @@ function processor.func(key, env)
       learn.accepted(env.history, word)
       commit_and_predict(env, word)
     end  -- chains predictions
-    return kAccepted
-  end
-  if key.modifier == 0 and (code == XK_Down or code == XK_Up) and count > 1 then
-    local step = (code == XK_Down) and 1 or -1
-    seg.selected_index = (seg.selected_index + step) % count
     return kAccepted
   end
   -- Anything else: drop the prediction, then let the key be processed as if

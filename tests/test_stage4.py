@@ -66,19 +66,32 @@ def main() -> int:
     check("predictions chain after an accepted word", s.composing and s.candidates,
           f"composing={s.composing} cands={s.candidates[:2]}")
 
-    r.clear(); r.type(JIQI); r.key("Return"); r.key("Down"); r.key("Right"); s = r.snapshot()
-    check("Down moves to the next prediction; Right accepts it",
-          s.committed == "機器" + preds[1], f"committed={s.committed!r}")
+    r.clear(); r.type(JIQI); r.key("Return"); r.key("Right"); r.key("Right"); s = r.snapshot()
+    check("Right after a commit adds no predicted words (it moves the caret in the app)",
+          s.committed == "機器" and not s.composing, f"committed={s.committed!r}")
 
     r.clear(); r.type(JIQI); r.key("Return"); r.type("su3"); s = r.snapshot()
     check("typing dismisses the prediction and starts a new composition",
           s.input == "su3" and s.committed == "機器", f"input={s.input!r} committed={s.committed!r}")
 
-    for key in ("Return", "BackSpace", "Escape"):
+    for key in ("Return", "BackSpace", "Escape", "Left", "Right", "Up", "Down", "Home", "End"):
         r.clear(); r.type(JIQI); r.key("Return")
         handled = r.key(key); s = r.snapshot()
         check(f"{key} dismisses the prediction and goes to the app",
-              not handled and not s.composing, f"handled={handled} composing={s.composing}")
+              not handled and not s.composing and s.committed == "機器",
+              f"handled={handled} composing={s.composing} committed={s.committed!r}")
+
+    # While composing, with the cursor at the end, Right has nothing to move
+    # to: the composition stays exactly as it is (librime used to wrap its
+    # caret to the start: ㄨi3cl3).
+    r.clear(); r.type(JIQI); before = r.snapshot()
+    r.key("Right"); r.key("Right"); s = r.snapshot()
+    check("Right at the end of the input changes nothing",
+          s.preview == before.preview and s.preedit == before.preedit and s.committed == "",
+          f"before={before.preview!r}/{before.preedit!r} after={s.preview!r}/{s.preedit!r}")
+    r.key("Left"); r.key("Right"); r.key("Right"); r.key("Return"); s = r.snapshot()
+    check("Left, then Right past the end, then Enter commits the text", s.committed == "機器",
+          f"committed={s.committed!r}")
 
     r.clear(); r.type("python"); r.key("space"); s = r.snapshot()
     check("no prediction after English", not s.composing, f"cands={s.candidates}")
