@@ -28,7 +28,7 @@ engine:
     - lua_processor@*asus_email*processor  # Tab types a remembered email address
     - lua_processor@*asus_quick*processor  # Tab on a number: 1,234 / 壹仟… / 新臺幣…元整
     - lua_processor@*asus_predict*processor  # next-word prediction, Tab autocomplete
-    - lua_processor@*asus_symbols*processor  # ` symbol keyboard, Ctrl+punctuation
+    - lua_processor@*asus_symbols*processor  # ` symbol keyboard, Ctrl+punctuation, ASCII after letters
     - lua_processor@*asus_edit*processor  # Left/Right cursor, Down at cursor, edit inside, Shift+BackSpace forgets
     - lua_processor@*asus_keys  # Ctrl+Space, compact menu keys, Space / BackSpace
     - ascii_composer
@@ -74,7 +74,9 @@ engine:
 # Half-width mode (the default, as in ASUS Smart Input) types ASCII ( ) ? ! :
 # directly, without a menu; full-width （）？！： stay on Ctrl+Shift+9/0, /,
 # 1, ; and the ` keyboard. Patched (replaced) rather than merged: the stock
-# values are scalars or lists.
+# values are scalars or lists. Right after letters or digits more keys stay
+# ASCII (, . ' _ $ ... : file.txt, 10:30, I'll), done in lua/asus_symbols.lua
+# (rules in its header); after Chinese the punctuator below is used as is.
 __patch:
   - "punctuator/half_shape/(": { commit: "(" }
     "punctuator/half_shape/)": { commit: ")" }

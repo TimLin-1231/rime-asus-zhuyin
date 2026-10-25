@@ -14,11 +14,20 @@
 --                    neighbour key); asus_typo.lua picks the replacement with
 --                    the language model (segment tag asus_fix)
 --   number           C_NUM + C_NUM_DIGIT per character (digits, optionally
---                    one decimal point), plus C_NUM_END when it ends the input
+--                    one decimal point, thousands separators 10,000; a , or
+--                    . right after it, 2026, + 我, adds C_NUM_TRAIL: ASCII
+--                    punctuation after digits stays with them, see
+--                    asus_symbols.lua), plus C_NUM_END when it ends the input
 --                    in what could still be an unfinished syllable (typing ㄅㄢˋ
 --                    passes through "10"), plus C_NUM_OPEN right after an
 --                    unfinished syllable (謝謝 ㄒㄧㄝ˙: the 7 is its tone)
+--   version number   C_VERSION (v2.3, py3.11): only where a syllable could
+--                    start and the letters + first digit cannot be Zhuyin
 --   + C_SWITCH whenever the language changes.
+-- Right after asus_symbols.lua committed a half-width character after a
+-- word or a number (file + ., 2026 + .), the keys at the start of the input
+-- may finish it: English costed as the whole name (file.txt, I'll; property
+-- asus_glue) and digits a number at once (asus_num_ctx).
 -- Every digit key is also a Zhuyin key (1 ㄅ, 2 ㄉ, 5 ㄓ, 8 ㄚ, 9 ㄞ, 0 ㄢ, tones
 -- 3 4 6 7), so a number only wins where the keys are not good Zhuyin:
 -- 2026 / 100 / 3.14 are numbers, 204 (但) and 283 (打) stay Chinese.
@@ -68,6 +77,10 @@ local C_NUM = 0.2        -- + 2 x C_SWITCH between Chinese: below a toneless syl
 local C_NUM_DIGIT = 0.05 -- longer numbers cost a little more: 2838 = 打 + 8
 local C_NUM_END = 1.0
 local C_NUM_OPEN = 4.0   -- = C_STRAY: such a digit is a tone or a stray key
+-- A comma or full stop right after a number (2026, / 2026.) stays with it as
+-- ASCII. Above a toneless syllable minus the switch back: 2.ji3 typed for
+-- 都我 without the tone key must stay Chinese.
+local C_NUM_TRAIL = 1.0
 
 -- Optional overrides from the schema (asus_lang/costs/<name>), for tuning.
 local function load_costs(config)
@@ -121,6 +134,31 @@ local function in_run_at(input, k)
   if in_run(c) then return true end
   local after = JOINS[c]
   return after ~= nil and k > 1 and input:sub(k - 1, k - 1):match(after) ~= nil
+end
+
+-- Text of the last commit (librime's commit history: conversions, words,
+-- text committed by the Lua scripts, printable keys passed through to the
+-- application; BackSpace and Return passed through empty it). Every commit
+-- of the composition is followed by an empty "raw" record, skipped here.
+local function last_commit(ctx)
+  local ok, text = pcall(function()
+    local records = ctx.commit_history:to_table()
+    for k = #records, math.max(1, #records - 3), -1 do
+      if records[k].text ~= "" then return records[k].text end
+    end
+    return ""
+  end)
+  return ok and text or ""
+end
+
+-- What asus_symbols.lua committed half-width right after a word (file + .,
+-- I + ', snake + _), as property asus_glue = "file.": the input that follows
+-- may finish that word (file.txt, I'll). Only while that character is still
+-- the last thing committed.
+local function glue_of(ctx)
+  local glue = ctx:get_property("asus_glue") or ""
+  if glue == "" or last_commit(ctx) ~= glue:sub(-1) then return nil end
+  return glue
 end
 
 -- English lexicon ------------------------------------------------------------
@@ -736,6 +774,9 @@ local C_EN_PUNCT = 0.2  -- a comma / full stop typed right after an English word
 local C_DOTTED = 1.5    -- node.js, www.google.com
 local C_EMAIL = 0.5     -- name@host
 local C_EMAIL_CHAR = 0.1  -- per character before the @ (where the address starts)
+-- v2.3: below a typo syllable even between Chinese (2 x C_SWITCH + this <
+-- C_FIX), above any toned reading (0).
+local C_VERSION = 0.1
 
 -- Cost of tok as English: a word, or words joined by - (e-mail), a name with
 -- dots (node.js), an email address, or any of these plus , or . after it.
@@ -789,12 +830,50 @@ local function en_cost(tok, en_ctx, at_end)
   return word_cost(tok, en_ctx, at_end)
 end
 
+-- What digit keys typed so far make: "num" a number (2026, 3.14, 10,000,
+-- 1,234.5), "part" one whose last group of three is still being typed
+-- (10,0), "trail" a number and then a comma or full stop (2026, / 2026.),
+-- or nil (no number starts like this).
+local function number_state(tok)
+  local core, sep = tok, ""
+  if tok:match("[,.]$") then core, sep = tok:sub(1, -2), tok:sub(-1) end
+  if not core:match("^%d") or not core:match("%d$") then return nil end
+  local int, frac = core:match("^([%d,]+)(%.?%d*)$")
+  if not int then return nil end
+  local state = "num"
+  if int:find(",", 1, true) then
+    -- thousands separators: 1-3 digits, then groups of exactly three
+    local groups = {}
+    for g in (int .. ","):gmatch("([^,]*),") do groups[#groups + 1] = g end
+    if #groups[1] < 1 or #groups[1] > 3 or groups[1]:match("^0") then return nil end
+    for k = 2, #groups do
+      local len = #groups[k]
+      if len == 0 or len > 3 then return nil end
+      if len < 3 then
+        if k < #groups or frac ~= "" then return nil end
+        state = "part"
+      end
+    end
+  end
+  if sep ~= "" then
+    if state == "part" or (sep == "." and frac ~= "") then
+      return nil  -- 10,0, / 3.14.
+    end
+    return "trail"
+  end
+  return state
+end
+
 -- Cheapest segmentation of run (a string of keys). Returns a list of
 -- {kind = "zh"|"en"|"stray", i, j} with 1-based inclusive i..j, and whether
 -- the plan is "special" (contains en or stray tokens).
 -- final: the input is being committed, so digit keys at its end are not
 -- the start of a syllable still being typed (see finalize()).
-local function plan_run(run, en_ctx, final)
+-- num_ctx: the run follows a number committed with , . or : after it
+-- (2026 + . then 5): digits at its start are a number, not a syllable.
+-- glue: the run follows a word committed with a half-width character after
+-- it ("file.", see glue_of): English at its start may finish that word.
+local function plan_run(run, en_ctx, final, num_ctx, glue)
   local n = #run
   local INF = math.huge
   -- best[i][lang]: cost of covering run[1..i-1]; lang of last token. "zx" is
@@ -857,6 +936,10 @@ local function plan_run(run, en_ctx, final)
             break
           end
           local cost = en_cost(tok, en_ctx, j == n)
+          if glue and i == 1 then  -- file. + txt, I' + ll, user@ + mail.com
+            local g = en_cost(glue .. tok, true, j == n)
+            if g and (not cost or g < cost) then cost = g end
+          end
           if not cost and j == n and tok:match("^%l+$") then
             -- Unfinished English word at the end ("pyth" -> python).
             local p = english_prefix(tok)
@@ -887,23 +970,46 @@ local function plan_run(run, en_ctx, final)
         elseif en_ctx and SHORT_WORDS[run:sub(i, i)] then
           relax(i, from, i, "en", C_EN_BASE_CTX, "en")  -- "a" after English
         end
-        -- numbers: 2026, 3.14
+        if glue and i == 1 and run:sub(i, i):match("%a") then  -- I' + m
+          relax(i, from, i, "en", en_cost(glue .. run:sub(i, i), true, n == 1), "en")
+        end
+        -- version numbers: v2.3, py3.11, r1.2.10. Only where a syllable could
+        -- start (at the start of the run or after a tone key), and only where
+        -- the letters and the first digit cannot be Zhuyin (u8 = ㄧㄚ,
+        -- ji3 = 我): ru8.3 / ji3 + 2026.5 / ...ul5.1 stay Chinese.
+        if (i == 1 or TONE_KEYS[run:sub(i - 1, i - 1)]) and run:sub(i, i):match("%a") then
+          local letters, digit = run:match("^(%a%a?%a?)(%d)", i)
+          local head = letters and (letters:lower() .. digit)
+          if head and not (zy.toned[head] or zy.toneless[head] or zy.prefix[head]) then
+            for j = i + #letters + 2, math.min(n, i + 15) do
+              local tok = run:sub(i, j)
+              if not tok:match("^%a+%d+%.?[%d.]*$") then break end
+              if tok:find(".", 1, true) and tok:match("%d$") and not tok:find("..", 1, true) then
+                relax(i, from, j, "en", C_VERSION, "en")
+              end
+            end
+          end
+        end
+        -- numbers: 2026, 3.14, 10,000, and 2026, / 2026. (number_state)
         if run:sub(i, i):match("%d") then
           local prev = (i > 1) and run:sub(i - 1, i - 1) or " "
           local open = not TONE_KEYS[prev] and not prev:match("%d")
           for j = i, n do
             local tok = run:sub(i, j)
-            if not tok:match("^%d+%.?%d*$") then break end
-            if tok:match("%d$") then
-              local cost = C_NUM + C_NUM_DIGIT * #tok
-              if j == n and not final then
-                -- Still typing a syllable? (10 -> 辦, 2832 -> 打 + ㄉ...)
-                for k = 1, math.min(3, #tok) do
-                  local tail = tok:sub(-k)
-                  if zy.prefix[tail] or zy.toneless[tail] then cost = cost + C_NUM_END; break end
-                end
+            local state = number_state(tok)
+            if not state then break end
+            local cost = C_NUM + C_NUM_DIGIT * #tok
+            if state == "trail" then
+              cost = cost + C_NUM_TRAIL
+            elseif j == n and not final and not (num_ctx and i == 1) then
+              -- Still typing a syllable? (10 -> 辦, 2832 -> 打 + ㄉ...)
+              for k = 1, math.min(3, #tok) do
+                local tail = tok:sub(-k)
+                if zy.prefix[tail] or zy.toneless[tail] then cost = cost + C_NUM_END; break end
               end
-              if open then cost = cost + C_NUM_OPEN end
+            end
+            if open then cost = cost + C_NUM_OPEN end
+            if state ~= "part" or j == n then
               relax(i, from, j, "num", cost, "num")
             end
           end
@@ -1079,8 +1185,11 @@ local function edge_shift(env, run, en, zh)
 end
 
 -- Plan for input[floor:], cached; positions are 0-based [start, end) in input.
-local function plan_input(env, input, floor, en_ctx, final)
-  local cache_key = (en_ctx and ("e" .. prev_word) or "z") .. (final and "f" or "") .. floor .. ":" .. input
+-- final: the length of the input being committed (its last run is planned
+-- as final), or nil. num_ctx, glue: see plan_run.
+local function plan_input(env, input, floor, en_ctx, final, num_ctx, glue)
+  local cache_key = (en_ctx and ("e" .. prev_word) or "z") .. (final and ("f" .. final) or "")
+    .. (num_ctx and "n" or "") .. (glue and ("g" .. glue .. "\t") or "") .. floor .. ":" .. input
   if env.cache_key == cache_key then return env.cache_plan end
   fresh_memos(input)
   -- (Weights change with what was committed: none are kept across inputs.)
@@ -1098,7 +1207,8 @@ local function plan_input(env, input, floor, en_ctx, final)
       local e = pos
       while e < #input and in_run_at(input, e + 1) do e = e + 1 end
       -- English context only applies to the run the composition starts with.
-      local toks, special, cost = plan_run(input:sub(pos, e), en_ctx and pos == 1, final and e == #input)
+      local toks, special, cost = plan_run(input:sub(pos, e), en_ctx and pos == 1, final == e,
+                                           num_ctx and pos == 1, pos == 1 and glue or nil)
       for k = 1, #(toks or {}) - 1 do
         local en, zh = toks[k], toks[k + 1]
         if en.kind == "en" and zh.kind == "zh" then
@@ -1271,8 +1381,16 @@ function segmentor.func(segmentation, env)
   local en_ctx = ctx:get_property("asus_en_ctx") == "1"
   set_previous(ctx)
   if env.guard_off and env.guard_input == input then return true end  -- see guard_tripped
-  local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx,
-                           ctx:get_property("asus_final") == input)
+  -- finalize() marks the input as about to be committed. A punctuation key
+  -- typed after it (10:30, 2026「) keeps the run before it final: the
+  -- punctuator adds the key first and commits after.
+  local fin = ctx:get_property("asus_final") or ""
+  local final = nil
+  if fin ~= "" and input:sub(1, #fin) == fin and (#input == #fin or not in_run_at(input, #fin + 1)) then
+    final = #fin
+  end
+  local spans = plan_input(env, input, fixed_floor(segmentation), en_ctx, final,
+                           ctx:get_property("asus_num_ctx") == "1", glue_of(ctx))
   -- Editing inside the composition (asus_edit.lua): one segment from the
   -- cursor to the end, so the menu lists what starts at the cursor.
   local edit_span = tonumber(ctx:get_property("asus_edit_span") or "")
@@ -1441,6 +1559,7 @@ function translator.func(input, seg, env)
   elseif CONTRACTIONS[input] then
     shown = contraction_form(input)  -- i'm -> I'm
   end
+  if s == 0 and glue_of(ctx) then shown = input end  -- file. + txt, not TXT
   -- Inside a Chinese sentence, with something typed after it, a misspelt
   -- word is finished: the word meant goes first. (The last word of the
   -- input may still be growing; Space corrects that one, asus_keys.lua.)
@@ -1502,14 +1621,16 @@ end
 -- now they are either a number, or the last key of a syllable whose tone key
 -- came one key early (見面 typed ㄇㄧˋㄢ). The input is planned again as
 -- final: shortening it and putting it back makes librime segment it anew.
-local function finalize(ctx)
+-- punct: a punctuation key follows (asus_symbols.lua). Then digit keys
+-- alone are a number too (10:30, 100，); on Enter they stay as converted.
+local function finalize(ctx, punct)
   local input = ctx.input
   if ctx.caret_pos ~= #input or ctx:get_option("ascii_mode") or input:sub(1, 1) == "`"
       or (ctx:get_property("asus_edit") or "") ~= "" then
     return
   end
   local tail = input:match("([^ 6347]*)$")
-  if tail == "" or #tail >= #input or not tail:match("^[125890]+$") then return end
+  if tail == "" or (#tail >= #input and not punct) or not tail:match("^[125890]+$") then return end
   ctx:set_property("asus_final", input)
   ctx.input = input:sub(1, #input - 1)
   ctx.input = input
@@ -2044,7 +2165,7 @@ return { segmentor = segmentor, translator = translator, plan_run = plan_run, di
          load_raw_keys = load_raw_keys,
          choice_key = choice_key,
          first_guess = first_guess, space_is_tone = space_is_tone, finalize = finalize,
-         key_tick = key_tick,
+         key_tick = key_tick, in_run_at = in_run_at, last_commit = last_commit,
          complete_english = complete_english,
          autocorrect = autocorrect, keep_word = keep_word, followers_of = followers_of,
          AUTO_PROP = AUTO_PROP, FIX_MARK = FIX_MARK }
