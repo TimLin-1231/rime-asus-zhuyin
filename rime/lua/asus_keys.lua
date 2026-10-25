@@ -105,6 +105,10 @@ local function init(env)
     local text = c:get_commit_text() or ""
     -- (A word corrected on Space is committed with that space, asus_english.lua.)
     c:set_property("asus_en_ctx", text:match("[%a%d][%p]*%s?$") and "1" or "0")
+    -- A number and then , . or : (10:30, 3.5 split by a commit): digits
+    -- typed next are a number (asus_lang.lua; asus_symbols.lua sets it too).
+    c:set_property("asus_num_ctx", text:match("%d[.,:]$") and "1" or "0")
+    c:set_property("asus_glue", "")
     -- ...and its last word, for the suggestions (what usually follows it).
     c:set_property("asus_en_prev", (text:match("(%a[%a']*)%p*%s?$") or ""):lower())
     c:set_property("asus_final", "")

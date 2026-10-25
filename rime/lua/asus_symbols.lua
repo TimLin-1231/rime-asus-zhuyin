@@ -9,6 +9,33 @@
 --     ("<key><symbol>" items separated by spaces; item order = display order).
 --   * Ctrl+punctuation commits full-width punctuation directly (Chinese mode
 --     only). Ctrl+/ and Ctrl+[ ] are deliberately left to applications.
+--   * Half-width punctuation after letters and digits (idea from BlendKey,
+--     MIT), so mixed text types naturally: 10:30, file.txt, v2.3, I'll,
+--     a@b.com, snake_case, 10,000, 50%, Hello, world. Chinese mode, no
+--     Ctrl/Alt:
+--     1. Empty composition, and the last text committed ends in A-Z a-z 0-9
+--        (librime's commit history; a space, Chinese or punctuation after it
+--        does not count, and BackSpace / Return passed to the application
+--        empty the history): , . : ' _ @ # $ % ^ & * = + ~ | commit their
+--        ASCII character at once. , and . are the Zhuyin keys ㄝ ㄡ: no
+--        syllable is being typed there, and starting one with them right
+--        after English or digits is rare. To type ㄝ/ㄡ there anyway:
+--        BackSpace (the app deletes the , or .) and the key again. The keys
+--        typed next may finish the word (asus_lang.lua: property asus_glue,
+--        file. + txt, I' + ll) or the number (asus_num_ctx: 2026. + 5).
+--     2. While composing, caret at the end, list closed: a key that does not
+--        belong to the run of keys before it (asus_lang.in_run_at: , . ' + #
+--        @ _ inside or after a word stay there, and asus_lang decides with
+--        its plan: 我2026,我 / 我file.txt / 3.5, while 歐 偶 耶 still type)
+--        first makes digit keys at the end a number (asus_lang.finalize:
+--        我10:30, 我10，). Then ' $ % ^ & * = ~ | right after an English word
+--        or a number commit it and their ASCII character (我file$, 我50%);
+--        any other key goes on to librime's punctuator as before.
+--     After Chinese nothing changes: < > [ ] { } \ " give ，。「」『』、“”.
+--     These stay full-width after English too (OK，我 / 「OK」 /
+--     Python、Java are how Chinese text is written); ( ) ? ! : are ASCII
+--     everywhere (schema __patch). Ctrl+punctuation is always full-width,
+--     the ` keyboard is unchanged, English mode is not affected.
 --
 -- processor must come first in engine/processors; translator handles the
 -- segment tagged asus_symbol (recognizer pattern "^`$").
@@ -85,6 +112,51 @@ local function commit(env, text)
   env.engine:commit_text(text)
 end
 
+-- Half-width punctuation after letters and digits ----------------------------
+-- Keys typed as their ASCII character right after a committed letter or
+-- digit (rule 1 in the header). , . are ㄝ ㄡ otherwise; : is ASCII anyway
+-- but goes through here so that 10 + : + 30 knows the 30 is a number.
+local AFTER_COMMIT = {}
+for c in (",.:'_@#$%^&*=+~|"):gmatch(".") do AFTER_COMMIT[c] = true end
+-- Keys typed as ASCII right after an English word or a number in the
+-- composition (rule 2). , . ' + # @ _ are not here: asus_lang.lua keeps them
+-- in the English word or number (file.txt, I'm, C++, a@b.com, 10,000).
+local IN_COMPOSITION = {}
+for c in ("'$%^&*=~|"):gmatch(".") do IN_COMPOSITION[c] = true end
+
+-- Returns kAccepted when the key was handled, kNoop when the next processors
+-- must see it (after the composition was prepared), or nil.
+local function half_width(env, ctx, ch)
+  local lang = require("asus_lang")
+  if not ctx:is_composing() then
+    if not AFTER_COMMIT[ch] then return nil end
+    local last = lang.last_commit(ctx)
+    if not last:match("[A-Za-z0-9]$") then return nil end
+    env.engine:commit_text(ch)
+    ctx:set_property("asus_num_ctx", (last:match("%d$") and ch:match("[.,:]")) and "1" or "0")
+    -- The keys typed next may finish the word: file. + txt, I' + ll.
+    ctx:set_property("asus_glue", ch:match("[.'@_]") and (last:match("[%w._@'%-]*$"):sub(-40) .. ch) or "")
+    return kAccepted
+  end
+  local input = ctx.input
+  if in_symbol_mode(ctx) or input == "" or ctx.caret_pos ~= #input
+      or ctx:get_option("_asus_expanded") or (ctx:get_property("asus_edit") or "") ~= "" then
+    return nil
+  end
+  if lang.in_run_at(input .. ch, #input + 1) then return nil end  -- a key of the word / syllable
+  -- The composition is about to be committed by the punctuator (or the key
+  -- below): digit keys at its end are a number now (10:30, 我10，).
+  lang.finalize(ctx, true)
+  local seg = ctx.composition:back()
+  if IN_COMPOSITION[ch] and seg and ctx.input:match("[A-Za-z0-9]$")
+      and (seg:has_tag("asus_en") or seg:has_tag("asus_num")) then
+    ctx:commit()
+    env.engine:commit_text(ch)
+    return kAccepted
+  end
+  return kNoop
+end
+
 function processor.func(key, env)
   local ctx = env.engine.context
   if key:release() or ctx:get_option("ascii_mode") then
@@ -111,6 +183,12 @@ function processor.func(key, env)
   end
   if key:ctrl() or key:alt() then
     return kNoop
+  end
+
+  -- Half-width punctuation after letters and digits (rules in the header) --
+  if code > 0x20 and code < 0x7f and code ~= XK_grave and string.char(code):match("%p") then
+    local done = half_width(env, ctx, string.char(code))
+    if done ~= nil then return done end
   end
 
   -- Open the symbol keyboard ---------------------------------------------
