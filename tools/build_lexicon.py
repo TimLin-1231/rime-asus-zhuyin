@@ -10,7 +10,10 @@ Taiwan supplement: only entries that change behaviour are written --
   alt     MOE reading not reachable from terra_pinyin char readings
           (晚上 ㄕㄤˋ, 衣服 ㄈㄨˊ, 咖啡 ㄎㄚ); weight = essay weight of the word
   prefer  MOE spelling loses to a non-MOE homophone in essay.txt
-          (螢幕 588 < 熒幕 800); weight = best competitor + 1
+          (螢幕 588 < 熒幕 800); weight = best competitor + 1 -- unless the
+          competitor is the commoner one in Taiwan text too (McBopomofo):
+          請先 is no MOE entry but far commoner than 請仙 (also 沒人/媒人,
+          跑到/跑道, 邁向/脈象)
   new     MOE word below the essay cut-off (min_phrase_weight); weight = --floor
 Personal: weight = max(essay weight, --personal); symbols get weight 1.
 
@@ -74,7 +77,10 @@ def write_dict(path: Path, name: str, rows: list[tuple[str, str, int]], note: st
     path.write_text("\n".join(head + body) + "\n", encoding="utf-8")
 
 
-def build_tw(floor: int, prefer: bool) -> tuple[list[tuple[str, str, int]], dict[str, int]]:
+def build_tw(floor: int, prefer: bool, mcb: dict[tuple[str, str], int] | None = None
+             ) -> tuple[list[tuple[str, str, int]], dict[str, int]]:
+    """mcb: McBopomofo weight per (word, pinyin reading), see build_mcb."""
+    mcb = mcb or {}
     essay = essay_weights()
     moe = moe_words()
     char_sets = terra_char_reading_sets()
@@ -102,7 +108,7 @@ def build_tw(floor: int, prefer: bool) -> tuple[list[tuple[str, str, int]], dict
                     index[r].append((w, n))
 
     rows: list[tuple[str, str, int]] = []
-    stats = {"alt": 0, "prefer": 0, "new": 0}
+    stats = {"alt": 0, "prefer": 0, "new": 0, "not_preferred": 0}
     for word, sylls_z in moe.items():
         if not (2 <= len(word) <= MAX_PHRASE_LENGTH and HAN.match(word)):
             continue
@@ -114,8 +120,12 @@ def build_tw(floor: int, prefer: bool) -> tuple[list[tuple[str, str, int]], dict
         reachable = all(p in char_sets.get(c, ()) for c, p in zip(word, sylls))
         if word in terra_words:
             reachable = reachable and terra_words[word].split() == sylls
-        competitor = max((n for _, n in index.get(tuple(sylls), ())), default=0)
-        if prefer and competitor >= base and competitor > 0:  # ties go to MOE spelling
+        rival, competitor = max(index.get(tuple(sylls), ()), key=lambda wn: wn[1], default=("", 0))
+        reading = " ".join(sylls)
+        taiwan_rival = mcb.get((rival, reading), 0) > mcb.get((word, reading), 0)
+        if prefer and competitor >= base and competitor > 0 and taiwan_rival:
+            stats["not_preferred"] += 1
+        if prefer and competitor >= base and competitor > 0 and not taiwan_rival:  # ties go to MOE spelling
             weight, kind = competitor + 1, "prefer"
         elif in_dict and not reachable:
             weight, kind = max(base, 1), "alt"
@@ -209,13 +219,14 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=RIME)
     args = ap.parse_args()
 
-    tw_rows, stats = ([], {}) if args.no_tw else build_tw(args.floor, not args.no_prefer)
+    mcb_rows, mcb_stats = ([], {}) if args.no_mcb or not MCB_DIR.exists() else build_mcb()
+    mcb = {(w, r): n for w, r, n in mcb_rows}
+    tw_rows, stats = ([], {}) if args.no_tw else build_tw(args.floor, not args.no_prefer, mcb)
     write_dict(args.out / "terra_pinyin.tw.dict.yaml", "terra_pinyin.tw", tw_rows,
                "Source: Taiwan MOE dictionaries (CC BY-ND 3.0 TW), local use only.")
     p_rows, skipped = build_personal(args.personal)
     write_dict(args.out / "terra_pinyin.personal.dict.yaml", "terra_pinyin.personal", p_rows,
                "Source: lexicon/personal_words.txt (private).")
-    mcb_rows, mcb_stats = ([], {}) if args.no_mcb or not MCB_DIR.exists() else build_mcb()
     write_dict(args.out / "terra_pinyin.mcb.dict.yaml", "terra_pinyin.mcb", mcb_rows,
                "Source: McBopomofo Source/Data (MIT), third_party/mcbopomofo.")
     print(f"tw: {len(tw_rows)} entries {stats}; personal: {len(p_rows)} entries, "

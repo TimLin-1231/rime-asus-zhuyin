@@ -41,7 +41,9 @@ local NOUN_NEXT = set([[人 事 樣 東 時 地 話 感 心 一 個 部 方 結 
 
 -- 再: again / then (等一下我再說, 如果再不, 再想一想).
 -- (Not 等: 我在等公車 and 請再等一下 are both common.)
-local ZAI4_NEXT = set([[一次 一下 一點 說 見 來 試 不 也 度 次 加 聯絡 便宜 檢查 打給 給]])
+-- 再多一點 / 再這樣下去: only these longer forms (在多數, 在這樣的情況下).
+local ZAI4_NEXT = set([[一次 一下 一點 說 見 來 試 不 也 度 次 加 聯絡 便宜 檢查 打給 給
+  多一點 多一些 多一下 多加 多給 多練 多久 這樣下去 這樣我 這樣就 這樣的話]])
 -- Immediately before 再. (Not 明天 / 下次: 明天在台北 is common.)
 local ZAI4_PREV = set([[等一下 晚點 晚一點 之後 然後 改天 如果 了 一下 不要 不能 不會 別
   要是 只要 就 可以 想]])

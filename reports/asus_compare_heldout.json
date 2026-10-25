@@ -1,0 +1,44 @@
+{
+ "date": "2026-10-25 13:04 (ASUS) / 2026-10-25 13:09 (Rime)",
+ "typed": {
+  "asus": 90,
+  "rime": 90
+ },
+ "totals": {
+  "clean": {
+   "n": 30,
+   "asus": 22,
+   "rime": 26
+  },
+  "typo": {
+   "n": 15,
+   "asus": 0,
+   "rime": 12
+  },
+  "mixed": {
+   "n": 15,
+   "asus": 12,
+   "rime": 15
+  },
+  "particles": {
+   "n": 10,
+   "asus": 5,
+   "rime": 8
+  },
+  "numbers": {
+   "n": 10,
+   "asus": 8,
+   "rime": 10
+  },
+  "numbers_amb": {
+   "n": 10,
+   "asus": 2,
+   "rime": 7
+  },
+  "all": {
+   "n": 90,
+   "asus": 49,
+   "rime": 78
+  }
+ }
+}

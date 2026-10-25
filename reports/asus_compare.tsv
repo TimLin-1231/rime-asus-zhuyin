@@ -1,0 +1,91 @@
+set	keys	expected	asus	rime
+clean	ji3rup wu0 j03g;4ul4fm4t z04	我今天晚上要去吃飯	我今天晚上要去吃飯	我今天晚上要去吃飯
+clean	5k4ru8 h0 wu/ 2k7su.6b.4au04cp3cl3t 	這家餐廳的牛肉麵很好吃	這家餐廳的牛肉麵很好吃	這家餐廳的牛肉麵很好吃
+clean	au/6wu0 yl3g;418 2u03ul4d9 cjo4	明天早上八點要開會	明天早上八點要開會	明天早上八點要開會
+clean	ji3vu;3ul4ck u 1o bk4d8 zo 	我想要喝一杯熱咖啡	我想要喝一杯熱咖啡	我想要喝一杯熱咖啡
+clean	ji3j03u 2u03y94cjo6zj4su3	我晚一點再回覆你	我晚一點在回覆你	我晚一點再回覆你
+clean	ji3ap7m, y94ru,6mp4504ru04au04	我們約在捷運站見面	我們約在捷運站見面	我們約在捷運站見面
+clean	xj4g;4vul3vup 5j4u40 fm06	路上小心注意安全	路上小心注意安全	路上小心注意安全
+clean	ji3vu04y94y94ej/ n ru8 10 	我現在在公司加班	我現在在公司加班	我現在在公司加班
+clean	5k41j42u04u/35p 2k7cp3e03bp6	這部電影真的很感人	這部電影真的很感人	這部電影真的很感人
+clean	su3gji 2k7ao6u.3hji4	你說的沒有錯	你說的沒有錯	你說的沒有錯
+clean	yl3h0 2u042k72041u/3cp3cl3t 	早餐店的蛋餅很好吃	早餐店的蛋餅很好吃	早餐店的蛋餅很好吃
+clean	g.3ru dj94ao62u04xk7	手機快沒電了	手機快沒店了	手機快沒電了
+clean	a8 a87rul4ji3cjo6ru8 t z04	媽媽叫我回家吃飯	媽媽叫我回家吃飯	媽媽叫我回家吃飯
+clean	g/ b4dj94xk45j4su3vup vu;3g4t/6	生日快樂祝你心想事成	生日快樂祝你心想事成	生日快樂祝你心想事成
+clean	ai6vu/62k75jp3fm,4xm4c96u.3rup41j4dj/ ru0 	模型的準確率還有進步空間	模型的準確率還有進步空間	模型的準確率還有進步空間
+clean	5k4ek7u03nj04z832k7g6ru0 zj4y862j4w94el 	這個演算法的時間複雜度太高	這個演算法的時間複雜度太高	這個演算法的時間複雜度太高
+clean	ji3ap7m/4rul t8 u045/4x96qu/6ej ai6vu/6	我們用交叉驗證來評估模型	我們用交叉驗證來評估模型	我們用交叉驗證來評估模型
+clean	njp3g c06gj4u 56ao6u.3g. xu04	損失函數一直沒有收斂	損失函數一直沒有收斂	損失函數一直沒有收斂
+clean	532l3rul4g.4ru04u4ji3cj04u ek7wu6aj4	指導教授建議我換一個題目	指導教授建議我換一個題目	指導教授建議我換一個題目
+clean	5k4ek7vu04vu;4dk3u3m/4j4xu3ai6vu/6ru,3g4	這個現象可以用物理模型解釋	這個現象可以用物理模型解釋	這個現象可以用物理模型解釋
+clean	vmp4xu04eji4t/65j/ tj vu04eji42j4su3ck6	訓練過程中出現過度擬合	訓練過程中出現過度擬合	訓練過程中出現過度擬合
+clean	5k4vm,6fu62k7dk4t/6u.32u035j/4	這學期的課程有點重	這學期的課程有點重	這學期的課程有點重
+clean	d.3g42k7g6ru0 u3ru/ fm,42u/4xk7	口試的時間已經確定了	口是的時間已經確定了	口試的時間已經確定了
+clean	wk45/ ej/ t/62jo4ru,6eji3u/3vu;3cp3284	特徵工程對結果影響很大	特徵工程對結果影響很大	特徵工程對結果影響很大
+clean	5k4ek7bj03wu3vm ul4e/ vup 2l4yjo4vup 1031p3	這個軟體需要更新到最新版本	這個軟體需要更新到最新版本	這個軟體需要更新到最新版本
+clean	ji3183t/6g4a83g;4tj062l4n4zj6fu4xk7	我把程式碼上傳到伺服器了	我把程式碼上傳到伺服器了	我把城市馬上傳到伺服器了
+clean	gj bj4z832k7c.4vm03y41j4w945jp3fm,4	輸入法的候選字不太準確	輸入法的候選字步太準確	輸入法的候選字不太準確
+clean	fu/3tj/6vup fu32j/4u/4m/4t/6g4	請重新啟動應用程式	請重新啟動應用程式	請重新啟動應用程式
+clean	vu4wj/3cjo4y42j/4tj6hjp6su32k7gk42u/4	系統會自動儲存你的設定	系統會自動儲存你的設定	系統會自動儲存你的設定
+clean	w96z/ yl4t/61j4zp42u4fm wu/62u04	颱風造成部分地區停電	颱風造成部分地區停電	颱風造成部分地區停電
+typo	su3au/6wu0 u.3fj/4a87	你明天有空嗎	你明天有f甕嗎	你明天有空嗎
+typo	j94au04y94vu84m3ru42k72p4n03	外面在下雨記得帶傘	外面再下雨記得㩐散	外面在下雨記得帶傘
+typo	q/3u vu84ji3y942832u04cj84eo3su3	等一下我再打電話給你	捧一下我在打電話給你	等一下我再打電話給你
+typo	rup wu0 wu0 fu4cp3cl3g4ck6fj fm4y.3y.3	今天天氣很好適合出去走走	今天天氣很好適合f屋去走走	今天天氣很好適合出去走走
+typo	vum4vu,7su32k71; a;6	謝謝你的幫忙	續謝你的幫忙	謝謝你的幫忙
+typo	5k4ek75. ai4ji3ul4cj86xl3ru8 	這個週末我要回老家	這個週末我要華老家	這個週末我要回老家
+typo	ji3em,62k75k4ek7z; z831j4hji4	我覺得這個方法不錯	我em,6的這個方法不錯	我覺得這個方法不錯
+typo	1u/ vu; xy3c96u.3u vu, gjo3eji3	冰箱裡還有一些水果	冰箱x子還有一些水果	冰箱裡還有一些水果
+typo	hi3ap7vu84h4y94m, t z04	我們下次再約吃飯	hi3們下次再約吃飯	我們下次再約吃飯
+typo	fu/31; ji3a93u qu/6njo3	請幫我買一瓶水	請幫我買一瓶髓	請幫我買一瓶水
+typo	w96z/ dj94ul4x96xm7	颱風快要來了	颱風快要來x語	颱風快要來了
+typo	ji32/3su32k7v8l vu6	我等你的消息	我等你的v8凹昔	我等你的消息
+typo	z;6ru0 w94xj04xk7ul45/3xu3h vu84	房間太亂了要整理一下	房間太亂了要整理雌下	房間太亂了要整理一下
+typo	5k4qu0 xjp4jp62u6g6u94gk4ru4cp3u06rup3	這篇論文的實驗設計很嚴謹	這篇論文迪実u94設計很嚴謹	這篇論文的實驗設計很嚴謹
+typo	fu/3y94vu845. 5 fu06ril 1l4el4	請在下週之前交報告	請在下週之前r凹報告	請在下週之前交報告
+mixed	ji3m/4pythonql3g6u04	我用python跑實驗	我用python跑實驗	我用python跑實驗
+mixed	1; ji3d9 u ek7meeting	幫我開一個meeting	幫我開一個meeting	幫我開一個meeting
+mixed	5k4ek7bugu3ru/ vu. cl3xk7	這個bug已經修好了	這個bug已經修好了	這個bug已經修好了
+mixed	ru42k7push2l4GitHub	記得push到GitHub	記得push到github	記得push到github
+mixed	fu/3vu0 download5k4ek72;304	請先download這個檔案	請先download這個檔案	請仙download這個檔案
+mixed	5k4ek7functionul45j/4vu,3	這個function要重寫	這個function要重寫	這個function要重寫
+mixed	vu0 ql3u h4baseline	先跑一次baseline	先跑一次baseline	先跑一次baseline
+mixed	vmp4xu042k7lossu 56vu84ru;4	訓練的loss一直下降	訓練的loss一直下降	訓練的loss一直下降
+mixed	5k4ek7projectcp3u.3fm4	這個project很有趣	這個project很有趣	這個project很有趣
+mixed	rup wu0 2k7seminarfm3vul xk7	今天的seminar取消了	今天的seminar取消了	今天的seminar取消了
+mixed	ji3ap72k7teamu.3j3ek4bp6	我們的team有五個人	我們的team有五個人	我們的team有五個人
+mixed	5k4ek7APIcjo6tj06hji4j4	這個API回傳錯誤	這個apic為傳錯誤	這個API回傳錯誤
+mixed	5k45. ul4vu,3proposal	這週要寫proposal	這週要寫proposal	這週要寫proposal
+mixed	w8 2k7emailg42ji gl3	他的email是多少	她的email是多少	他的email是多少
+mixed	hk4g4caseul4y942ji u 2u03	測試case要再多一點	測試case要在多一點	測試case要在多一點
+particles	w8 ql32k7cp3dj94	他跑得很快	他跑的很快	他跑得很快
+particles	ji3rup wu0 gjo42k7cp3j03	我今天睡得很晚	我今天睡的很晚	我今天睡得很晚
+particles	ji3ap7j062k7cp3d9 vup 	我們玩得很開心	我們玩得很開心	我們玩得很開心
+particles	fu/3y3vu42k7ru03t86ao3u c;6	請仔細地檢查每一行	請仔細的檢查每一行	請仔細地檢查每一行
+particles	xl3g s94vup 2k7cjo6286jp4wu6	老師耐心地回答問題	老師耐心的回答問題	老師耐心地回答問題
+particles	ji3y94ru8 xu3vu. vu6	我在家裡休息	我在家裡休息	我在家裡休息
+particles	su3y94s83xu3	你在哪裡	你在哪裡	你在哪裡
+particles	ji3ap7vu84h4y94x96	我們下次再來	我們下次再來	我們下次再來
+particles	w8 vu04y945/4y94d9 cjo4	他現在正在開會	他現在正在開會	他現在正在開會
+particles	su3y945k4u;4ji3ru.4g/ fu4xk7	你再這樣我就生氣了	你在這樣我救生氣了	你在這樣我就生氣了
+numbers	ji32026su061u4u,4	我2026年畢業	我2026年畢業	我2026年畢業
+numbers	m065. xm4g43.14	圓周率是3.14	圓周率是3.14	圓周率是3.14
+numbers	z;6ru0 y945x.6	房間在5樓	房間再5樓	房間在5樓
+numbers	rup wu0 fu4jp 282j4	今天氣溫28度	今天氣溫28度	今天氣溫28度
+numbers	2u04t6c96s/6m/420zp 5j/ 	電池還能用20分鐘	電池還能用20分鐘	電池還能用20分鐘
+numbers	w8 ao3wu0 gjo47ek4vul3g6	他每天睡7個小時	他每天睡7個小時	他每天睡7個小時
+numbers	ru84ek628385k6	價格打8折	價格打8折	價格打8折
+numbers	u3ru/ eji4xk73wu0 	已經過了3天	已經過了3天	已經過了3天
+numbers	vu84j312u03d9 cjo4	下午1點開會	下午1點開會	下午1點開會
+numbers	t/6ru rup41j4xk715zp 	成績進步了15分	承基進步了15分	成績進步了15分
+numbers_amb	5k4xu;4tk ul45j04	這輛車要5萬	這輛車要賺	這輛車要5萬
+numbers_amb	u ej/42j04	一共2萬	一共斷	一共2萬
+numbers_amb	vu04t;3u.32jo4xl3g 	現場有2位老師	現場有對老師	現場有2位老師
+numbers_amb	m4nj04g41u4	預算是1億	預算勢必	預算是1億
+numbers_amb	ji3vu;35j45j03	我想住5晚	我想住轉	我想住轉
+numbers_amb	z;6yj 15j04	房租15萬	房租15萬	房租15萬
+numbers_amb	ej/412jo4	共12位	共12為	共12位
+numbers_amb	ru84ek6g452j04	價格是52萬	價格是52萬	價格是52萬
+numbers_amb	y942jo4	再2位	在對	再對
+numbers_amb	ji3ul42j03	我要2碗	我要短	我要2碗

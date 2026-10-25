@@ -155,21 +155,23 @@ class Typist:
         if user32.GetForegroundWindow() not in [w.hwnd for w in self.windows]:
             raise Stop("another window came to the front: stopped (nothing more was typed)")
 
-    def vk(self, vk: int, extended: bool = False, ctrl: bool = False) -> None:
+    def vk(self, vk: int, extended: bool = False, ctrl: bool = False, shift: bool = False) -> None:
         self._check()
         scan = user32.MapVirtualKeyW(vk, 0)
-        if ctrl:
-            _send(user32.MapVirtualKeyW(VK_CONTROL, 0), False)
+        mods = [m for m, on in ((VK_CONTROL, ctrl), (VK_SHIFT, shift)) if on]
+        for m in mods:
+            _send(user32.MapVirtualKeyW(m, 0), False)
         _send(scan, False, extended)
         time.sleep(0.02)
         _send(scan, True, extended)
-        if ctrl:
-            _send(user32.MapVirtualKeyW(VK_CONTROL, 0), True)
+        for m in reversed(mods):
+            _send(user32.MapVirtualKeyW(m, 0), True)
         time.sleep(0.05)
 
     def keys(self, text: str) -> None:
         for ch in text:
-            self.vk(user32.VkKeyScanW(ch) & 0xFF)
+            code = user32.VkKeyScanW(ch)  # low byte: key, bit 8: Shift
+            self.vk(code & 0xFF, shift=bool(code & 0x100))
         time.sleep(0.3)
 
     def clear(self) -> None:
