@@ -5,6 +5,13 @@
 --   Left / Right   move a cursor one character at a time (a number or an
 --                  English word is one step); the bubble shows the text
 --                  around the cursor and the reading of the next character
+--   Shift+BackSpace  forgets what asus_learn.lua learned for the word just
+--                  left of the cursor (no cursor: the last word of the
+--                  input) and converts it again without that learning; the
+--                  cursor and the rest of the text stay. Nothing learned
+--                  there: the key is swallowed and nothing changes (a Shift
+--                  held a moment too long must not delete text or reach the
+--                  app). Outside a composition it goes to the app.
 --   Down           candidates for the words starting at the cursor; picking
 --                  one (1-9, Space, Enter) replaces only that part, the text
 --                  after it stays, and the list moves on to the next
@@ -389,6 +396,108 @@ local function step_list(ctx, st, step)
   open_list(ctx, st)
 end
 
+-- Shift+BackSpace: forget what was learned for the word left of the cursor.
+-- The word: the two characters just left of the cursor (most words have
+-- two; a name corrected in one character, 自豪 -> 志豪, is a word to the
+-- user but to no word list), widened to the word the last of them is in
+-- (asus_learn's word segmentation of the Chinese around it) and, at the end
+-- of the input, to the language model's last word.
+-- Every span of Chinese units (at most MAX_RUN) that overlaps the word is
+-- looked up by its keys in asus_learn. Always swallows the key.
+local function forget_left(ctx, env, st)
+  local learn = require("asus_learn")
+  local units, caret
+  if st then
+    if st.ins then finish_insert(ctx, st) end
+    units, caret = st.units, st.caret
+  else
+    units = units_of(ctx)
+    caret = #units + 1
+  end
+  local u = caret - 1
+  while u >= 1 and units[u].text == "" do u = u - 1 end
+  if u < 1 or units[u].kind ~= "zh" then return kAccepted end
+  local max = learn.MAX_RUN or 8
+  -- The run of Chinese units around it.
+  local a, b = u, u
+  while a > 1 and u - a + 1 < 2 * max and units[a - 1].kind == "zh" and units[a - 1].e == units[a].s do a = a - 1 end
+  while b < #units and b - u + 1 < 2 * max and units[b + 1].kind == "zh" and units[b + 1].s == units[b].e do b = b + 1 end
+  local wa, wb = (u > a) and u - 1 or u, u  -- at least two characters
+  local texts, owner = {}, {}  -- characters of the run, and the unit of each
+  for k = a, b do
+    for _, ch in ipairs(chars(units[k].text)) do texts[#texts + 1] = ch; owner[#owner + 1] = k end
+  end
+  local words = learn.words_of and learn.words_of(table.concat(texts))
+  if words then
+    local pos = 0
+    for _, w in ipairs(words) do
+      local n = utf8.len(w) or 0
+      local first, last = owner[pos + 1], owner[pos + n]
+      if first and last and first <= u and last >= u then wa, wb = math.min(wa, first), math.max(wb, last) end
+      pos = pos + n
+    end
+  end
+  if not st then
+    local lw = last_word_start(ctx, units)
+    if lw and lw >= a and lw <= u then wa = math.min(wa, lw) end
+  end
+  local spans = {}
+  for i = math.max(a, wa - max + 1), wb do
+    for j = math.max(i, wa), math.min(b, i + max - 1) do
+      local parts = {}
+      for k = i, j do parts[#parts + 1] = units[k].text end
+      spans[#spans + 1] = { s = units[i].s, e = units[j].e, text = table.concat(parts), i = i, j = j }
+    end
+  end
+  local input = ctx.input
+  local found = learn.forget_spans(input, spans)
+  if #found == 0 then return kAccepted end  -- nothing learned there
+  local lo, hi
+  for _, sp in ipairs(found) do
+    learn.forget_user_phrase(env, input:sub(sp.s + 1, sp.e), sp.text)
+    lo = math.min(lo or sp.i, sp.i)
+    hi = math.max(hi or sp.j, sp.j)
+  end
+  if not st then
+    -- Convert again from the forgotten word on (selections before it stay).
+    local p = units[lo].s
+    local _, past = locked_end(ctx, p)
+    if past then
+      busy = true
+      ctx.input = input:sub(1, math.max(p, 1))
+      ctx.input = input
+      busy = false
+    end
+    ctx:refresh_non_confirmed_composition()
+    return kAccepted
+  end
+  -- With the cursor: the whole input converted afresh (asus_learn keeps the
+  -- conversion it compares the commit with), and the forgotten units take
+  -- their new text; everything else stays as the user left it.
+  if ctx:get_option(EXPANDED) then
+    ctx:set_property(SPAN, "")
+    ctx:set_property(OPEN_END, "")
+    set_list(ctx, false)
+  end
+  ctx:set_property("asus_edit_auto", "")
+  lock_to(ctx, st, 0)
+  save(ctx, nil)
+  learn.hold(true)
+  local ok = pcall(function()
+    ctx:refresh_non_confirmed_composition()
+    local fresh = {}
+    for _, f in ipairs(units_of(ctx)) do fresh[f.s .. ":" .. f.e] = f.text end
+    for k = lo, hi do
+      local t = fresh[units[k].s .. ":" .. units[k].e]
+      if t and t ~= "" then units[k].text = t end
+    end
+  end)
+  learn.hold(false)
+  if not ok then log.error("asus_edit: converting again after a forget failed") end
+  apply(ctx, st)
+  return kAccepted
+end
+
 function processor.func(key, env)
   local ctx = env.engine.context
   if key:release() or not ctx:is_composing() or ctx:get_option("ascii_mode") then return kNoop end
@@ -399,6 +508,10 @@ function processor.func(key, env)
   local st = load(ctx)
   if not st and ctx:get_property(STATE) ~= "" then leave(ctx) end  -- input changed elsewhere
   local expanded = ctx:get_option(EXPANDED)
+
+  if code == XK_BackSpace and key:shift() and not key:ctrl() and not key:alt() then
+    return forget_left(ctx, env, st)
+  end
 
   -- The list opened at the cursor.
   if st and expanded then

@@ -32,6 +32,14 @@
 --     for that syllable after that character.
 --   * Shift+Delete / Ctrl+Delete on the highlighted candidate (or prediction)
 --     forgets what was learned about it, including Rime's own user phrase.
+--   * Shift+BackSpace in the composition (asus_edit.lua) forgets the
+--     corrections that produced the word left of the editing cursor (or at
+--     the end): forget_spans() looks the "c" entries up by those keys (a
+--     prefix query and an "r" fetch per span, never a scan) and drops the
+--     pairs whose new text is what is shown there, with their "x" context
+--     and "r" reverse entries; forget_user_phrase() deletes Rime's own user
+--     phrase for it. When that input is committed, the conversion shown
+--     after forgetting is not learned as a correction back (a pick there is).
 -- Weights halve every half_life_days (asus_learn/half_life_days, default 90).
 --
 --   processor  lua_processor@*asus_learn*processor  (before asus_keys)
@@ -65,6 +73,11 @@ local en_words           -- lower-case key -> {word=, w=, t=}
 local emails             -- lower-case address -> {text=, w=}
 local orig = nil         -- last top conversion of a whole input: {input=, text=}
 local applied = nil      -- rewrites in the current top: {input=, list of {k,x,c}}
+-- Spans forgotten with Shift+BackSpace, until the next commit: {input=,
+-- list of {s,e}} (key offsets). (Not dropped when the input is emptied:
+-- asus_edit.lua empties it for a moment while it converts afresh.)
+local forgot = nil
+local holding = false    -- asus_edit.lua converts the input afresh: orig stays as it was
 
 -- Storage helpers ------------------------------------------------------------
 -- Values are "name w t|name w t|..." (names never contain spaces or "|").
@@ -383,7 +396,7 @@ end
 
 -- Compare the conversion shown before the user's picks with what was
 -- committed, and learn every changed word.
-local function learn_corrections(ctx, final, now, picks)
+local function learn_corrections(ctx, final, now, picks, forgot)
   if not orig or orig.input ~= ctx.input or final == orig.text then return end
   local syl, starts = syllables(ctx.input)
   if not syl then return end
@@ -391,6 +404,14 @@ local function learn_corrections(ctx, final, now, picks)
   if #fc ~= #syl or #oc ~= #syl then return end
   local index = {}
   for i, off in ipairs(starts) do index[off] = i end  -- byte offset -> syllable
+  -- Syllables i..j touch a span forgotten in this input (Shift+BackSpace)?
+  local function forgotten(i, j)
+    if not forgot or forgot.input ~= ctx.input then return false end
+    for _, f in ipairs(forgot.list) do
+      if starts[i] < f[2] and starts[j + 1] > f[1] then return true end
+    end
+    return false
+  end
   -- Changed spans: picked segments (merged when adjacent, so a name picked
   -- character by character is one word), and changed runs inside the
   -- automatically converted rest.
@@ -429,7 +450,7 @@ local function learn_corrections(ctx, final, now, picks)
   for i = 1, #fc do
     for j = i, math.min(#fc, i + MAX_RUN - 1) do
       local o, f = table.concat(oc, "", i, j), table.concat(fc, "", i, j)
-      if o ~= f then
+      if o ~= f and not forgotten(i, j) then
         local k = table.concat(syl, "", i, j)
         if fetch("c\t" .. k .. "\t" .. f, now)[o] then
           learn_pair(k, o, f, fc[i - 1] or "", fc[j + 1] or "", 1, now)
@@ -443,6 +464,8 @@ local function learn_corrections(ctx, final, now, picks)
       local k, o = table.concat(syl, "", i, j), table.concat(oc, "", i, j)
       if seen[k .. "\t" .. o] then return end
       seen[k .. "\t" .. o] = true
+      -- (The conversion shown after a forget is no correction; a pick is.)
+      if run.w < 1 and forgotten(i, j) then return end
       learn_pair(k, o, table.concat(fc, "", i, j), fc[i - 1] or "", fc[j + 1] or "", run.w, now)
     end
     if run.a == run.b then
@@ -508,6 +531,8 @@ function processor.init(env)
   env.commit_conn = ctx.commit_notifier:connect(function(c)
     local picks, num_picks = env.picks, env.num_picks
     env.picks, env.num_picks = {}, {}
+    local forgot_now = forgot
+    forgot = nil
     if not db then return end
     local now = os.time()
     local text = c:get_commit_text() or ""
@@ -568,7 +593,7 @@ function processor.init(env)
         prefix = prefix .. (cand and cand.text or "")
       end
     end
-    learn_corrections(c, text, now, picks)
+    learn_corrections(c, text, now, picks, forgot_now)
     local words = words_of(text)
     if words then
       -- Every 2-4 character piece counts as typed by the user (word lists
@@ -633,6 +658,86 @@ local function forget_pair(k, x, c, now)
   map[c] = nil
   store(key, map, now)
   db:erase("x\t" .. k .. "\t" .. x .. "\t" .. c)
+end
+
+-- Shift+BackSpace (asus_edit.lua): forget the corrections that produced the
+-- text of each span {s=, e=, text=} (key offsets in input). Looked up by the
+-- span's keys: one prefix query ("c\t<keys>\t") and one fetch ("r") each.
+-- Returns the spans where something was learned (now forgotten).
+local function forget_spans(input, spans)
+  if not enabled or not db then return {} end
+  local now = os.time()
+  local found, edits = {}, {}
+  for _, sp in ipairs(spans) do
+    local syl = syllables(input:sub(sp.s + 1, sp.e))
+    if syl and is_cjk_text(sp.text) and utf8.len(sp.text) == #syl then
+      local k = input:sub(sp.s + 1, sp.e)
+      local prefix = "c\t" .. k .. "\t"
+      local xs = {}
+      local q = db:query(prefix)
+      if q then
+        for key, v in q:iter() do
+          if key:sub(1, #prefix) ~= prefix then break end
+          local x = key:sub(#prefix + 1)
+          if x ~= sp.text and parse(v, now)[sp.text] then xs[#xs + 1] = x end
+        end
+      end
+      q = nil
+      -- (The reverse entry alone: chosen once, the pair has faded since.)
+      if #xs > 0 or db:fetch("r\t" .. k .. "\t" .. sp.text) then
+        found[#found + 1] = sp
+        edits[#edits + 1] = { k, sp.text, xs }
+      end
+    end
+  end
+  if #edits == 0 then return found end
+  collectgarbage()  -- release the LevelDB iterators before writing
+  for _, e in ipairs(edits) do
+    for _, x in ipairs(e[3]) do forget_pair(e[1], x, e[2], now) end
+    db:erase("r\t" .. e[1] .. "\t" .. e[2])
+  end
+  forgot = (forgot and forgot.input == input) and forgot or { input = input, list = {} }
+  for _, sp in ipairs(found) do forgot.list[#forgot.list + 1] = { sp.s, sp.e } end
+  if applied and applied.input == input then applied = nil end
+  return found
+end
+
+-- Delete Rime's own user phrase `text` for `keys` (what Shift+Delete does
+-- for the highlighted candidate). env: the caller's, which keeps a translator
+-- and a Memory of the schema's dictionary for it.
+local function forget_user_phrase(env, keys, text)
+  if not enabled or not db then return false end
+  if env.forget_tr == nil then
+    local ok, tr = pcall(function()
+      return Component.Translator(env.engine, "", "script_translator@translator")
+    end)
+    env.forget_tr = ok and tr or false
+    local ok2, mem = pcall(function() return Memory(env.engine, env.engine.schema, "translator") end)
+    env.forget_mem = ok2 and mem or false
+    local ok3, tw = pcall(Opencc, "t2tw.json")
+    env.forget_tw = ok3 and tw or false
+  end
+  if not env.forget_tr or not env.forget_mem then return false end
+  local seg = Segment(0, #keys)
+  seg.tags = Set({ "abc" })
+  local t = env.forget_tr:query(keys, seg)
+  if not t then return false end
+  local done, n = false, 0
+  for c in t:iter() do
+    n = n + 1
+    if n > 60 then break end
+    if c._end == #keys and c.type == "user_phrase" then
+      local tw = env.forget_tw and env.forget_tw:convert(c.text) or c.text
+      if c.text == text or tw == text then
+        local ok, ph = pcall(function() return c:get_genuine():to_phrase() end)
+        if ok and ph then
+          local ok2 = pcall(function() env.forget_mem:update_userdict(ph.entry, -1, "") end)
+          done = done or ok2
+        end
+      end
+    end
+  end
+  return done
 end
 
 -- Remember which segment the user is about to pick a candidate for. Done
@@ -750,7 +855,8 @@ local function filter(input, env)
           end
         end
         -- (Not while asus_edit.lua rebuilds the composition around its cursor.)
-        if seg.start == 0 and seg._end == #ctx.input and (ctx:get_property("asus_edit") or "") == "" then
+        if seg.start == 0 and seg._end == #ctx.input and (ctx:get_property("asus_edit") or "") == ""
+            and not holding then
           orig = { input = ctx.input, text = out.text }
         end
       end
@@ -846,4 +952,7 @@ return { processor = processor, filter = filter, predict = predict, banned = ban
          accepted = accepted, english = english, complete_english = complete_english,
          syllables = syllables, is_email = is_email, learn_email = learn_email,
          emails_for = emails_for, forget_email = forget_email,
+         forget_spans = forget_spans, forget_user_phrase = forget_user_phrase, MAX_RUN = MAX_RUN,
+         words_of = words_of,
+         hold = function(on) holding = on and true or false end,
          open = function(config) open(config) end }
