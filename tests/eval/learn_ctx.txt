@@ -1,0 +1,55 @@
+# Self-learning with the previous commit as left context, DEV set. Same
+# format as learn.txt, plus "+" inside T/P/C text: the text before it is
+# typed and committed first (corrected if it converts wrongly, like an H
+# line), then the rest is typed as a new composition. A P/C line is right
+# when the commit plus the new composition's conversion is the whole text.
+#   - same left character before the composition as when taught: P
+#   - a different left character, where the rival is right: C
+#   - a different left character, same correction wanted: P (the context
+#     makes such a correction more specific, so this can get worse)
+#   - taught across two commits, probed in one composition: P
+# Written before the change (committed text as left context) was run.
+
+# group 嘛 (幹+嘛 / ...+嗎)
+T 你到底在幹+嘛
+P 他們在幹+嘛
+C 你還好+嗎
+C 這樣可以+嗎
+
+# group 得很快
+T 他跑+得很快
+P 小狗跑+得很快
+P 弟弟跑得很快
+C 我買+的很便宜
+
+# group 地走
+T 他慢慢+地走過來
+P 我們慢慢+地走回家
+C 我喜歡他+的走路姿勢
+
+# group 在說
+T 他正+在說話
+P 老師正+在說話
+P 他們一直+在說話
+C 我們以後+再說吧
+
+# group 藥了
+T 我忘記吃+藥了
+P 你今天吃+藥了嗎
+P 你今天吃藥了嗎
+C 他已經不+要了
+
+# group 隊很
+T 我們這+隊很強
+P 他們那+隊很強
+C 這樣+對很多人不公平
+
+# group 像
+T 他長得+像我
+P 妹妹長得+像我
+C 他慢慢走+向我
+
+# group 再過去
+T 我晚點+再過去
+P 他晚點+再過去
+C 這些問題+在過去很常見

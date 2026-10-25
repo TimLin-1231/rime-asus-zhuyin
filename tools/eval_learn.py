@@ -13,6 +13,10 @@ against a fresh staged config (no learned data from the live IME):
     python tools/eval_learn.py --set test          # held out: aggregates only
     python tools/eval_learn.py --variants rime nolearn
     python tools/eval_learn.py --set hist        # with typing history (H lines)
+    python tools/eval_learn.py --set ctx --variants asus noctx  # with the previous commit
+
+In learn_ctx*.tsv a "+" splits a T/P/C line: the text before it is committed
+first (like an H line), the rest is typed as a new composition right after.
 
 Metrics (fractions; picks are counts)
   Probe     P lines right (same word, new sentence)       base -> now -> end
@@ -26,6 +30,9 @@ Metrics (fractions; picks are counts)
 Variants
   asus      project config (Rime learning + lua/asus_learn.lua)
   asus2     same, but a correction applies everywhere only after 2 corrections
+  ctx       asus with the last committed character as the left context of a
+            new composition (asus_learn/committed_context: true, the default)
+  noctx     asus without it (committed_context: false, the rule before)
   rime      Rime's own learning only (asus_learn disabled)
   nolearn   no learning at all (enable_user_dict off, asus_learn disabled)
 """
@@ -51,13 +58,16 @@ SCHEMA = "asus_zhuyin"
 VARIANTS = {
     "asus": "",
     "asus2": "  asus_learn/global_after: 2\n",
+    "ctx": "  asus_learn/committed_context: true\n",
+    "noctx": "  asus_learn/committed_context: false\n",
     "rime": "  asus_learn/enabled: false\n",
     "nolearn": "  asus_learn/enabled: false\n  translator/enable_user_dict: false\n",
 }
 MAX_PAGES = 12
 
 
-STEMS = {"dev": "learn", "test": "learn_test", "hist": "learn_hist", "hist_test": "learn_hist_test"}
+STEMS = {"dev": "learn", "test": "learn_test", "hist": "learn_hist", "hist_test": "learn_hist_test",
+         "ctx": "learn_ctx", "ctx_test": "learn_ctx_test"}
 
 
 def load(set_name: str) -> tuple[list[dict], list[tuple[str, str]]]:
@@ -65,7 +75,9 @@ def load(set_name: str) -> tuple[list[dict], list[tuple[str, str]]]:
     lines = []
     for row in (EVAL / f"{stem}.tsv").read_text(encoding="utf-8").splitlines():
         kind, keys, _, text, group = row.split("\t")
-        lines.append({"kind": kind, "keys": keys, "text": text, "group": group})
+        # split: the text with its "+" (committed first | new composition).
+        lines.append({"kind": kind, "keys": keys, "text": text.replace("+", ""), "split": text,
+                      "group": group})
     general = "sentences_test.tsv" if set_name.endswith("test") else "sentences.tsv"
     sents = []
     for row in (EVAL / general).read_text(encoding="utf-8").splitlines():
@@ -95,20 +107,39 @@ class Typist:
         if timed:
             self.key_ms.append((time.perf_counter() - t0) * 1000 / max(len(keys), 1))
 
-    def preview(self, keys: str) -> str:
-        """Top conversion of keys, without committing (nothing is learned)."""
-        self.reset_context()
+    def preview(self, keys: str, split: str = "") -> str:
+        """Top conversion of keys, without committing (nothing is learned).
+
+        keys "a+b" (split: the text "A+B"): A is committed first, then the
+        conversion of b right after it is measured (A + conversion).
+        """
+        before = ""
+        if "+" in keys:
+            first, keys = keys.split("+", 1)
+            before, _ = self.enter(first, split.split("+", 1)[0])
+        else:
+            self.reset_context()
         self.type(keys, timed=True)
         snap = self.r.snapshot()
         self.r.clear()
-        return snap.committed + snap.preview
+        return before + snap.committed + snap.preview
 
-    def enter(self, keys: str, target: str, keep: bool = False) -> tuple[str, int]:
+    def enter(self, keys: str, target: str, keep: bool = False, reset: bool = True) -> tuple[str, int]:
         """Type keys and commit `target`, picking candidates when needed.
 
         keep: leave the session as it is after the commit (prediction bubble).
+        reset: start at a sentence boundary (else right after the last commit).
+        keys "a+b", target "A+B": commit A first (its picks are not counted),
+        then type b as a new composition and commit B.
         """
-        self.reset_context()
+        if "+" in keys:
+            first, keys = keys.split("+", 1)
+            head, target = target.split("+", 1)
+            before, _ = self.enter(first, head)
+            got, picks = self.enter(keys, target, keep, reset=False)
+            return before + got, picks
+        if reset:
+            self.reset_context()
         self.type(keys)
         if self.r.snapshot().preview == target:
             self.r.key("Return")  # Space is the first-tone key
@@ -187,7 +218,7 @@ def worker(variant: str, mode: str, set_name: str) -> None:
     def measure(i: int, slot: str):
         ln = lines[i]
         if ln["kind"] in "PC":
-            out[slot][i] = t.preview(ln["keys"])
+            out[slot][i] = t.preview(ln["keys"], ln["split"])
         elif ln["kind"] == "Q":
             out[slot][i] = t.predictions(ln["keys"], ln["text"].split("|")[0])
 
@@ -209,10 +240,10 @@ def worker(variant: str, mode: str, set_name: str) -> None:
             for k in range(i, j):  # teaching lines first, then the probes
                 ln = lines[k]
                 if ln["kind"] == "H":  # earlier typing: committed like any sentence
-                    got, _ = t.enter(ln["keys"], ln["text"])
+                    got, _ = t.enter(ln["keys"], ln["split"])
                     out["lines"][k] = {"got": got, "picks": 0, "repeat": False}
                 elif ln["kind"] == "T":
-                    got, picks = t.enter(ln["keys"], ln["text"])
+                    got, picks = t.enter(ln["keys"], ln["split"])
                     out["lines"][k] = {"got": got, "picks": picks, "repeat": ln["text"] in taught}
                     taught.add(ln["text"])
                 elif ln["kind"] == "A":

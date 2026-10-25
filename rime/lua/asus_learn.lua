@@ -15,6 +15,10 @@
 --     A single character, or a pair differing only in 在/再/的/得/地, only
 --     changes when both neighbours match. Correcting a rewrite back counts
 --     against it; the unrewritten conversion stays second in the menu.
+--     The left neighbour of a new composition is the last character
+--     committed right before it (他跑 committed, then ㄉㄜ˙ㄏㄣˇㄎㄨㄞˋ: 跑), when
+--     learning and when rewriting; see "Committed text as left context".
+--     (asus_learn/committed_context: false makes it "" as before.)
 --   * English: letters committed as typed (Ctrl+Enter / Shift+Enter) and
 --     English words committed inline; asus_lang.lua prefers them over Zhuyin
 --     and Tab completes them.
@@ -78,6 +82,7 @@ local applied = nil      -- rewrites in the current top: {input=, list of {k,x,c
 -- asus_edit.lua empties it for a moment while it converts afresh.)
 local forgot = nil
 local holding = false    -- asus_edit.lua converts the input afresh: orig stays as it was
+local committed_context = true   -- asus_learn/committed_context
 
 -- Storage helpers ------------------------------------------------------------
 -- Values are "name w t|name w t|..." (names never contain spaces or "|").
@@ -269,6 +274,7 @@ local function open(config)
   local days = tonumber(config:get_string("asus_learn/half_life_days") or "")
   if days then half_life = days * 86400 end
   global_after = tonumber(config:get_string("asus_learn/global_after") or "") or global_after
+  committed_context = config:get_bool("asus_learn/committed_context") ~= false
   if not enabled then return end
   if db == nil then
     local ok, d = pcall(UserDb, "asus_learn", "userdb")
@@ -396,7 +402,7 @@ end
 
 -- Compare the conversion shown before the user's picks with what was
 -- committed, and learn every changed word.
-local function learn_corrections(ctx, final, now, picks, forgot)
+local function learn_corrections(ctx, final, now, picks, forgot, left)
   if not orig or orig.input ~= ctx.input or final == orig.text then return end
   local syl, starts = syllables(ctx.input)
   if not syl then return end
@@ -453,7 +459,7 @@ local function learn_corrections(ctx, final, now, picks, forgot)
       if o ~= f and not forgotten(i, j) then
         local k = table.concat(syl, "", i, j)
         if fetch("c\t" .. k .. "\t" .. f, now)[o] then
-          learn_pair(k, o, f, fc[i - 1] or "", fc[j + 1] or "", 1, now)
+          learn_pair(k, o, f, fc[i - 1] or left, fc[j + 1] or "", 1, now)
           seen[k .. "\t" .. o] = true
         end
       end
@@ -466,7 +472,7 @@ local function learn_corrections(ctx, final, now, picks, forgot)
       seen[k .. "\t" .. o] = true
       -- (The conversion shown after a forget is no correction; a pick is.)
       if run.w < 1 and forgotten(i, j) then return end
-      learn_pair(k, o, table.concat(fc, "", i, j), fc[i - 1] or "", fc[j + 1] or "", run.w, now)
+      learn_pair(k, o, table.concat(fc, "", i, j), fc[i - 1] or left, fc[j + 1] or "", run.w, now)
     end
     if run.a == run.b then
       emit(run.a, run.b)
@@ -515,6 +521,57 @@ local function learn_next(prev, word, w, now)
   end
 end
 
+-- Committed text as left context --------------------------------------------
+-- The last Chinese character committed is the left neighbour of the next
+-- composition (他跑 + ㄉㄜ˙ㄏㄣˇㄎㄨㄞˋ: 得很快 after 跑, not 的很快 after any start),
+-- both for learning corrections and for applying them. In memory only, one
+-- for all sessions (librime-lua runs one Lua state per process). Forgotten
+--   * when a commit does not end in a Chinese character (。, English, digits);
+--   * on a key that may put something else before the caret: with nothing
+--     typed, anything but a plain Zhuyin key (Space, Enter, BackSpace, the
+--     arrows, punctuation, Ctrl/Alt shortcuts); while composing, keys that
+--     can commit more than the composition (numpad, Tab, Shift+punctuation,
+--     Ctrl/Alt shortcuts); everything in English mode (ascii_mode);
+--   * when the next composition starts more than CONTEXT_PAUSE seconds after
+--     the commit: a mouse click elsewhere or a switch to another window is
+--     invisible here, and continuing the same sentence rarely takes longer.
+-- The context is taken when a composition starts and kept until it is
+-- committed. An accepted prediction or autocompletion (asus_predict.lua,
+-- committed past the context) is reported through committed().
+local CONTEXT_PAUSE = 10   -- seconds
+local last_char, last_time = "", 0  -- last character committed, and when
+local comp_left = ""       -- left context of the current composition
+local key_clean = true     -- the key being processed keeps last_char
+
+local function note_commit(text)
+  local cs = chars(text or "")
+  local ch = cs[#cs] or ""
+  last_char = is_cjk_text(ch) and ch or ""
+  last_time = os.time()
+end
+
+local XK_Tab = 0xff09
+local function note_key(key, ctx)
+  local code = key.keycode
+  if code >= 0xffe1 and code <= 0xffee then return end  -- a modifier alone
+  local shortcut = (key:ctrl() or key:alt()) and code ~= XK_Delete
+  local char = code >= 0x20 and code < 0x7f and string.char(code) or nil
+  local clean
+  if ctx.input == "" then  -- (this key may start the next composition)
+    clean = not shortcut and not key:shift() and char ~= nil and char:match("^[%w%-;,./]$") ~= nil
+            and not ctx:get_option("ascii_mode")
+    comp_left = (clean and os.time() - last_time <= CONTEXT_PAUSE) and last_char or ""
+  elseif ctx:get_option("ascii_mode") then
+    clean = false
+  else
+    clean = not shortcut and code ~= XK_Tab
+            and not (code >= 0xff80 and code <= 0xffbd)  -- numpad
+            and not (key:shift() and char and not char:match("^%a$"))  -- punctuation
+  end
+  key_clean = clean
+  if not clean then last_char = "" end
+end
+
 -- Processor ------------------------------------------------------------------
 local processor = {}
 
@@ -533,9 +590,12 @@ function processor.init(env)
     env.picks, env.num_picks = {}, {}
     local forgot_now = forgot
     forgot = nil
+    local text = c:get_commit_text() or ""
+    -- This composition's left context; this commit is the next one's.
+    local left = committed_context and comp_left or ""
+    note_commit(key_clean and text or "")
     if not db then return end
     local now = os.time()
-    local text = c:get_commit_text() or ""
     local input = c.input
     for e in text:gmatch("[%w._%%+%-]+@[%w.%-]+") do
       learn_email((e:gsub("%.+$", "")), 1)  -- (a full stop after it is not part of it)
@@ -593,7 +653,7 @@ function processor.init(env)
         prefix = prefix .. (cand and cand.text or "")
       end
     end
-    learn_corrections(c, text, now, picks, forgot_now)
+    learn_corrections(c, text, now, picks, forgot_now, left)
     local words = words_of(text)
     if words then
       -- Every 2-4 character piece counts as typed by the user (word lists
@@ -781,6 +841,7 @@ end
 
 function processor.func(key, env)
   if not enabled or not db or key:release() then return kNoop end
+  note_key(key, env.engine.context)
   if key.keycode ~= XK_Delete or not (key:shift() or key:ctrl()) or key:alt() then
     note_pick(key, env)
     return kNoop
@@ -835,7 +896,8 @@ local function filter(input, env)
       if seg and cand.start == seg.start and cand._end == seg._end then
         local syl = syllables(ctx.input:sub(seg.start + 1, seg._end))
         if syl then
-          local left = ""
+          -- (At the start: the character committed right before.)
+          local left = (seg.start == 0 and committed_context) and comp_left or ""
           if seg.start > 0 then  -- last character of the segments before
             local ok, segs = pcall(function() return comp:toSegmentation():get_segments() end)
             for _, s in ipairs(ok and segs or {}) do
@@ -952,7 +1014,7 @@ return { processor = processor, filter = filter, predict = predict, banned = ban
          after_number = after_number, number_choice = number_choice,
          accepted = accepted, english = english, complete_english = complete_english,
          syllables = syllables, is_email = is_email, learn_email = learn_email,
-         emails_for = emails_for, forget_email = forget_email,
+         emails_for = emails_for, forget_email = forget_email, committed = note_commit,
          forget_spans = forget_spans, forget_user_phrase = forget_user_phrase, MAX_RUN = MAX_RUN,
          words_of = words_of,
          hold = function(on) holding = on and true or false end,

@@ -1,0 +1,47 @@
+# Self-learning with the previous commit as left context, HELD-OUT test set.
+# Same format as learn_ctx.txt; only aggregate scores may be looked at.
+# Written before the change (committed text as left context) was run.
+
+# group 得很好聽
+T 她唱+得很好聽
+P 他們唱+得很好聽
+P 妹妹唱得很好聽
+C 這是我做+的很好吃
+
+# group 地說
+T 她輕輕+地說
+P 媽媽輕輕+地說
+C 這是我+的說法
+
+# group 在想
+T 他還+在想
+P 我還+在想
+P 他們一直+在想
+C 你先回去+再想想
+
+# group 隊的
+T 我是籃球+隊的
+P 他也是棒球+隊的
+C 你說的是+對的
+
+# group 像大人
+T 你說話+像大人
+P 弟弟說話+像大人
+P 他長得+像大人
+C 我們一起走+向大門
+
+# group 再走
+T 你吃完飯+再走
+P 我們吃完飯+再走
+C 他們還+在走路
+
+# group 嘛
+T 不要這樣+嘛
+P 你不要這樣+嘛
+C 你會+嗎
+C 明天會下雨+嗎
+
+# group 班很
+T 他們這+班很吵
+P 我們那+班很吵
+P 隔壁+班很安靜

@@ -122,7 +122,8 @@ def build_learn(stem: str) -> int:
     """Self-learning stream: TSV kind, keys, display, text, group.
 
     Keys are those of the (first) text: T/P/C text, A right text, Q context,
-    E the English word itself.
+    E the English word itself. A "+" in the text (learn_ctx*.txt: committed
+    first, then typed as a new composition) is kept in keys and text.
     """
     rows, group = [], ""
     for line in (EVAL / f"{stem}.txt").read_text(encoding="utf-8").splitlines():
@@ -139,7 +140,8 @@ def build_learn(stem: str) -> int:
         if kind == "E":
             keys, shown = first, f"[{first}]"
         else:
-            keys, shown = _mixed_keys(first)
+            pieces = [_mixed_keys(p) for p in first.split("+")]
+            keys, shown = "+".join(k for k, _ in pieces), " + ".join(s for _, s in pieces)
         rows.append(f"{kind}\t{keys}\t{shown}\t{body.replace('[', '').replace(']', '')}\t{group}")
     (EVAL / f"{stem}.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     return len(rows)
@@ -184,4 +186,6 @@ if __name__ == "__main__":
     print("learning test (held out):", build_learn("learn_test"))
     print("learning with history dev:", build_learn("learn_hist"))
     print("learning with history test (held out):", build_learn("learn_hist_test"))
+    print("learning, previous commit as context dev / test:",
+          build_learn("learn_ctx"), build_learn("learn_ctx_test"))
     print("asus words (private):", build_asus_words())
