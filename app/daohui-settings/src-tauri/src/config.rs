@@ -56,12 +56,12 @@ pub const TAB_DOUBLE_MS_RANGE: (u32, u32) = (150, 1500);
 // ---------------------------------------------------------------- language model
 
 pub const MODEL_FILE_NAME: &str = "wanxiang-lts-zh-hant.gram";
-// TODO: host the model on a DaoHui release and fill in URL + sha256.
-// Upstream (tools/fetch_models.py): https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hant.gram
-// sha256 53b678ce17f1d80c75dd51976b697a5d1fc2cd6a13670652069b227b40157c98, 410679340 bytes
-// (the upstream "LTS" tag can be re-uploaded, which is why a pinned mirror is wanted).
-pub const MODEL_URL: &str = "https://TODO.invalid/daohui/wanxiang-lts-zh-hant.gram";
-pub const MODEL_SHA256: &str = "TODO";
+// Upstream, as in tools/fetch_models.py (amzxyz/RIME-LMDG, CC-BY-4.0). The
+// "LTS" tag can be re-uploaded: then the hash no longer matches and the
+// download is refused, so a pinned mirror on a DaoHui release is still wanted.
+pub const MODEL_URL: &str =
+    "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hant.gram";
+pub const MODEL_SHA256: &str = "53b678ce17f1d80c75dd51976b697a5d1fc2cd6a13670652069b227b40157c98";
 /// Approximate size, for display before the download starts.
 pub const MODEL_SIZE_HINT: u64 = 410_679_340;
 pub const MODEL_LICENSE: &str = "CC-BY-4.0";
@@ -79,7 +79,7 @@ pub const ENV_MODEL_SHA256: &str = "DAOHUI_MODEL_SHA256";
 
 #[cfg(target_os = "windows")]
 mod platform {
-    /// Rime user data dir: `%APPDATA%\DaoHui`.
+    /// Rime user data dir: `%APPDATA%\DaoHui` unless the registry names one.
     pub const USER_DIR_APPDATA_SUBDIR: &str = "DaoHui";
     /// Deployer inside the install dir.
     pub const DEPLOYER_EXE: &str = "DaoHuiDeployer.exe";
@@ -88,9 +88,13 @@ mod platform {
     /// registry: `%ProgramFiles%\DaoHui` (or this path if %ProgramFiles% is unset).
     pub const DEFAULT_INSTALL_SUBDIR: &str = "DaoHui";
     pub const DEFAULT_INSTALL_DIR: &str = r"C:\Program Files\DaoHui";
-    /// HKLM value written by the installer (TODO: align with the Weasel fork's NSIS script).
+    /// HKLM value written by the installer (D:\src\daohui output\install.nsi).
     pub const INSTALL_DIR_REG_KEY: &str = r"SOFTWARE\DaoHui";
     pub const INSTALL_DIR_REG_VALUE: &str = "InstallDir";
+    /// HKCU value written by `DaoHuiSetup.exe /userdir:<dir>`; when set it is
+    /// the user dir instead of `%APPDATA%\DaoHui`.
+    pub const USER_DIR_REG_KEY: &str = r"Software\DaoHui";
+    pub const USER_DIR_REG_VALUE: &str = "RimeUserDir";
     /// `sparkle:os` values accepted for this platform (by arch).
     #[cfg(target_arch = "aarch64")]
     pub const APPCAST_OS: &[&str] = &["windows-arm64"];
@@ -142,6 +146,9 @@ pub fn user_dir() -> PathBuf {
 
 #[cfg(target_os = "windows")]
 fn default_user_dir() -> PathBuf {
+    if let Some(dir) = crate::winutil::user_dir_from_registry() {
+        return dir;
+    }
     let base = env_path("APPDATA").unwrap_or_else(|| {
         let home = env_path("USERPROFILE").unwrap_or_else(|| PathBuf::from(r"C:\"));
         home.join("AppData").join("Roaming")

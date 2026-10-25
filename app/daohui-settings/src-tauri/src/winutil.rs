@@ -5,7 +5,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use windows_sys::Win32::System::Registry::{
-    RegGetValueW, HKEY, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6464KEY,
+    RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6464KEY,
 };
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -44,6 +44,12 @@ fn reg_string(root: HKEY, key: &str, value: &str) -> Option<String> {
 pub fn install_dir_from_registry() -> Option<PathBuf> {
     use crate::config::{INSTALL_DIR_REG_KEY, INSTALL_DIR_REG_VALUE};
     reg_string(HKEY_LOCAL_MACHINE, INSTALL_DIR_REG_KEY, INSTALL_DIR_REG_VALUE).map(PathBuf::from)
+}
+
+/// The user dir chosen with `DaoHuiSetup.exe /userdir:<dir>` (HKCU).
+pub fn user_dir_from_registry() -> Option<PathBuf> {
+    use crate::config::{USER_DIR_REG_KEY, USER_DIR_REG_VALUE};
+    reg_string(HKEY_CURRENT_USER, USER_DIR_REG_KEY, USER_DIR_REG_VALUE).map(PathBuf::from)
 }
 
 /// Opens a file the way Explorer does, so an installer that requires
