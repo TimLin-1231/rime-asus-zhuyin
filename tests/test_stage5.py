@@ -80,6 +80,25 @@ def main() -> int:
         check(f"在 learned in one context does not leak: {text}",
               t.preview(keys(text)) == text, t.preview(keys(text)))
 
+    # The last committed character is the left context of a new composition.
+    def after(context: str, text: str, between: str = "") -> str:
+        """Commit `context`, press `between` (nothing typed), preview `text`."""
+        got, _ = t.enter(keys(context), context)
+        if between:
+            r.key(between)
+        t.type(keys(text)); s = r.snapshot(); r.clear()
+        return got + s.preview
+    t.enter(keys("我忘記吃") + "+" + keys("藥了"), "我忘記吃+藥了")
+    check("a correction taught after a commit applies after the same character",
+          after("你今天吃", "藥了") == "你今天吃藥了", after("你今天吃", "藥了"))
+    check("...but not after another character", after("他已經不", "要了") == "他已經不要了",
+          after("他已經不", "要了"))
+    alone = t.preview(keys("藥了"))  # (no context: the rule does not apply)
+    for between in ("BackSpace", "space"):
+        got = after("你今天吃", "藥了", between)
+        check(f"{between} with nothing typed drops the context",
+              alone != "藥了" and got == "你今天吃" + alone, f"{got} / alone {alone}")
+
     # Forgetting ------------------------------------------------------------
     name = "我打給志豪"
     t.enter(keys(name), name)

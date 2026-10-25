@@ -146,6 +146,7 @@ end
 local function commit_and_predict(env, text)
   local ctx = env.engine.context
   env.engine:commit_text(text)
+  learn.committed(text)  -- (the left context of the next composition there)
   env.history = tail_chars(env.history .. text, MAX_PREFIX)
   if ctx:get_option("prediction") then
     local words = predict(env.history, SHOW)
