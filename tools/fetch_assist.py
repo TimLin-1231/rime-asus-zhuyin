@@ -10,6 +10,12 @@ committed to git; every file is checked against the publisher's SHA-256.
                                     its runtime DLLs (MIT), ggml-org/llama.cpp
   model    models/                  Qwen3.5-4B, 4-bit GGUF (Apache-2.0;
                                     converted by unsloth from Qwen/Qwen3.5-4B)
+  taiwan   models/                  Llama-3.2-Taiwan-3B, 3-bit GGUF (Llama 3.2
+                                    Community License, Built with Llama;
+                                    lianghsun/Llama-3.2-Taiwan-3B, quantized by
+                                    QuantFactory), for homophone correction
+
+    python tools/fetch_assist.py taiwan     # only that model (1.9 GB)
 """
 
 from __future__ import annotations
@@ -38,6 +44,10 @@ FILES = [
      "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/"
      "Qwen3.5-4B-Q4_K_M.gguf",
      "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4", 2740937888, None),
+    ("taiwan", "models/Llama-3.2-Taiwan-3B.Q3_K_M.gguf",
+     "https://huggingface.co/QuantFactory/Llama-3.2-Taiwan-3B-GGUF/resolve/501e703754ec5ca72ff3140b7f4c74c2994a3686/"
+     "Llama-3.2-Taiwan-3B.Q3_K_M.gguf",
+     "4b08e099232942cf0679044c9ffee7817078abdf8e8f0c290f85c622546c90b9", 1856458816, None),
 ]
 
 
