@@ -654,6 +654,7 @@ local function note_pick(key, env)
     return
   end
   local cand = seg:get_candidate_at(index)
+  if cand and cand.type == "quick" then return end  -- a date or number form (asus_quick.lua)
   if cand and cand.type ~= "sentence" then
     env.picks[seg.start .. ":" .. cand._end] = true
   end

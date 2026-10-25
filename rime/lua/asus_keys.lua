@@ -283,4 +283,7 @@ local function func(key, env)
   return kNoop
 end
 
-return { init = init, func = func, fini = fini, turn_page = turn_page }
+-- Open the full list (asus_quick.lua: Tab on a number).
+local function expand(ctx) set_expanded(ctx, true) end
+
+return { init = init, func = func, fini = fini, turn_page = turn_page, expand = expand }
