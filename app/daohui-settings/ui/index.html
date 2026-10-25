@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>島輝 設定</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="icon.png" alt="" width="36" height="36">
+      <div>
+        <div class="brand-name">島輝</div>
+        <div class="brand-sub">設定與更新</div>
+      </div>
+    </div>
+    <nav class="nav" aria-label="頁面">
+      <button class="nav-item" data-page="about">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <span>關於</span>
+      </button>
+      <button class="nav-item" data-page="updates">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/><path d="M12 8v5l3 2"/></svg>
+        <span>檢查更新</span><span class="nav-dot" id="nav-update-dot" hidden></span>
+      </button>
+      <button class="nav-item" data-page="features">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="6"/><circle cx="15" cy="12" r="3"/></svg>
+        <span>功能開關</span>
+      </button>
+      <button class="nav-item" data-page="userdata">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.66 3.13 3 7 3s7-1.34 7-3V6"/><path d="M5 12v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6"/></svg>
+        <span>學習資料</span>
+      </button>
+      <button class="nav-item" data-page="model">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+        <span>模型</span>
+      </button>
+    </nav>
+    <div class="sidebar-foot" id="foot-version"></div>
+  </aside>
+
+  <main class="content">
+    <!-- 關於 -->
+    <section class="page" id="page-about" hidden>
+      <header class="page-head"><h1>關於</h1></header>
+      <div class="card hero">
+        <img src="icon.png" alt="" class="hero-icon" width="72" height="72">
+        <div>
+          <div class="hero-name">島輝 <span class="hero-en">DaoHui</span></div>
+          <div class="hero-ver">版本 <span id="about-version">—</span></div>
+          <p class="muted">華碩智慧輸入法風格的注音輸入法，以 RIME 為核心。</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">授權</div>
+            <div class="row-desc">GNU 通用公共授權條款第 3 版（GPLv3）</div>
+          </div>
+          <button class="btn" data-link="license">閱讀授權</button>
+        </div>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">原始碼</div>
+            <div class="row-desc mono">github.com/TimLin-1231/rime-asus-zhuyin</div>
+          </div>
+          <button class="btn" data-link="repo">在 GitHub 開啟</button>
+        </div>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">使用者資料夾</div>
+            <div class="row-desc mono" id="about-userdir">—</div>
+          </div>
+          <button class="btn" data-open="user_dir">開啟</button>
+        </div>
+      </div>
+      <h2 class="section-title">致謝</h2>
+      <div class="card list" id="credits"></div>
+      <p class="foot-note" id="about-sys"></p>
+    </section>
+
+    <!-- 檢查更新 -->
+    <section class="page" id="page-updates" hidden>
+      <header class="page-head">
+        <h1>檢查更新</h1>
+        <p>目前版本 <b id="upd-current">—</b></p>
+      </header>
+      <div class="card">
+        <div class="row">
+          <div class="status-icon" id="upd-icon" data-state="idle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
+          </div>
+          <div class="row-main">
+            <div class="row-title" id="upd-status-title">尚未檢查</div>
+            <div class="row-desc" id="upd-status-desc">按「檢查更新」取得最新版本的資訊。</div>
+          </div>
+          <button class="btn" id="upd-check">檢查更新</button>
+        </div>
+      </div>
+      <div class="card" id="upd-release" hidden>
+        <div class="release-head">
+          <div class="row-main">
+            <div class="release-title" id="upd-title"></div>
+            <div class="row-desc" id="upd-meta"></div>
+          </div>
+          <span class="badge accent">新版本</span>
+        </div>
+        <div class="notes" id="upd-notes"></div>
+        <button class="link-btn" id="upd-notes-link" hidden>完整更新說明 ↗</button>
+        <div class="progress" id="upd-progress" hidden><div class="bar"></div></div>
+        <div class="progress-text" id="upd-progress-text"></div>
+        <div class="actions">
+          <button class="btn primary" id="upd-install">下載並安裝</button>
+          <button class="btn" id="upd-cancel" hidden>取消</button>
+        </div>
+        <p class="hint">按下後才會下載安裝程式。下載完成會先驗證 SHA-256，通過才啟動安裝；設定程式隨後關閉。</p>
+      </div>
+    </section>
+
+    <!-- 功能開關 -->
+    <section class="page" id="page-features" hidden>
+      <header class="page-head">
+        <h1>功能開關</h1>
+        <p>修改後按「儲存」，再「重新部署」，輸入法才會套用。</p>
+      </header>
+      <div class="notice warn pre" id="feat-warning" hidden></div>
+      <div class="card">
+        <label class="row">
+          <div class="row-main">
+            <div class="row-title">先顯示按鍵</div>
+            <div class="row-desc">還沒按聲調的音節先在文字中顯示英文按鍵，候選窗顯示注音；按下聲調鍵才轉成中文。</div>
+          </div>
+          <input type="checkbox" class="switch" id="f-raw">
+        </label>
+        <label class="row">
+          <div class="row-main">
+            <div class="row-title">預測下一個詞</div>
+            <div class="row-desc">送出文字後，候選窗顯示可能接著打的詞，按 Tab 接受。這是每次開始打字時的狀態，仍可從輸入法選單暫時切換。</div>
+          </div>
+          <input type="checkbox" class="switch" id="f-pred">
+        </label>
+        <label class="row">
+          <div class="row-main">
+            <div class="row-title">自我學習</div>
+            <div class="row-desc">記住你的選字與更正，之後優先使用。關閉後不再學習，也不套用已學到的內容（資料不會刪除）。</div>
+          </div>
+          <input type="checkbox" class="switch" id="f-learn">
+        </label>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">連按兩下 Tab 的時間</div>
+            <div class="row-desc">按一下 Tab 切換最後一個字的中英文；在這段時間內再按一下，改成補完預測的詞。</div>
+            <div class="slider-line">
+              <input type="range" id="f-tab" min="150" max="1500" step="10" aria-label="連按兩下 Tab 的時間（毫秒）">
+              <output id="f-tab-out" for="f-tab">400 毫秒</output>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="feat-save" disabled>儲存</button>
+        <button class="btn" id="feat-defaults">恢復預設值</button>
+        <span class="spacer"></span>
+        <button class="btn" id="feat-deploy">重新部署</button>
+      </div>
+      <div class="notice ok" id="feat-saved" hidden>
+        <span>已儲存。按「重新部署」讓輸入法套用新設定。</span>
+        <button class="btn small primary" id="feat-saved-deploy">重新部署</button>
+      </div>
+      <p class="foot-note">設定檔：<span class="mono" id="feat-path">—</span> <span id="feat-exists"></span></p>
+      <p class="foot-note">部署程式：<span class="mono" id="feat-deployer">—</span></p>
+    </section>
+
+    <!-- 學習資料 -->
+    <section class="page" id="page-userdata" hidden>
+      <header class="page-head">
+        <h1>學習資料</h1>
+        <p>輸入法記住的詞和選字，只存在這台電腦。</p>
+      </header>
+      <div class="card">
+        <div class="stats">
+          <div class="stat"><div class="stat-num" id="ud-total">—</div><div class="stat-label">學習資料大小</div></div>
+          <div class="stat"><div class="stat-num" id="ud-count">—</div><div class="stat-label">資料庫</div></div>
+          <div class="stat"><div class="stat-num" id="ud-backups">—</div><div class="stat-label">備份</div></div>
+        </div>
+        <table class="table" id="ud-table">
+          <thead><tr><th>資料庫</th><th class="num">大小</th><th class="state">狀態</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="row-desc mono path-line" id="ud-dir"></div>
+      </div>
+      <div class="notice info">
+        輸入法執行時會鎖住部分學習資料檔案，請在沒有打字的時候備份。沒複製到的檔案會列在結果中，那個資料庫的這份備份不會拿來還原。
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="ud-backup">立即備份</button>
+        <button class="btn" data-open="user_dir">開啟使用者資料夾</button>
+        <span class="spacer"></span>
+        <button class="btn" id="ud-refresh">重新整理</button>
+      </div>
+      <div class="notice ok pre" id="ud-result" hidden></div>
+      <h2 class="section-title">還原</h2>
+      <div class="card list" id="ud-backup-list"></div>
+    </section>
+
+    <!-- 模型 -->
+    <section class="page" id="page-model" hidden>
+      <header class="page-head">
+        <h1>模型</h1>
+        <p>語言模型讓整句選字更準確，第一次使用時下載<span id="m-size"></span>。</p>
+      </header>
+      <div class="card">
+        <div class="row model-head">
+          <div class="status-icon" id="m-icon" data-state="idle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+          </div>
+          <div class="row-main">
+            <div class="row-title mono" id="m-name">wanxiang-lts-zh-hant.gram</div>
+            <div class="row-desc" id="m-desc">—</div>
+          </div>
+          <span class="badge" id="m-badge"></span>
+        </div>
+        <div class="progress" id="m-progress" hidden><div class="bar"></div></div>
+        <div class="progress-text" id="m-progress-text"></div>
+        <div class="actions">
+          <button class="btn primary" id="m-download">下載</button>
+          <button class="btn" id="m-cancel" hidden>暫停</button>
+          <button class="btn" id="m-verify">驗證檔案</button>
+          <span class="spacer"></span>
+          <button class="btn" id="m-deploy">重新部署</button>
+        </div>
+        <p class="hint" id="m-hint"></p>
+      </div>
+      <p class="foot-note">萬象語言模型（RIME-LMDG，amzxyz），授權 CC-BY-4.0。<button class="link-btn" data-link="model">來源 ↗</button></p>
+      <p class="foot-note">檔案位置：<span class="mono" id="m-path">—</span></p>
+    </section>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title"></h3>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="actions end">
+      <button class="btn" id="modal-cancel">取消</button>
+      <button class="btn primary" id="modal-ok">確定</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
