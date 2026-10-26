@@ -17,7 +17,13 @@ Taiwan supplement: only entries that change behaviour are written --
   new     MOE word below the essay cut-off (min_phrase_weight); weight = --floor
 Personal: weight = max(essay weight, --personal); symbols get weight 1.
 
+Public package (DaoHui installer, tools/package_daohui_data.py): --public
+writes both the Taiwan supplement and the personal dictionary as empty stubs
+(the MOE data may not be redistributed, personal words are private) and only
+the McBopomofo table has entries; use it with --out <dir>, never on rime/.
+
     python tools/build_lexicon.py [--floor N] [--personal N] [--no-tw] [--no-prefer]
+    python tools/build_lexicon.py --public --out <dir>
 """
 
 from __future__ import annotations
@@ -217,16 +223,30 @@ def main() -> None:
     ap.add_argument("--no-prefer", action="store_true")
     ap.add_argument("--no-mcb", action="store_true", help="write an empty McBopomofo table")
     ap.add_argument("--out", type=Path, default=RIME)
+    ap.add_argument("--no-personal", action="store_true", help="write an empty personal dictionary")
+    ap.add_argument("--public", action="store_true",
+                    help="public package: empty Taiwan MOE and personal stubs (implies --no-tw "
+                         "--no-personal); needs --out")
     args = ap.parse_args()
+    if args.public:
+        if args.out.resolve() == RIME.resolve():
+            ap.error("--public needs --out <dir>: rime/ is the live user folder")
+        args.no_tw = args.no_personal = True
 
     mcb_rows, mcb_stats = ([], {}) if args.no_mcb or not MCB_DIR.exists() else build_mcb()
     mcb = {(w, r): n for w, r, n in mcb_rows}
     tw_rows, stats = ([], {}) if args.no_tw else build_tw(args.floor, not args.no_prefer, mcb)
+    args.out.mkdir(parents=True, exist_ok=True)
     write_dict(args.out / "terra_pinyin.tw.dict.yaml", "terra_pinyin.tw", tw_rows,
+               "Empty stub (public package): the Taiwan MOE supplement (CC BY-ND 3.0 TW) is not "
+               "redistributed. A terra_pinyin.tw.dict.yaml in the user folder replaces this file."
+               if args.public else
                "Source: Taiwan MOE dictionaries (CC BY-ND 3.0 TW), local use only.")
-    p_rows, skipped = build_personal(args.personal)
+    p_rows, skipped = ([], 0) if args.no_personal else build_personal(args.personal)
     write_dict(args.out / "terra_pinyin.personal.dict.yaml", "terra_pinyin.personal", p_rows,
-               "Source: lexicon/personal_words.txt (private).")
+               "Empty stub (public package). A terra_pinyin.personal.dict.yaml with your own words "
+               "in the user folder replaces this file."
+               if args.public else "Source: lexicon/personal_words.txt (private).")
     write_dict(args.out / "terra_pinyin.mcb.dict.yaml", "terra_pinyin.mcb", mcb_rows,
                "Source: McBopomofo Source/Data (MIT), third_party/mcbopomofo.")
     print(f"tw: {len(tw_rows)} entries {stats}; personal: {len(p_rows)} entries, "
