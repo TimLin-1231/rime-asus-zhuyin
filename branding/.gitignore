@@ -1,0 +1,10 @@
+# Only the chosen design (F) is versioned. The other concepts are drafts;
+# D and E were made from DFKai-SB (標楷體, a commercial font) and must not be
+# published. Regenerate any of them with make_icons.py.
+__pycache__/
+concepts/[A-E]*
+out/[A-E]/
+concepts_preview.png
+mode_icons_preview.png
+inkwash_preview.png
+inkwash_mode_icons_preview.png
