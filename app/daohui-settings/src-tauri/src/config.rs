@@ -47,7 +47,8 @@ pub const KEY_TAB_DOUBLE_MS: &str = "asus_tab/double_ms";
 /// asus_learn.lua: self-learning on/off. Default true.
 pub const KEY_LEARN_ENABLED: &str = "asus_learn/enabled";
 
-pub const DEFAULT_RAW_KEYS: bool = false;
+/// On in the schema that DaoHui ships (tools/package_daohui_data.py).
+pub const DEFAULT_RAW_KEYS: bool = true;
 pub const DEFAULT_PREDICTION: bool = true;
 pub const DEFAULT_TAB_DOUBLE_MS: u32 = 400;
 pub const DEFAULT_LEARN_ENABLED: bool = true;

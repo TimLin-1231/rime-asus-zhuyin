@@ -194,7 +194,7 @@ mod tests {
     fn defaults_when_missing() {
         let s = FeatureSettings::read(&PatchFile::parse(""));
         assert_eq!(s, FeatureSettings::default());
-        assert!(s.prediction && s.learn_enabled && !s.raw_keys);
+        assert!(s.prediction && s.learn_enabled && s.raw_keys);
         assert_eq!(s.tab_double_ms, 400);
     }
 
