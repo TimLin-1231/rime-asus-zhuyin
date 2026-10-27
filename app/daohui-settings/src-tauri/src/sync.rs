@@ -513,17 +513,41 @@ impl Ctx<'_> {
     }
 }
 
+/// The trigger file: `<unix time>\n`, then one line per other device id.
+pub fn trigger_text(time: Time, others: &[&str]) -> String {
+    let mut s = format!("{time}\n");
+    for id in others {
+        s.push_str(id);
+        s.push('\n');
+    }
+    s
+}
+
+/// Creates an empty terra_pinyin.synced.dict.yaml when there is none:
+/// terra_pinyin.asus.dict.yaml imports it, and librime does not compile the
+/// dictionary while it is missing. An existing file is never touched.
+pub fn ensure_synced_stub(user_dir: &Path) -> Result<bool, String> {
+    let path = user_dir.join(SYNCED_DICT_FILE);
+    if path.exists() {
+        return Ok(false);
+    }
+    write_if_changed(&path, &merge::render_synced_dict(&[])).map_err(write_err(&path))
+}
+
 fn sync_personal(cx: &mut Ctx) -> Result<bool, String> {
     let own = read_text(&cx.user_dir.join(PERSONAL_DICT_FILE))?.map(|t| merge::parse_dict(&t)).unwrap_or_default();
-    let synced = read_text(&cx.user_dir.join(SYNCED_DICT_FILE))?.map(|t| merge::parse_dict(&t)).unwrap_or_default();
+    let synced_text = read_text(&cx.user_dir.join(SYNCED_DICT_FILE))?;
+    let synced = synced_text.as_deref().map(merge::parse_dict).unwrap_or_default();
     let others: Vec<Vec<Word>> =
         cx.remote_texts(SYNC_PERSONAL_FILE).iter().map(|(t, _)| merge::parse_words(t)).collect();
     let m = merge::merge_personal(&own, &synced, &others);
     cx.log.line(format!("個人詞：這台 {} 個，其他裝置來的 {} 個", own.len(), m.synced.len()));
     let mut changed = false;
-    if m.synced != merge::union_words(&[&synced]) {
+    // A missing file is created even when empty (see ensure_synced_stub).
+    if synced_text.is_none() || m.synced != merge::union_words(&[&synced]) {
         let added = m.synced.len().saturating_sub(synced.len());
-        cx.write_local(SYNCED_DICT_FILE, &merge::render_synced_dict(&m.synced), format!("新增 {added} 個詞"))?;
+        let what = if synced_text.is_none() && m.synced.is_empty() { "建立空的詞庫".to_string() } else { format!("新增 {added} 個詞") };
+        cx.write_local(SYNCED_DICT_FILE, &merge::render_synced_dict(&m.synced), what)?;
         changed = true;
     }
     cx.export(SYNC_PERSONAL_FILE, &merge::render_words(&m.export))?;
@@ -660,9 +684,12 @@ fn run_in(user_dir: &Path, opts: &RunOptions, log: &mut Log) -> Result<SyncRepor
     };
 
     // 1. asus_learn.lua imports the others' snapshots and exports its own
-    //    when it sees this file is newer than its last import.
+    //    (into `mine`, created above: Lua cannot make folders on Windows)
+    //    when it sees this file is newer than its last import. It cannot
+    //    list folders either, so the file names the other devices.
     let trigger = user_dir.join(SYNC_TRIGGER_FILE);
-    if let Err(e) = fs::write(&trigger, format!("{time}\n")) {
+    let others: Vec<&str> = cx.remotes.iter().map(|(n, _)| n.as_str()).collect();
+    if let Err(e) = fs::write(&trigger, trigger_text(time, &others)) {
         cx.warn(format!("無法寫入 {}：{e}", trigger.display()));
     }
 
@@ -830,6 +857,10 @@ pub async fn set_sync_dir(path: Option<String>) -> Result<SyncInfo, String> {
         if path.is_none() && autosync::status().enabled {
             autosync::disable()?;
         }
+        // The stub makes the dictionary compile again: deploy now.
+        if path.is_some() && ensure_synced_stub(&dir)? && !RunOptions::from_env().skip_deployer {
+            let _ = deploy::deploy_blocking();
+        }
         Ok(info_for(&dir))
     })
     .await?
@@ -971,6 +1002,13 @@ mod tests {
         let off = set_sync_dir_in(&user, None).unwrap();
         assert_eq!(off.sync_dir, None);
         assert_eq!(off.installation_id, i.installation_id); // kept
+        // The stub (as the page's save creates it) never replaces a file.
+        assert!(ensure_synced_stub(&user).unwrap());
+        assert!(!ensure_synced_stub(&user).unwrap());
+        fs::write(user.join(SYNCED_DICT_FILE), "mine").unwrap();
+        assert!(!ensure_synced_stub(&user).unwrap());
+        assert_eq!(fs::read_to_string(user.join(SYNCED_DICT_FILE)).unwrap(), "mine");
+        assert_eq!(trigger_text(5, &["a", "b"]), "5\na\nb\n");
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1016,12 +1054,20 @@ mod tests {
         let opts = RunOptions { skip_deployer: true, app_version: "9.9".into() };
 
         let r1 = run(&pc, &opts).unwrap();
-        assert!(r1.devices.is_empty() && r1.changed.is_empty(), "{r1:?}");
+        assert!(r1.devices.is_empty(), "{r1:?}");
+        // No other words yet, but the dictionary needs the file: a stub.
+        assert_eq!(r1.changed.len(), 1, "{r1:?}");
+        let stub = fs::read_to_string(pc.join(SYNCED_DICT_FILE)).unwrap();
+        assert!(stub.contains("\n---\nname: terra_pinyin.synced\n") && stub.ends_with("...\n\n"));
+        assert!(merge::parse_dict(&stub).is_empty());
+        assert_eq!(fs::read_to_string(pc.join(SYNC_TRIGGER_FILE)).unwrap(), format!("{}\n", r1.time));
         let r2 = run(&mac, &opts).unwrap();
         assert_eq!(r2.devices, vec!["pc-1"]);
         assert!(r2.warnings.is_empty(), "{r2:?}");
+        assert_eq!(fs::read_to_string(mac.join(SYNC_TRIGGER_FILE)).unwrap(), format!("{}\npc-1\n", r2.time));
         let r3 = run(&pc, &opts).unwrap();
         assert_eq!(r3.changed.len(), 3, "{r3:?}"); // synced dict, shortcuts, settings
+        assert_eq!(fs::read_to_string(pc.join(SYNC_TRIGGER_FILE)).unwrap(), format!("{}\nmac-air\n", r3.time));
         let synced = fs::read_to_string(pc.join(SYNCED_DICT_FILE)).unwrap();
         assert!(synced.contains("頻域\tpin2 yu4\t20000\n") && !synced.contains("時域"));
         assert_eq!(fs::read_to_string(pc.join(SHORTCUTS_FILE)).unwrap(), "ㄉㄓ\t台北市\n");

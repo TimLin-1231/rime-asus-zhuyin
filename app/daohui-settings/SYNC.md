@@ -22,8 +22,8 @@ Other files in the user dir:
 
 | File | |
 | --- | --- |
-| `terra_pinyin.synced.dict.yaml` | Personal words from the other devices (Rime dict, `name: terra_pinyin.synced`), imported by `terra_pinyin.asus.dict.yaml`. Generated. |
-| `daohui_sync_request` | Written (unix time) at the start of each run; asus_learn.lua imports/exports its snapshot when it is newer than its last import. |
+| `terra_pinyin.synced.dict.yaml` | Personal words from the other devices (Rime dict, `name: terra_pinyin.synced`), imported by `terra_pinyin.asus.dict.yaml`. Generated; when missing, the run and the page's 儲存 create an empty one (librime does not compile the dictionary without it), never replacing an existing file. |
+| `daohui_sync_request` | Written at the start of each run: `<unix time>\n`, then one line per other device id (the folders under `<sync_dir>/daohui/` except this one; Lua cannot list folders on Windows). asus_learn.lua imports/exports its snapshot when it is newer than its last import. |
 | `daohui_sync_state.json` | Per-key change times seen by the last run (settings, shortcuts, deletions). |
 | `daohui_sync.lock` | Held during a run (stale after 30 min). |
 | `log/sync.log` | The run's log (rotated to `sync.log.old` at 512 KB). |
@@ -77,8 +77,9 @@ All merges are idempotent and do not depend on the order of devices
 ## A run (`DaoHuiSettings --sync`)
 
 1. Read `installation.yaml`; create the sync folder if only its last part is
-   missing; add an `installation_id` if there is none.
-2. Write `daohui_sync_request`.
+   missing; add an `installation_id` if there is none; create
+   `<sync_dir>/daohui/<installation_id>/` (Lua cannot make folders on Windows).
+2. Write `daohui_sync_request` (time + the other device ids).
 3. Rime's sync: `<install dir>\DaoHuiDeployer.exe /sync` (waits) /
    `DaoHui.app/Contents/MacOS/DaoHui --sync` (notifies the running IME).
 4. Merge personal words, e-mail addresses, shortcuts, settings; export this
