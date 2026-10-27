@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:daohui="https://github.com/TimLin-1231/rime-asus-zhuyin/ns/appcast">
+  <channel>
+    <title>【島輝】輸入法更新頻道（macOS）</title>
+    <link>https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/update/appcast-macos.xml</link>
+    <description>島輝 DaoHui for macOS Appcast 更新頻道</description>
+    <language>zh</language>
+    <item>
+      <title>島輝 1.1.2.14</title>
+      <sparkle:releaseNotesLink>https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.14</sparkle:releaseNotesLink>
+      <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 27 Oct 2026 18:34:22 +0000</pubDate>
+      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.14/DaoHui-1.1.2.14.pkg"
+                 sparkle:version="1.1.2.14"
+                 sparkle:shortVersionString="1.1.2.14"
+                 sparkle:edSignature="1KFzxUF4328wep+V2UPDDV4kSSWuLUDn+UgjjYL/kYoOTNXLjP71+qq/jhmq9wJAmgwmn8+uclyLFtUomadXBg=="
+                 sparkle:os="macos"
+                 length="21167051"
+                 type="application/octet-stream"
+                 daohui:sha256="eaa3a54fc8c421f49b905022f9354b2000b5758a3ac6cbe72e0f5cc6c9e52f91"/>
+    </item>
+  </channel>
+</rss>
