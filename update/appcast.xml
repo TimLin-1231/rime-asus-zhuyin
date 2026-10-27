@@ -15,6 +15,26 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.8</title>
+      <pubDate>Tue, 27 Oct 2026 15:15:00 +0800</pubDate>
+      <sparkle:version>0.17.4.8</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.8</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.8</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>多台裝置同步：「島輝設定 → 同步」，Windows 與 Mac 之間同步學習資料、個人詞庫、email、快捷文字與功能開關</li>
+          <li>設定 App 用已安裝的島輝版本比對更新</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.8/daohui-0.17.4.8-installer.exe"
+                 sparkle:version="0.17.4.8"
+                 sparkle:os="windows"
+                 sparkle:installerArguments=""
+                 length="17661268"
+                 type="application/octet-stream"
+                 daohui:sha256="69735261d0ec64d3652b439854339003d25d5f3d23a797df2c795995adb5a1e0" />
+    </item>
+    <item>
       <title>島輝 0.17.4.7</title>
       <pubDate>Tue, 27 Oct 2026 13:40:00 +0800</pubDate>
       <sparkle:version>0.17.4.7</sparkle:version>
