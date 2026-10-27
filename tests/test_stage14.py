@@ -15,7 +15,7 @@ from rime_harness import SHIFT_MASK, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
-NO_LEARN = "patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: false\n"
+NO_LEARN = "patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: false\n  asus_english/compose: true\n"
 NAMED = ("Tab", "BackSpace", "Return", "Escape", "Down")
 
 

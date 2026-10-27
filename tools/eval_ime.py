@@ -284,8 +284,10 @@ def worker(variant: str, sets_json: str) -> None:
     # scores depend on set order. Learning is evaluated separately (stage 5).
     extra = dict(extra)
     custom = f"{schema}.custom.yaml"
+    # English mode types directly by default; the English sets (autofix,
+    # english_next) measure its composing mode, so that is switched on.
     extra[custom] = ((extra.get(custom) or "patch:\n") + "  translator/enable_user_dict: false\n"
-                     + "  asus_learn/enabled: false\n")
+                     + "  asus_learn/enabled: false\n" + "  asus_english/compose: true\n")
     # Tuning: EVAL_PATCH="asus_lang/costs/fix=1.4;asus_typo/margin=25" (never saved).
     for item in filter(None, os.environ.get("EVAL_PATCH", "").split(";")):
         key, _, value = item.partition("=")

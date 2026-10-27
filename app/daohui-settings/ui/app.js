@@ -284,6 +284,7 @@ function readForm() {
     prediction: $('#f-pred').checked,
     tabDoubleMs: Number($('#f-tab').value),
     learnEnabled: $('#f-learn').checked,
+    englishCompose: $('#f-encompose').checked,
   };
 }
 
@@ -291,13 +292,15 @@ function fillForm(s) {
   $('#f-raw').checked = s.rawKeys;
   $('#f-pred').checked = s.prediction;
   $('#f-learn').checked = s.learnEnabled;
+  $('#f-encompose').checked = s.englishCompose;
   $('#f-tab').value = s.tabDoubleMs;
   $('#f-tab-out').textContent = `${s.tabDoubleMs} 毫秒`;
 }
 
 function same(a, b) {
   return a.rawKeys === b.rawKeys && a.prediction === b.prediction
-    && a.tabDoubleMs === b.tabDoubleMs && a.learnEnabled === b.learnEnabled;
+    && a.tabDoubleMs === b.tabDoubleMs && a.learnEnabled === b.learnEnabled
+    && a.englishCompose === b.englishCompose;
 }
 
 function updateDirty() {
@@ -327,7 +330,7 @@ loaders.features = async () => {
   renderFeatures(await call('get_features'));
 };
 
-for (const id of ['#f-raw', '#f-pred', '#f-learn', '#f-tab']) {
+for (const id of ['#f-raw', '#f-pred', '#f-learn', '#f-encompose', '#f-tab']) {
   $(id).addEventListener('input', () => { $('#feat-saved').hidden = true; updateDirty(); });
 }
 
@@ -549,7 +552,7 @@ loaders.model = async () => renderModel(await call('model_status'));
 function mockListen() { return Promise.resolve(() => {}); }
 
 function mockInvoke(cmd, args) {
-  const settings = { rawKeys: true, prediction: true, tabDoubleMs: 400, learnEnabled: true };
+  const settings = { rawKeys: true, prediction: true, tabDoubleMs: 400, learnEnabled: true, englishCompose: false };
   const data = {
     about_info: {
       name: '島輝', nameEn: 'DaoHui', version: '0.1.0', license: 'GPL-3.0-or-later',
@@ -571,7 +574,7 @@ function mockInvoke(cmd, args) {
       },
     },
     get_features: {
-      settings, defaults: { rawKeys: false, prediction: true, tabDoubleMs: 400, learnEnabled: true },
+      settings, defaults: { rawKeys: true, prediction: true, tabDoubleMs: 400, learnEnabled: true, englishCompose: false },
       path: 'C:\\Users\\you\\AppData\\Roaming\\DaoHui\\asus_zhuyin.custom.yaml', exists: true,
       userDir: 'C:\\Users\\you\\AppData\\Roaming\\DaoHui', userDirExists: true, tabMin: 150, tabMax: 1500,
       warning: null, deployer: 'C:\\Program Files\\DaoHui\\DaoHuiDeployer.exe',

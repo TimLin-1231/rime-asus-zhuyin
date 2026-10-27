@@ -29,6 +29,9 @@ pub struct FeatureSettings {
     pub tab_double_ms: u32,
     /// asus_learn/enabled
     pub learn_enabled: bool,
+    /// asus_english/compose: English mode composes words with suggestions
+    /// and autocorrect instead of typing each key directly
+    pub english_compose: bool,
 }
 
 impl Default for FeatureSettings {
@@ -38,6 +41,7 @@ impl Default for FeatureSettings {
             prediction: DEFAULT_PREDICTION,
             tab_double_ms: DEFAULT_TAB_DOUBLE_MS,
             learn_enabled: DEFAULT_LEARN_ENABLED,
+            english_compose: DEFAULT_ENGLISH_COMPOSE,
         }
     }
 }
@@ -62,6 +66,7 @@ impl FeatureSettings {
             prediction: read_prediction(doc).unwrap_or(d.prediction),
             tab_double_ms: read_tab_ms(doc).unwrap_or(d.tab_double_ms),
             learn_enabled: doc.get_bool(KEY_LEARN_ENABLED).unwrap_or(d.learn_enabled),
+            english_compose: doc.get_bool(KEY_ENGLISH_COMPOSE).unwrap_or(d.english_compose),
         }
     }
 
@@ -93,6 +98,10 @@ impl FeatureSettings {
         let parsed = doc.get_bool(KEY_LEARN_ENABLED).is_some();
         if self.learn_enabled != cur.learn_enabled || bad(doc, KEY_LEARN_ENABLED, parsed) {
             doc.set(KEY_LEARN_ENABLED, if self.learn_enabled { "true" } else { "false" })?;
+        }
+        let parsed = doc.get_bool(KEY_ENGLISH_COMPOSE).is_some();
+        if self.english_compose != cur.english_compose || bad(doc, KEY_ENGLISH_COMPOSE, parsed) {
+            doc.set(KEY_ENGLISH_COMPOSE, if self.english_compose { "true" } else { "false" })?;
         }
         Ok(())
     }

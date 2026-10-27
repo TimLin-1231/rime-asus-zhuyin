@@ -24,7 +24,8 @@ from assist.llm import _phrase  # noqa: E402
 RESULTS: list[tuple[str, bool, str]] = []
 PIPE = "asus_zhuyin_test16"
 PATCH = ("patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: false\n"
-         f"  asus_english/pipe: {PIPE}\n")
+         f"  asus_english/pipe: {PIPE}\n"
+         "  asus_english/compose: true\n")
 NAMED = ("Tab", "BackSpace", "Return", "Escape", "Down", "Left", "F24")
 
 

@@ -22,7 +22,7 @@ from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
 # asus_learn stays on (the last checks need it); Rime's own learning is off.
-PATCH = "patch:\n  translator/enable_user_dict: false\n"
+PATCH = "patch:\n  translator/enable_user_dict: false\n  asus_english/compose: true\n"
 
 
 def keys(text: str) -> str:

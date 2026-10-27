@@ -30,7 +30,8 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("stage8", extra={"emails.txt": EMAILS})
+    r = open_rime("stage8", extra={"emails.txt": EMAILS, "asus_zhuyin.custom.yaml":
+                                 "patch:\n  asus_english/compose: true\n"})
     r.set_option("prediction", False)
 
     def press(name: str, mask: int = 0) -> bool:

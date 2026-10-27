@@ -26,7 +26,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("punct_halfwidth")
+    r = open_rime("punct_halfwidth", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_english/compose: true\n"})
 
     def reset() -> None:
         # Same left context for every case: a Chinese full stop committed.

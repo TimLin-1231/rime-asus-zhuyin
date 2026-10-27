@@ -32,9 +32,14 @@
 --     typed in between. (Lua has no timer; the key is the only way in.)
 -- asus_english/continue: false turns it off. Windows only (named pipes, F24);
 -- on other systems it is always off.
--- Programs listed with asus_en_direct: true under app_options in
--- weasel.custom.yaml (terminals by default) keep the plain direct output,
--- as does asus_english/compose: false in the schema patch. asus_en_noauto:
+-- All of this is OFF by default: English mode types every key straight into
+-- the program, as other input methods do (fields of one character each —
+-- verification codes, PINs — only move on when a character arrives, and
+-- they never got one while a word was being composed). It is turned on with
+-- asus_english/compose: true in the schema patch (the settings app's switch),
+-- or for one program with asus_en_compose: true under app_options in
+-- weasel.custom.yaml. Programs listed with asus_en_direct: true there
+-- (terminals) always keep the direct output. asus_en_noauto:
 -- true (code editors by default) keeps the guesses but neither corrects nor
 -- offers next words; asus_english/autocorrect: false and
 -- asus_english/predict: false turn the two off everywhere.
@@ -51,6 +56,7 @@ local TYPED_MAX = 600         -- characters of typed text kept for the model
 local TYPED_STALE = 120       -- seconds without typing after which it is dropped
 local EXPANDED = "_asus_expanded"  -- asus_keys.lua
 local DIRECT = "asus_en_direct"
+local COMPOSE = "asus_en_compose"  -- app option: compose in this program
 local NOAUTO = "asus_en_noauto"
 local NEXT_TAG = "asus_en_next"  -- the bubble of next words
 local NEXT_SHOW = 3
@@ -72,7 +78,8 @@ local MODIFIERS = {
 }
 
 local function active(ctx, env)
-  return env.compose and ctx:get_option("ascii_mode") and not ctx:get_option(DIRECT)
+  return (env.compose or ctx:get_option(COMPOSE)) and ctx:get_option("ascii_mode")
+      and not ctx:get_option(DIRECT)
 end
 
 local function collapse(ctx)
@@ -89,7 +96,9 @@ local function init(env)
     local v = config:get_bool("asus_english/" .. name)
     return (v == nil) or v
   end
-  env.compose, env.auto, env.predict = flag("compose"), flag("autocorrect"), flag("predict")
+  -- (compose is off unless set: direct typing by default, see the header)
+  env.compose = config:get_bool("asus_english/compose") == true
+  env.auto, env.predict = flag("autocorrect"), flag("predict")
   settings.auto = env.auto
   -- Windows named pipes. Elsewhere "\\.\pipe\..." would be an ordinary file
   -- name (created in the working directory, the app bundle on macOS), so the

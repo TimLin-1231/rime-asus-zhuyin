@@ -45,12 +45,16 @@ pub const KEY_PREDICTION_RESET: &str = "switches/@last/reset";
 pub const KEY_TAB_DOUBLE_MS: &str = "asus_tab/double_ms";
 /// asus_learn.lua: self-learning on/off. Default true.
 pub const KEY_LEARN_ENABLED: &str = "asus_learn/enabled";
+/// asus_english.lua: English mode composes words (suggestions, autocorrect)
+/// instead of typing each key directly. Default false.
+pub const KEY_ENGLISH_COMPOSE: &str = "asus_english/compose";
 
 /// On in the schema that DaoHui ships (tools/package_daohui_data.py).
 pub const DEFAULT_RAW_KEYS: bool = true;
 pub const DEFAULT_PREDICTION: bool = true;
 pub const DEFAULT_TAB_DOUBLE_MS: u32 = 400;
 pub const DEFAULT_LEARN_ENABLED: bool = true;
+pub const DEFAULT_ENGLISH_COMPOSE: bool = false;
 pub const TAB_DOUBLE_MS_RANGE: (u32, u32) = (150, 1500);
 
 // ---------------------------------------------------------------- language model
