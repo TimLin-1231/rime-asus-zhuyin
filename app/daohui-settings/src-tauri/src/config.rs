@@ -104,6 +104,10 @@ mod platform {
     /// the user dir instead of `%APPDATA%\DaoHui`.
     pub const USER_DIR_REG_KEY: &str = r"Software\DaoHui";
     pub const USER_DIR_REG_VALUE: &str = "RimeUserDir";
+    /// The installer's uninstall entry; DisplayVersion is the installed
+    /// DaoHui's version, which updates are compared with.
+    pub const UNINSTALL_REG_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DaoHui";
+    pub const UNINSTALL_VERSION_VALUE: &str = "DisplayVersion";
     /// `sparkle:os` values accepted for this platform (by arch).
     #[cfg(target_arch = "aarch64")]
     pub const APPCAST_OS: &[&str] = &["windows-arm64"];
@@ -132,6 +136,9 @@ mod platform {
     /// once. (`--build` would deploy in this process, but the running input
     /// method would not reload.)
     pub const DEPLOYER_EXE: &str = "/Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui";
+    /// The installed input method's Info.plist (CFBundleVersion = the version
+    /// updates are compared with).
+    pub const INFO_PLIST: &str = "/Library/Input Methods/DaoHui.app/Contents/Info.plist";
     /// The same, relative to `DAOHUI_INSTALL_DIR` (an "Input Methods" folder).
     pub const DEPLOYER_EXE_IN_INSTALL_DIR: &str = "DaoHui.app/Contents/MacOS/DaoHui";
     pub const DEPLOYER_ARGS: &[&str] = &["--reload"];

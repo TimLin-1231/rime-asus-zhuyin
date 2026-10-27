@@ -363,9 +363,36 @@ pub struct UpdateCheck {
     pub checked_at: String,
 }
 
+/// CFBundleVersion from an XML Info.plist (None for a binary plist).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn plist_bundle_version(text: &str) -> Option<String> {
+    let after = &text[text.find("<key>CFBundleVersion</key>")? + "<key>CFBundleVersion</key>".len()..];
+    let start = after.find("<string>")? + "<string>".len();
+    let end = after[start..].find("</string>")? + start;
+    let v = after[start..end].trim();
+    (!v.is_empty()).then(|| v.to_string())
+}
+
+/// The installed DaoHui's version: the feed is about the input method, not
+/// this app (whose own version is only the fallback).
+fn installed_version() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::winutil::installed_daohui_version()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::fs::read_to_string(config::INFO_PLIST).ok().and_then(|t| plist_bundle_version(&t))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        None
+    }
+}
+
 #[tauri::command]
 pub async fn check_update(app: AppHandle, state: State<'_, AppState>) -> Result<UpdateCheck, String> {
-    let current = app.package_info().version.to_string();
+    let current = installed_version().unwrap_or_else(|| app.package_info().version.to_string());
     let feed_url = config::appcast_url();
     download::check_url(&feed_url)?;
     let client = download::client(&current)?;
@@ -494,6 +521,16 @@ pub fn cancel_update_download(state: State<'_, AppState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundle_version_from_info_plist() {
+        let plist = "<dict>\n\t<key>CFBundleShortVersionString</key>\n\t<string>1.1.2</string>\n\
+                     \t<key>CFBundleVersion</key>\n\t<string>1.1.2.13</string>\n</dict>";
+        assert_eq!(plist_bundle_version(plist).as_deref(), Some("1.1.2.13"));
+        assert_eq!(plist_bundle_version("bplist00..."), None);
+        assert_eq!(crate::version::compare("0.17.4.5", "0.17.4.7"), std::cmp::Ordering::Less);
+        assert_eq!(crate::version::compare("1.1.2.13", "1.1.2.14"), std::cmp::Ordering::Less);
+    }
 
     const FEED: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0"

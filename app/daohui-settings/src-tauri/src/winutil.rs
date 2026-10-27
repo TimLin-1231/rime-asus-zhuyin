@@ -5,7 +5,8 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use windows_sys::Win32::System::Registry::{
-    RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6464KEY,
+    RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6432KEY,
+    RRF_SUBKEY_WOW6464KEY,
 };
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -16,6 +17,19 @@ fn wide(s: &OsStr) -> Vec<u16> {
 
 /// A REG_SZ value from the 64-bit view of the registry (read only).
 fn reg_string(root: HKEY, key: &str, value: &str) -> Option<String> {
+    reg_string_view(root, key, value, RRF_SUBKEY_WOW6464KEY)
+}
+
+/// The installed DaoHui's version ("0.17.4.7"): DisplayVersion of its
+/// uninstall entry, which the (32-bit) NSIS installer writes to the
+/// WOW6432Node view.
+pub fn installed_daohui_version() -> Option<String> {
+    use crate::config::{UNINSTALL_REG_KEY, UNINSTALL_VERSION_VALUE};
+    reg_string_view(HKEY_LOCAL_MACHINE, UNINSTALL_REG_KEY, UNINSTALL_VERSION_VALUE, RRF_SUBKEY_WOW6432KEY)
+        .or_else(|| reg_string(HKEY_LOCAL_MACHINE, UNINSTALL_REG_KEY, UNINSTALL_VERSION_VALUE))
+}
+
+fn reg_string_view(root: HKEY, key: &str, value: &str, view: u32) -> Option<String> {
     let key = wide(OsStr::new(key));
     let value = wide(OsStr::new(value));
     let mut buf = vec![0u16; 4096];
@@ -26,7 +40,7 @@ fn reg_string(root: HKEY, key: &str, value: &str) -> Option<String> {
             root,
             key.as_ptr(),
             value.as_ptr(),
-            RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
+            RRF_RT_REG_SZ | view,
             std::ptr::null_mut(),
             buf.as_mut_ptr().cast(),
             &mut size,
