@@ -15,9 +15,8 @@ pub const REPO_URL: &str = "https://github.com/TimLin-1231/rime-asus-zhuyin";
 
 // ---------------------------------------------------------------- updates
 
-/// Sparkle / WinSparkle appcast (format: app/daohui-settings/UPDATES.md).
-pub const APPCAST_URL: &str =
-    "https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/update/appcast.xml";
+// The appcast URL is per platform: `APPCAST_URL` in `platform` below
+// (format: app/daohui-settings/UPDATES.md).
 pub const SPARKLE_NS: &str = "http://www.andymatuschak.org/xml-namespaces/sparkle";
 /// Namespace of our own appcast extensions (`daohui:sha256`).
 pub const DAOHUI_NS: &str = "https://github.com/TimLin-1231/rime-asus-zhuyin/ns/appcast";
@@ -80,11 +79,16 @@ pub const ENV_MODEL_SHA256: &str = "DAOHUI_MODEL_SHA256";
 
 #[cfg(target_os = "windows")]
 mod platform {
+    /// Feed of the Windows installer (DaoHui-x.y.z-setup.exe).
+    pub const APPCAST_URL: &str =
+        "https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/update/appcast.xml";
     /// Rime user data dir: `%APPDATA%\DaoHui` unless the registry names one.
     pub const USER_DIR_APPDATA_SUBDIR: &str = "DaoHui";
     /// Deployer inside the install dir.
     pub const DEPLOYER_EXE: &str = "DaoHuiDeployer.exe";
     pub const DEPLOYER_ARGS: &[&str] = &["/deploy"];
+    /// The deployer returns when the deploy is done.
+    pub const DEPLOY_IS_ASYNC: bool = false;
     /// Used when the deployer is neither next to this exe nor found via the
     /// registry: `%ProgramFiles%\DaoHui` (or this path if %ProgramFiles% is unset).
     pub const DEFAULT_INSTALL_SUBDIR: &str = "DaoHui";
@@ -109,19 +113,38 @@ mod platform {
 
 #[cfg(target_os = "macos")]
 mod platform {
-    /// Rime user data dir: `~/Library/Rime` (relative to $HOME).
-    pub const USER_DIR_HOME_SUBDIR: &str = "Library/Rime";
+    /// The feed the input method's own Sparkle updater reads (its `SUFeedURL`);
+    /// this app reads the same one and offers the `.pkg` from it.
+    pub const APPCAST_URL: &str =
+        "https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/update/appcast-macos.xml";
+    /// Rime user data dir of the DaoHui fork of Squirrel: `~/Library/DaoHui`
+    /// (relative to $HOME; Squirrel itself uses `~/Library/Rime`). The model,
+    /// `asus_zhuyin.custom.yaml`, the `*.userdb` folders and `backups/` live here.
+    pub const USER_DIR_HOME_SUBDIR: &str = "Library/DaoHui";
+    /// The input method's executable (bundle id
+    /// `io.github.timlin-1231.inputmethod.DaoHui`). `--reload` is Squirrel's
+    /// "deploy" flag (sources/Main.swift): it posts a distributed notification
+    /// to the running input method, which redeploys and reloads, and exits at
+    /// once. (`--build` would deploy in this process, but the running input
+    /// method would not reload.)
     pub const DEPLOYER_EXE: &str = "/Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui";
     /// The same, relative to `DAOHUI_INSTALL_DIR` (an "Input Methods" folder).
     pub const DEPLOYER_EXE_IN_INSTALL_DIR: &str = "DaoHui.app/Contents/MacOS/DaoHui";
     pub const DEPLOYER_ARGS: &[&str] = &["--reload"];
+    /// `--reload` only notifies the input method; the deploy runs there.
+    pub const DEPLOY_IS_ASYNC: bool = true;
     pub const APPCAST_OS: &[&str] = &["macos"];
     pub const INSTALLER_EXTENSIONS: &[&str] = &["pkg"];
+    /// The downloaded `.pkg` is opened with `open -b <this>` (Installer.app),
+    /// whatever app the user has made the default for `.pkg` files.
+    pub const INSTALLER_APP_BUNDLE_ID: &str = "com.apple.installer";
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 mod platform {
     /// Not a target yet; keeps the crate building elsewhere.
+    pub const APPCAST_URL: &str =
+        "https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/update/appcast.xml";
     pub const USER_DIR_HOME_SUBDIR: &str = ".local/share/daohui/rime";
     pub const APPCAST_OS: &[&str] = &["linux"];
     pub const INSTALLER_EXTENSIONS: &[&str] = &[];
@@ -189,4 +212,23 @@ pub fn update_temp_dir() -> PathBuf {
 
 pub fn user_agent(version: &str) -> String {
     format!("DaoHuiSettings/{version} ({})", std::env::consts::OS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_dir_layout() {
+        let dir = default_user_dir();
+        #[cfg(target_os = "macos")]
+        assert!(dir.ends_with("Library/DaoHui"), "{}", dir.display());
+        #[cfg(target_os = "windows")]
+        assert!(
+            crate::winutil::user_dir_from_registry().is_some() || dir.ends_with("DaoHui"),
+            "{}",
+            dir.display()
+        );
+        let _ = dir;
+    }
 }

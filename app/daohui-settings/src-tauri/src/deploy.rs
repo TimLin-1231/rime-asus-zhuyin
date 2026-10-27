@@ -53,6 +53,22 @@ const ARGS: &[&str] = DEPLOYER_ARGS;
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 const ARGS: &[&str] = &[];
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+const ASYNC: bool = DEPLOY_IS_ASYNC;
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+const ASYNC: bool = false;
+
+/// Shown when the deployer exits successfully.
+fn done_message(deploy_is_async: bool) -> &'static str {
+    if deploy_is_async {
+        // macOS: `DaoHui --reload` only tells the running input method to
+        // redeploy; it reports the result with its own notification.
+        "已通知輸入法重新部署，完成後會自動套用。"
+    } else {
+        "重新部署完成。"
+    }
+}
+
 pub fn deployer_path() -> Option<PathBuf> {
     deployer_candidates().into_iter().find(|p| p.is_file())
 }
@@ -67,7 +83,7 @@ fn run(exe: PathBuf) -> Result<String, String> {
     let start = Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok("重新部署完成。".into()),
+            Ok(Some(status)) if status.success() => return Ok(done_message(ASYNC).into()),
             Ok(Some(status)) => {
                 return Err(match status.code() {
                     Some(c) => format!("部署程式回報錯誤（結束代碼 {c}）。"),
@@ -97,4 +113,24 @@ pub async fn redeploy() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || run(exe))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn done_messages() {
+        assert_eq!(done_message(false), "重新部署完成。");
+        assert!(done_message(true).starts_with("已通知輸入法重新部署"));
+        #[cfg(target_os = "windows")]
+        assert_eq!(done_message(ASYNC), "重新部署完成。");
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(done_message(ASYNC), done_message(true));
+            assert_eq!(ARGS, &["--reload"]);
+            let ime = PathBuf::from("/Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui");
+            assert!(deployer_candidates().contains(&ime));
+        }
+    }
 }

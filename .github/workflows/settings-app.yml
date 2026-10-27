@@ -1,0 +1,138 @@
+# 島輝設定 (DaoHui Settings, app/daohui-settings): tests and unsigned builds.
+#   macOS:   universal (arm64 + x86_64) .app, zipped with ditto (+ a .dmg)
+#   Windows: DaoHuiSettings.exe (no bundle; the DaoHui installer ships it)
+name: Settings app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/daohui-settings/**"
+      # read by the features.rs tests (include_str!)
+      - "rime/asus_zhuyin.custom.yaml"
+      - ".github/workflows/settings-app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: settings-app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same as the local toolchain; bump together with the tauri crate.
+  TAURI_CLI_VERSION: "2.12.4"
+
+defaults:
+  run:
+    working-directory: app/daohui-settings/src-tauri
+
+jobs:
+  macos:
+    name: macOS (universal)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      # Caches ~/.cargo (including the installed cargo-tauri) and target/.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/daohui-settings/src-tauri
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked
+
+      - name: Test
+        run: cargo test --locked
+
+      # Unsigned: no signing identity in tauri.conf.json, and no APPLE_*
+      # secrets here. minimumSystemVersion (13.0) also sets
+      # MACOSX_DEPLOYMENT_TARGET for the Rust build. (Cargo.lock was checked
+      # by `cargo test --locked` above.)
+      - name: Build (universal-apple-darwin)
+        run: cargo tauri build --target universal-apple-darwin --bundles app
+
+      - name: Inspect and zip the .app
+        id: app
+        run: |
+          set -euo pipefail
+          bundle=target/universal-apple-darwin/release/bundle
+          app=$(ls -d "$bundle"/macos/*.app | head -n 1)
+          echo "app: $app"
+          exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          archs=$(lipo -archs "$exe")
+          echo "archs: $archs"
+          [[ $archs == *arm64* && $archs == *x86_64* ]]
+          plutil -p "$app/Contents/Info.plist"
+          codesign -dv "$app" 2>&1 || true
+          zip="$RUNNER_TEMP/DaoHuiSettings-macos-universal.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          ls -l "$zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DaoHuiSettings-macos-universal
+          path: ${{ steps.app.outputs.zip }}
+          if-no-files-found: error
+
+      # Optional extra; hdiutil on hosted runners is occasionally flaky, so a
+      # failure here does not fail the job (the .app above is the artifact).
+      - name: Bundle .dmg
+        id: dmg
+        continue-on-error: true
+        run: cargo tauri bundle --target universal-apple-darwin --bundles dmg
+
+      - uses: actions/upload-artifact@v4
+        if: steps.dmg.outcome == 'success'
+        with:
+          name: DaoHuiSettings-macos-universal-dmg
+          path: app/daohui-settings/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: warn
+
+  windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      # Keep LF: the features.rs tests compare a repo file byte for byte.
+      - name: No CRLF conversion
+        working-directory: .
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/daohui-settings/src-tauri
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "$env:TAURI_CLI_VERSION" --locked
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build (no bundle)
+        run: cargo tauri build --no-bundle
+
+      - name: Collect DaoHuiSettings.exe
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'DaoHuiSettings.exe'
+          Copy-Item target\release\daohui-settings.exe $exe
+          (Get-Item $exe).VersionInfo | Format-List ProductName, FileDescription, ProductVersion, FileVersion
+          Get-FileHash -Algorithm SHA256 $exe | Format-List
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DaoHuiSettings-windows-x64
+          path: ${{ runner.temp }}/DaoHuiSettings.exe
+          if-no-files-found: error

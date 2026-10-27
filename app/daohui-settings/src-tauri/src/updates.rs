@@ -1,6 +1,9 @@
 //! 檢查更新: Sparkle / WinSparkle appcast parsing, version selection, and
 //! download (SHA-256 verified) + launch of the installer -- only when the
 //! user clicks. The expected feed format is documented in UPDATES.md.
+//!
+//! Feeds: `update/appcast.xml` (Windows, `.exe`) and `update/appcast-macos.xml`
+//! (macOS, `.pkg`; also read by the input method's own Sparkle updater).
 
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -415,13 +418,23 @@ fn launch_installer(path: &Path, args: Option<&str>) -> Result<(), String> {
     crate::winutil::shell_open(path, args)
 }
 
+/// `open -b com.apple.installer <file>.pkg`: Installer.app shows the
+/// package's own UI and asks for an administrator password; `open` returns
+/// as soon as Installer.app has the file.
 #[cfg(target_os = "macos")]
 fn launch_installer(path: &Path, _args: Option<&str>) -> Result<(), String> {
-    std::process::Command::new("/usr/bin/open")
+    let out = std::process::Command::new("/usr/bin/open")
+        .arg("-b")
+        .arg(config::INSTALLER_APP_BUNDLE_ID)
         .arg(path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("無法開啟安裝程式：{e}"))
+        .output()
+        .map_err(|e| format!("無法開啟安裝程式：{e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr);
+        Err(format!("無法開啟安裝程式：{}", err.trim()))
+    }
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -569,6 +582,56 @@ mod tests {
         assert_eq!(r.display_version, "0.1.5 (春)");
         assert_eq!(r.file_name, "DaoHui-0.1.5-setup.exe");
         assert!(select_update(only_old, "0.1.0", &["macos"], &["pkg"]).release.is_none());
+    }
+
+    /// An item of `update/appcast-macos.xml` as both Sparkle (in the input
+    /// method) and this app read it.
+    const MAC_FEED: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:daohui="https://github.com/TimLin-1231/rime-asus-zhuyin/ns/appcast">
+  <channel>
+    <title>島輝 macOS</title>
+    <item>
+      <title>島輝 0.2.0</title>
+      <sparkle:version>0.2.0</sparkle:version>
+      <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/x/releases/download/v0.2.0/DaoHui-0.2.0.pkg"
+                 sparkle:os="macos"
+                 sparkle:edSignature="c2lnbmF0dXJl"
+                 length="28311552"
+                 type="application/octet-stream"
+                 daohui:sha256="CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC" />
+    </item>
+  </channel>
+</rss>"#;
+
+    #[test]
+    fn macos_feed() {
+        let items = parse_appcast(MAC_FEED).unwrap();
+        let r = select_update(&items, "0.1.0", &["macos"], &["pkg"]).release.unwrap();
+        assert_eq!(r.file_name, "DaoHui-0.2.0.pkg");
+        assert_eq!(r.length, Some(28311552));
+        assert_eq!(r.sha256.as_deref(), Some("c".repeat(64).as_str()));
+        assert_eq!(r.installer_args, None);
+        // Nothing in it for Windows.
+        assert!(select_update(&items, "0.1.0", WIN, &["exe"]).latest.is_none());
+    }
+
+    #[test]
+    fn feed_and_installer_per_platform() {
+        #[cfg(target_os = "windows")]
+        {
+            assert!(config::APPCAST_URL.ends_with("/update/appcast.xml"));
+            assert_eq!(config::INSTALLER_EXTENSIONS, &["exe"]);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            assert!(config::APPCAST_URL.ends_with("/update/appcast-macos.xml"));
+            assert_eq!(config::APPCAST_OS, &["macos"]);
+            assert_eq!(config::INSTALLER_EXTENSIONS, &["pkg"]);
+        }
+        assert!(config::APPCAST_URL.starts_with("https://"));
     }
 
     #[test]
