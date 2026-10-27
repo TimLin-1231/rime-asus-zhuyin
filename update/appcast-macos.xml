@@ -8,7 +8,7 @@
     <language>zh</language>
     <item>
       <title>島輝 1.1.2.14</title>
-      <sparkle:releaseNotesLink>https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.14</sparkle:releaseNotesLink>
+      <description><![CDATA[<p>島輝 1.1.2.14：第一個公開版本。</p><ul><li>英文模式預設直接輸入（驗證碼、密碼欄位正常）</li><li>Tab 切換中英、日期快打、數字大寫、緊貼英數字的半形標點</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.14">完整的更新說明</a></p>]]></description>
       <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
       <pubDate>Tue, 27 Oct 2026 18:34:22 +0000</pubDate>
       <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.14/DaoHui-1.1.2.14.pkg"
