@@ -49,7 +49,11 @@ NAME_RE = re.compile(r"^(\d{8})-(\d{6})$")
 KEEP_DAYS, KEEP_MONTHS, KEEP_BAD_DAYS = 14, 12, 7
 IDLE_SECONDS = 120      # --scheduled: keyboard and mouse untouched this long
 IDLE_WAIT = 25 * 60     # ...and how long to wait for that before giving up
-SERVER = "WeaselServer.exe"
+# The input method's server and the registry key whose WeaselRoot is its
+# folder: 島輝 (DaoHui) first, then stock 小狼毫 (Weasel). Whichever runs is
+# stopped for the copy; both lock the databases the same way.
+SERVERS = [("DaoHuiServer.exe", r"SOFTWARE\WOW6432Node\DaoHui"),
+           ("WeaselServer.exe", r"SOFTWARE\WOW6432Node\Rime\Weasel")]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # Staged librime reads the copied asus_learn.userdb back and counts its
@@ -198,17 +202,36 @@ def verify_worker(backup: Path) -> int:
     return 0
 
 
-# -- the Weasel server ---------------------------------------------------------
+# -- the input method's server ------------------------------------------------
+def _running(name: str) -> bool:
+    out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {name}", "/NH", "/FO", "CSV"],
+                         capture_output=True, creationflags=NO_WINDOW).stdout
+    return name.lower().encode() in out.lower()
+
+
+def _root(key: str) -> Path | None:
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key) as k:
+            return Path(winreg.QueryValueEx(k, "WeaselRoot")[0])
+    except OSError:
+        return None
+
+
 def weasel_server() -> Path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from rime_harness import weasel_root
-    return weasel_root() / SERVER
+    """The running server (島輝 first), else an installed one."""
+    for name, key in SERVERS:
+        if _running(name) and _root(key):
+            return _root(key) / name
+    for name, key in SERVERS:
+        root = _root(key)
+        if root and (root / name).exists():
+            return root / name
+    raise FileNotFoundError("no DaoHui or Weasel server is installed")
 
 
 def server_running() -> bool:
-    out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {SERVER}", "/NH", "/FO", "CSV"],
-                         capture_output=True, creationflags=NO_WINDOW).stdout
-    return SERVER.lower().encode() in out.lower()
+    return any(_running(name) for name, _ in SERVERS)
 
 
 def wait_for(cond, seconds: float, step: float = 0.2) -> bool:
@@ -222,13 +245,13 @@ def wait_for(cond, seconds: float, step: float = 0.2) -> bool:
 
 def stop_server(exe: Path) -> bool:
     subprocess.run([str(exe), "/q"], cwd=str(exe.parent), creationflags=NO_WINDOW)
-    return wait_for(lambda: not server_running(), 15)
+    return wait_for(lambda: not _running(exe.name), 15)
 
 
 def start_server(exe: Path) -> bool:
     for _ in range(3):  # without the server there is no input method at all
         subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=NO_WINDOW)
-        if wait_for(server_running, 10):
+        if wait_for(lambda: _running(exe.name), 10):
             return True
     return False
 
@@ -304,7 +327,7 @@ def backup(root: Path, dest: Path, check: bool = True, now: dt.datetime | None =
     try:
         if exe and not stop_server(exe):
             manifest["ok"] = False
-            manifest["errors"].append("WeaselServer did not quit; its databases are locked")
+            manifest["errors"].append(f"{exe.name} did not quit; its databases are locked")
         for db in dbs:
             rel = db.relative_to(root)
             try:
@@ -317,8 +340,8 @@ def backup(root: Path, dest: Path, check: bool = True, now: dt.datetime | None =
         if exe:
             if not start_server(exe):
                 manifest["ok"] = False
-                manifest["errors"].append("WeaselServer did not start again: start it from the Start menu "
-                                          "(小狼毫算法服務)")
+                manifest["errors"].append(f"{exe.name} did not start again: start it from the Start menu "
+                                          "(島輝 / 小狼毫算法服務)")
             manifest["server_down_seconds"] = round(time.monotonic() - t0, 1)
     for f in files:
         rel = f.relative_to(root)
@@ -429,7 +452,7 @@ def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True, 
         # 3. Swap, with the server stopped; undo everything if a step fails.
         server = weasel_server() if service and server_running() else None
         if server and not stop_server(server):
-            print("WeaselServer did not quit; nothing was changed.")
+            print(f"{server.name} did not quit; nothing was changed.")
             server = None
             return 1
         try:
@@ -461,7 +484,7 @@ def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True, 
         if aside.is_dir() and not any(f.is_file() for f in aside.rglob("*")):
             shutil.rmtree(aside, ignore_errors=True)
         if server and not start_server(server):
-            print("WeaselServer did not start again: start it from the Start menu (小狼毫算法服務).")
+            print(f"{server.name} did not start again: start it from the Start menu (島輝 / 小狼毫算法服務).")
     print("Restored." + (f" The previous files are in {aside}." if aside.is_dir() else ""))
     return 0
 
