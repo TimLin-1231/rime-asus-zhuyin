@@ -22,15 +22,34 @@ pub fn deployer_candidates() -> Vec<PathBuf> {
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(PathBuf::from)) {
         v.push(dir.join(DEPLOYER_EXE));
     }
-    if let Some(d) = crate::winutil::install_dir_from_registry() {
-        v.push(d.join(DEPLOYER_EXE));
-    }
     let program_files = config::env_path("ProgramW6432")
         .or_else(|| config::env_path("ProgramFiles"))
         .map(|p| p.join(DEFAULT_INSTALL_SUBDIR))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_INSTALL_DIR));
-    v.push(program_files.join(DEPLOYER_EXE));
+    // The installer's InstallDir (and the default) is the parent of the
+    // versioned folder that holds the binaries (Program Files\DaoHui\daohui-<ver>).
+    for base in crate::winutil::install_dir_from_registry().into_iter().chain(std::iter::once(program_files)) {
+        v.push(base.join(DEPLOYER_EXE));
+        v.extend(versioned_dirs(&base).into_iter().map(|d| d.join(DEPLOYER_EXE)));
+    }
     v
+}
+
+/// `daohui-<version>` folders under `base`, newest version first.
+#[cfg(target_os = "windows")]
+fn versioned_dirs(base: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<(String, PathBuf)> = std::fs::read_dir(base)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.strip_prefix("daohui-").map(|ver| (ver.to_string(), e.path()))
+        })
+        .collect();
+    dirs.sort_by(|a, b| crate::version::compare(&b.0, &a.0));
+    dirs.into_iter().map(|(_, p)| p).collect()
 }
 
 #[cfg(target_os = "macos")]

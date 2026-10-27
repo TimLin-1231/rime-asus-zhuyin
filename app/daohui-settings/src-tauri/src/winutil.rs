@@ -56,9 +56,13 @@ fn reg_string_view(root: HKEY, key: &str, value: &str, view: u32) -> Option<Stri
     (!s.is_empty()).then(|| s.to_string())
 }
 
+/// The installer's InstallDir. The (32-bit) NSIS installer writes it to the
+/// WOW6432Node view; the 64-bit view is tried too.
 pub fn install_dir_from_registry() -> Option<PathBuf> {
     use crate::config::{INSTALL_DIR_REG_KEY, INSTALL_DIR_REG_VALUE};
-    reg_string(HKEY_LOCAL_MACHINE, INSTALL_DIR_REG_KEY, INSTALL_DIR_REG_VALUE).map(PathBuf::from)
+    reg_string_view(HKEY_LOCAL_MACHINE, INSTALL_DIR_REG_KEY, INSTALL_DIR_REG_VALUE, RRF_SUBKEY_WOW6432KEY)
+        .or_else(|| reg_string(HKEY_LOCAL_MACHINE, INSTALL_DIR_REG_KEY, INSTALL_DIR_REG_VALUE))
+        .map(PathBuf::from)
 }
 
 /// The user dir chosen with `DaoHuiSetup.exe /userdir:<dir>` (HKCU).
