@@ -75,7 +75,7 @@ local MAPS = { c = true, x = true, e = true, w = true, n = true, m = true }
 local ID = "^[%w][%w%-_.]*$"
 
 local learn         -- from asus_learn.lua: {db=, half_life=, prune=, keep=, reload=}
-local cfg           -- {root=, id=, own=} while sync_dir is set
+local cfg           -- {dir=, root=, id=, own=} while sync_dir is set
 local request_path
 local token         -- daohui_sync_request content handled last
 local check_every, export_every = 3, 30 * 60
