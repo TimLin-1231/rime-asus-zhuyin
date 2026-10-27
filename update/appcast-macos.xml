@@ -7,18 +7,18 @@
     <description>島輝 DaoHui for macOS Appcast 更新頻道</description>
     <language>zh</language>
     <item>
-      <title>島輝 1.1.2.14</title>
-      <description><![CDATA[<p>島輝 1.1.2.14：第一個公開版本。</p><ul><li>英文模式預設直接輸入（驗證碼、密碼欄位正常）</li><li>Tab 切換中英、日期快打、數字大寫、緊貼英數字的半形標點</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.14">完整的更新說明</a></p>]]></description>
+      <title>島輝 1.1.2.16</title>
+      <description><![CDATA[<p>島輝 1.1.2.16</p><ul><li>多台裝置同步：在「島輝設定 → 同步」選 Google 雲端硬碟裡的資料夾，與 Windows 同步學習資料、個人詞庫、email、快捷文字與功能開關</li><li>按「檢查新版本...」時，更新視窗會出現在最前面</li><li>英文模式預設直接輸入（驗證碼、密碼欄位正常）</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.16">完整的更新說明</a></p>]]></description>
       <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
-      <pubDate>Tue, 27 Oct 2026 18:34:22 +0000</pubDate>
-      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.14/DaoHui-1.1.2.14.pkg"
-                 sparkle:version="1.1.2.14"
-                 sparkle:shortVersionString="1.1.2.14"
-                 sparkle:edSignature="1KFzxUF4328wep+V2UPDDV4kSSWuLUDn+UgjjYL/kYoOTNXLjP71+qq/jhmq9wJAmgwmn8+uclyLFtUomadXBg=="
+      <pubDate>Tue, 27 Oct 2026 20:12:40 +0000</pubDate>
+      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.16/DaoHui-1.1.2.16.pkg"
+                 sparkle:version="1.1.2.16"
+                 sparkle:shortVersionString="1.1.2.16"
+                 sparkle:edSignature="o2pM8YXyqfsYH4UfmPAe3wKXK/hAOtltBZvxAwN8csnU+uqTyBWqD5v8NCrKdRxQ/ydguvdp0r2cy+ne1WvqDA=="
                  sparkle:os="macos"
-                 length="21167051"
+                 length="21178245"
                  type="application/octet-stream"
-                 daohui:sha256="eaa3a54fc8c421f49b905022f9354b2000b5758a3ac6cbe72e0f5cc6c9e52f91"/>
+                 daohui:sha256="41d853639c5215ee8bcb607dee52e3d86a2e9165833488277594503bd425a442"/>
     </item>
   </channel>
 </rss>
