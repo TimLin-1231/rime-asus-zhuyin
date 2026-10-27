@@ -746,7 +746,7 @@ local function word_cost(tok, en_ctx, at_end)
       best = base + C_EN_RANK * math.log((lex and lex.rank or fix.rank) + 1, 10) + C_EN_FIX
     end
   end
-  -- Capitalised tokens (GPU, GPT4, DE-LSTM) are English even if unknown.
+  -- Capitalised tokens (GPU, GPT4, USB-C) are English even if unknown.
   -- Digits double as tone keys, so each one costs extra: "GPU2k7" must
   -- split as GPU + 的, not GPU2 + ㄜ˙.
   -- (Capitals then small letters is an acronym and then Zhuyin, CPU + jp
@@ -955,7 +955,7 @@ local function plan_run(run, en_ctx, final, num_ctx, glue)
           end
           relax(i, from, j, "en", cost, "en")
         end
-        -- email addresses (s108@gmail.com): the @ decides where it starts
+        -- email addresses (name@host.com): the @ decides where it starts
         if run:find("@", i, true) and run:sub(i, i):match("%w") then
           for j = (run:find("@", i, true)), n do
             local tok = run:sub(i, j)
@@ -1581,7 +1581,7 @@ function translator.func(input, seg, env)
   end
   local entry = english(input:lower())
   -- Typed capitals are kept as typed. Lowercase input keeps the lexicon form
-  -- only for acronyms / inner capitals (API, PINN, iPhone), not for plain
+  -- only for acronyms / inner capitals (API, NASA, iPhone), not for plain
   -- capitalisation (lexicon "Demo" -> demo).
   local shown = input
   if seg:has_tag("asus_ascii") then

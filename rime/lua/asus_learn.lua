@@ -508,7 +508,7 @@ local function learn_next(prev, word, w, now)
   local n = utf8.len(word)
   if n < 2 or n > 4 then return end
   bump("n\t" .. prev, word, w, now, KEEP_NEXT)
-  -- A longer word may hide the pair the user will see: 交報告 = 交 + 報告.
+  -- A longer word may hide the pair the user will see: 打電話 = 打 + 電話.
   if n >= 3 then
     local cs = chars(word)
     for p = 1, n - 2 do

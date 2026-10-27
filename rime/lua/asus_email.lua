@@ -6,7 +6,7 @@
 -- the ones listed in rime/emails.txt, one per line). While composing, when
 -- the keys typed so far (at least MIN_PREFIX of them) are the start of a
 -- remembered address, the bubble shows it as "⇥address" (asus_compact.lua)
--- and Tab types it, whatever the keys would otherwise convert to (s108 is
+-- and Tab types it, whatever the keys would otherwise convert to (t201 is
 -- Zhuyin too). An address typed in full (name@host.com) is one English word
 -- (asus_lang.lua), whose guesses are the remembered addresses starting so.
 --
