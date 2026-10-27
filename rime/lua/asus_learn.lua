@@ -45,12 +45,16 @@
 --     phrase for it. When that input is committed, the conversion shown
 --     after forgetting is not learned as a correction back (a pick there is).
 -- Weights halve every half_life_days (asus_learn/half_life_days, default 90).
+-- With a sync_dir in installation.yaml, lua/asus_sync.lua shares all of this
+-- with the user's other devices (snapshots in a cloud folder); forgetting
+-- then also records tombstones there, so an older copy does not come back.
 --
 --   processor  lua_processor@*asus_learn*processor  (before asus_keys)
 --   filter     lua_filter@*asus_learn*filter        (after asus_grammar)
 -- asus_learn/enabled: false turns all of it off (used by the evaluation).
 
 local zy = require("asus_zhuyin_data")
+local sync = require("asus_sync")
 
 local kAccepted, kNoop = 1, 2
 local XK_Delete, XK_space, XK_Return = 0xffff, 0x20, 0xff0d
@@ -85,32 +89,44 @@ local holding = false    -- asus_edit.lua converts the input afresh: orig stays 
 local committed_context = true   -- asus_learn/committed_context
 
 -- Storage helpers ------------------------------------------------------------
--- Values are "name w t|name w t|..." (names never contain spaces or "|").
+-- Values are "name w t|name w t|..." (names never contain spaces or "|"):
+-- weight w as of time t, the last time that entry changed. An entry that is
+-- written back unchanged keeps its own text and time (asus_sync.lua relies
+-- on the times: an entry older than a tombstone is the forgotten copy).
 local function decayed(w, t, now)
   return w * 0.5 ^ (math.max(0, now - t) / half_life)
 end
 
+local as_read = setmetatable({}, { __mode = "k" })  -- parsed map -> {name = {weight, item}}
+
 local function parse(v, now)
-  local out = {}
+  local out, read = {}, {}
   if not v or v == "" then return out end
   for item in v:gmatch("[^|]+") do
     local name, w, t = item:match("^(.-) ([%d%.e%-]+) (%d+)$")
     if name then
       local cur = decayed(tonumber(w), tonumber(t), now)
-      if cur >= PRUNE then out[name] = cur end
+      if cur >= PRUNE then
+        out[name] = cur
+        read[name] = { cur, item }
+      end
     end
   end
+  as_read[out] = read
   return out
 end
 
 local function serialize(map, now, keep)
+  local read = as_read[map] or {}
   local names = {}
   for name in pairs(map) do names[#names + 1] = name end
   table.sort(names, function(a, b) return map[a] > map[b] end)
   local parts = {}
   for i, name in ipairs(names) do
     if keep and i > keep then break end
-    parts[#parts + 1] = string.format("%s %.3f %d", name, map[name], now)
+    local r = read[name]
+    parts[#parts + 1] = (r and r[1] == map[name]) and r[2]
+                        or string.format("%s %.3f %d", name, map[name], now)
   end
   return table.concat(parts, "|")
 end
@@ -263,7 +279,19 @@ end
 local function forget_email(text)
   if not db or not emails then return end
   db:erase("m\t" .. text:lower())
+  sync.forgot("m\t" .. text:lower())
   emails[text:lower()] = nil
+end
+
+-- Every write tells asus_sync.lua that there is something new to export.
+local raw_db
+local function tracked(d)
+  return {
+    fetch = function(_, k) return d:fetch(k) end,
+    query = function(_, prefix) return d:query(prefix) end,
+    update = function(_, k, v) sync.changed(); return d:update(k, v) end,
+    erase = function(_, k) sync.changed(); return d:erase(k) end,
+  }
 end
 
 -- The database stays open for the life of the process (all sessions share
@@ -278,9 +306,20 @@ local function open(config)
   if not enabled then return end
   if db == nil then
     local ok, d = pcall(UserDb, "asus_learn", "userdb")
-    if ok and d and d:open() then db = d else db = false end
+    if ok and d and d:open() then raw_db, db = d, tracked(d) else db = false end
     load_english()
     load_emails()
+    -- Multi-device sync (lua/asus_sync.lua): import and export at start.
+    if raw_db then
+      local ok2, err = pcall(sync.start, {
+        db = function() return raw_db end,
+        half_life = function() return half_life end,
+        prune = PRUNE,
+        keep = { e = 1, m = 1, n = KEEP_NEXT },
+        reload = function() load_english(); load_emails() end,
+      }, config)
+      if not ok2 and log then log.error("asus_learn.lua: sync: " .. tostring(err)) end
+    end
   end
   if seg_cc == nil then
     local ok, cc = pcall(Opencc, "asus_seg.json")
@@ -698,7 +737,7 @@ local function forget_chosen(text, now)
           local map = parse(v, now)
           if map[text] then
             map[text] = nil
-            edits[#edits + 1] = { k, map }
+            edits[#edits + 1] = { k, map, text }
           end
         elseif k:sub(-#text - 1) == "\t" .. text then
           edits[#edits + 1] = { k, {} }
@@ -707,7 +746,10 @@ local function forget_chosen(text, now)
     end
     q = nil
     collectgarbage()  -- release the LevelDB iterator before writing
-    for _, e in ipairs(edits) do store(e[1], e[2], now) end
+    for _, e in ipairs(edits) do
+      store(e[1], e[2], now)
+      sync.forgot(e[1], e[3])  -- (other devices: lua/asus_sync.lua)
+    end
   end
 end
 
@@ -718,6 +760,9 @@ local function forget_pair(k, x, c, now)
   map[c] = nil
   store(key, map, now)
   db:erase("x\t" .. k .. "\t" .. x .. "\t" .. c)
+  sync.forgot("r\t" .. k .. "\t" .. c)
+  sync.forgot(key, c)
+  sync.forgot("x\t" .. k .. "\t" .. x .. "\t" .. c)
 end
 
 -- Shift+BackSpace (asus_edit.lua): forget the corrections that produced the
@@ -755,6 +800,7 @@ local function forget_spans(input, spans)
   for _, e in ipairs(edits) do
     for _, x in ipairs(e[3]) do forget_pair(e[1], x, e[2], now) end
     db:erase("r\t" .. e[1] .. "\t" .. e[2])
+    sync.forgot("r\t" .. e[1] .. "\t" .. e[2])
   end
   forgot = (forgot and forgot.input == input) and forgot or { input = input, list = {} }
   for _, sp in ipairs(found) do forgot.list[#forgot.list + 1] = { sp.s, sp.e } end
@@ -841,6 +887,7 @@ end
 
 function processor.func(key, env)
   if not enabled or not db or key:release() then return kNoop end
+  sync.tick()  -- (a sync requested by the settings app; a due export)
   note_key(key, env.engine.context)
   if key.keycode ~= XK_Delete or not (key:shift() or key:ctrl()) or key:alt() then
     note_pick(key, env)
@@ -870,6 +917,7 @@ function processor.func(key, env)
   if cand.type == "english" then
     local k = cand.text:lower()
     db:erase("e\t" .. k)
+    sync.forgot("e\t" .. k)
     en_words[k] = nil
   elseif applied and applied.input == ctx.input and seg.start == 0 and seg.selected_index == 0 then
     -- The top conversion was rewritten: undo those rewrites.
@@ -1017,5 +1065,6 @@ return { processor = processor, filter = filter, predict = predict, banned = ban
          emails_for = emails_for, forget_email = forget_email, committed = note_commit,
          forget_spans = forget_spans, forget_user_phrase = forget_user_phrase, MAX_RUN = MAX_RUN,
          words_of = words_of,
+         db = function() return raw_db end,  -- (tests)
          hold = function(on) holding = on and true or false end,
          open = function(config) open(config) end }

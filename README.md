@@ -14,6 +14,7 @@
 | `rime/lua/asus_keys.lua` | Ctrl+Space 切換中英、空白／Backspace、展開選單後的按鍵 |
 | `rime/lua/asus_compact.lua` | 精簡候選泡泡（只顯示首選，以及尚未打聲調的注音） |
 | `rime/lua/asus_learn.lua` | 自我學習：改過的字詞、英文詞、常接的下一個詞；Shift+Del 忘記 |
+| `rime/lua/asus_sync.lua` | 多台電腦同步學習資料：雲端資料夾裡的文字快照、合併、忘記的墓碑 |
 | `rime/lua/asus_edit.lua` | 句中改字：←/→ 游標、↓ 選游標處的詞、句中刪字插字 |
 | `rime/lua/asus_typo.lua` | 打錯鍵自動更正：按到旁邊的鍵、多按一個鍵 |
 | `rime/lua/asus_english.lua` | 英文模式的組字與猜字（補完、拼字更正、email）、空白鍵自動修正、下一個詞 |
@@ -467,6 +468,11 @@
 - **淡化**：學到的東西每 90 天權重減半（`asus_learn/half_life_days`），太舊的會自動刪掉。
 - **忘記**：Shift+Del（見上表）。整個清空：結束小狼毫服務 → 刪除 `rime/asus_learn.userdb` 資料夾 → 重新啟動。
 - **關閉**：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_learn/enabled: false`，再重新部署（小狼毫自己的學習不受影響）。
+- **多台電腦同步**（`asus_sync.lua`，由設定程式的「同步」頁打開）：使用者資料夾的 `installation.yaml` 有 `sync_dir` 才會動作，沒有就完全不讀也不寫同步資料夾。
+  - 每台電腦把學到的東西寫成一份文字快照 `<sync_dir>/daohui/<installation_id>/asus_learn.txt`（整份寫好再改名，內容沒變就不寫），再把其他電腦的快照併進來：同一筆取「淡化到同一時間後權重比較大」的那份，原樣保留，所以同一份併兩次、A→B→A 來回都不會越加越多。
+  - 什麼時候：輸入法啟動時（先併入再寫出）；設定程式寫了 `daohui_sync_request`（第一行每次不同，後面每行一台其他電腦的 `installation_id`）之後的下一個按鍵；學到新東西後最多每 30 分鐘寫出一次。Lua 只在按鍵時執行，沒人打字時要等下一個按鍵或下次啟動。
+  - **忘記會同步**：Shift+Del、Shift+BackSpace 忘掉的東西會記一筆「墓碑」（含時間），一起寫進快照；別台電腦比墓碑舊的那份不會再被併回來，之後重新學到的照常同步。墓碑 180 天後刪除。
+  - 小狼毫自己的同步（`WeaselDeployer /sync`）也會掃到 `asus_learn.userdb`：它只備份兩欄的鍵（不含改字），併回來時會在第一欄後面加空白，另外存成 `w \t…`＝`c=0 d=0 t=1` 這種鍵；`asus_learn` 從來不讀這些鍵，原本的值完全不變（`tests/test_sync.py` 有驗證），快照也不收它們。
 
 評估（`tests/eval/learn.txt` 是開發集，`learn_test.txt` 是保留測試集，只看總分）：
 

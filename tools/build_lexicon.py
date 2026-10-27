@@ -2,8 +2,10 @@
 
   rime/terra_pinyin.tw.dict.yaml        from the Taiwan MOE dictionaries
   rime/terra_pinyin.personal.dict.yaml  from lexicon/personal_words.txt
+  rime/terra_pinyin.synced.dict.yaml    an empty stub, only where it is missing (the
+                                        settings app's sync writes the real one)
 
-Both are imported by rime/terra_pinyin.asus.dict.yaml (committed). Generated
+All are imported by rime/terra_pinyin.asus.dict.yaml (committed). Generated
 files are not in git: the MOE data is CC BY-ND and personal words are private.
 
 Taiwan supplement: only entries that change behaviour are written --
@@ -81,6 +83,17 @@ def write_dict(path: Path, name: str, rows: list[tuple[str, str, int]], note: st
     ]
     body = [f"{t}\t{c}\t{w}" for t, c, w in rows]
     path.write_text("\n".join(head + body) + "\n", encoding="utf-8")
+
+
+SYNCED_NAME = "terra_pinyin.synced.dict.yaml"
+
+
+def write_synced_stub(path: Path) -> None:
+    """Empty terra_pinyin.synced (imported by terra_pinyin.asus.dict.yaml)."""
+    write_dict(path, "terra_pinyin.synced", [],
+               "Empty stub. The settings app's sync writes the personal words of the user's "
+               "other devices to a terra_pinyin.synced.dict.yaml in the user folder, which "
+               "replaces this file.")
 
 
 def build_tw(floor: int, prefer: bool, mcb: dict[tuple[str, str], int] | None = None
@@ -249,6 +262,11 @@ def main() -> None:
                if args.public else "Source: lexicon/personal_words.txt (private).")
     write_dict(args.out / "terra_pinyin.mcb.dict.yaml", "terra_pinyin.mcb", mcb_rows,
                "Source: McBopomofo Source/Data (MIT), third_party/mcbopomofo.")
+    # Other devices' personal words, written by the settings app's sync into
+    # the user folder: only an empty stub here, never over the real file.
+    synced = args.out / SYNCED_NAME
+    if args.public or not synced.exists():
+        write_synced_stub(synced)
     print(f"tw: {len(tw_rows)} entries {stats}; personal: {len(p_rows)} entries, "
           f"{skipped} skipped (unknown reading); mcb: {len(mcb_rows)} entries {mcb_stats}")
 

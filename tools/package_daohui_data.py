@@ -12,10 +12,11 @@ DaoHui repository for the file-by-file inventory and licences.
 
 What is built (all paths relative to --out):
   asus_zhuyin.schema.yaml        rime/ copy; asus_lang/raw_keys is ON (product default)
-  terra_pinyin.asus.dict.yaml    rime/ copy (imports the four tables below)
+  terra_pinyin.asus.dict.yaml    rime/ copy (imports the five tables below)
   terra_pinyin.mcb.dict.yaml     build_lexicon.py --public (McBopomofo, MIT)
   terra_pinyin.tw.dict.yaml      empty stub (MOE data, CC BY-ND, is not redistributed)
   terra_pinyin.personal.dict.yaml empty stub (a user's own file in the user dir wins)
+  terra_pinyin.synced.dict.yaml  empty stub (the settings app's sync writes the user's own)
   grammar.yaml                   rime/ copy (names the downloaded wanxiang LM)
   default.yaml, weasel.yaml      the fork's stock files + rime/default.custom.yaml and
                                  rime/weasel.custom.yaml baked in as a root __patch,
@@ -66,7 +67,9 @@ GRAM = "wanxiang-lts-zh-hant.gram"
 
 CC_NAMES = ["asus_en", "asus_en_prefix", "asus_en_fix", "asus_en_follow", "asus_next", "asus_seg", "asus_tw"]
 COPY_AS_IS = ["terra_pinyin.asus.dict.yaml", "grammar.yaml", "shortcuts.example.txt"]
-FROM_BUILD = ["terra_pinyin.mcb.dict.yaml", "terra_pinyin.tw.dict.yaml", "terra_pinyin.personal.dict.yaml"]
+FROM_BUILD = ["terra_pinyin.mcb.dict.yaml", "terra_pinyin.tw.dict.yaml", "terra_pinyin.personal.dict.yaml",
+              "terra_pinyin.synced.dict.yaml"]
+STUBS = ["terra_pinyin.tw.dict.yaml", "terra_pinyin.personal.dict.yaml", "terra_pinyin.synced.dict.yaml"]
 GENERATED_LUA = "asus_zhuyin_data.lua"
 LICENSES = "DAOHUI_DATA_LICENSES.txt"
 FILES_LIST = "FILES.txt"
@@ -265,7 +268,8 @@ Generated data and where it comes from:
 * lua/asus_zhuyin_data.lua
   Zhuyin syllables of terra_pinyin.dict.yaml (Rime, LGPL-3.0).
 
-* terra_pinyin.tw.dict.yaml, terra_pinyin.personal.dict.yaml
+* terra_pinyin.tw.dict.yaml, terra_pinyin.personal.dict.yaml,
+  terra_pinyin.synced.dict.yaml
   Empty on purpose. A file of the same name in the user folder replaces them.
 
 * Language model (not included; downloaded by the settings app):
@@ -537,7 +541,7 @@ def check(out: Path, scratch: Path, extra_file: Path | None = None) -> int:
         except UnicodeDecodeError:
             problems.append(f"unexpected binary file {p.relative_to(out)}")
     texts.update(ocd2_sources(out, scratch))
-    for stub in ("terra_pinyin.tw.dict.yaml", "terra_pinyin.personal.dict.yaml"):
+    for stub in STUBS:
         p = out / stub
         if not p.exists() or entry_words(p, texts[p]):
             problems.append(f"{stub} must exist and have no entries")

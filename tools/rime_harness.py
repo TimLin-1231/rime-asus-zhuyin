@@ -33,8 +33,18 @@ HARNESS_DIR = ROOT / ".harness"
 # asus_zhuyin.custom.yaml holds the live IME's personal settings (raw_keys):
 # tests and evals measure the schema's defaults, and write their own with
 # extra= when they need one.
-SKIP_NAMES = {"build", "sync", "installation.yaml", "user.yaml", "asus_zhuyin.custom.yaml"}
+# installation.yaml also holds the live IME's sync_dir: a staged user dir never
+# syncs unless a test writes its own (extra=). daohui_sync_request is the
+# settings app's sync request (lua/asus_sync.lua).
+SKIP_NAMES = {"build", "sync", "installation.yaml", "user.yaml", "asus_zhuyin.custom.yaml",
+              "daohui_sync_request"}
 SKIP_SUFFIXES = (".userdb",)
+# Imported by terra_pinyin.asus.dict.yaml; in rime/ only once the settings
+# app's sync (or tools/build_lexicon.py) has written it.
+SYNCED_STUB = ("terra_pinyin.synced.dict.yaml",
+               "# Rime dictionary\n# encoding: utf-8\n# Empty stub (rime_harness.py).\n---\n"
+               "name: terra_pinyin.synced\nversion: \"1\"\nsort: by_weight\n"
+               "use_preset_vocabulary: false\n...\n")
 
 # A key that librime does not finish within this many seconds ends the
 # process (exit code KEY_TIMEOUT_EXIT): an endless loop in a Lua component
@@ -267,6 +277,8 @@ def stage_user_dir(name: str, config: str, with_userdb: bool = False,
                     or not src.is_file()):
                 continue
             _link_or_copy(src, user / rel)
+        if not (user / SYNCED_STUB[0]).exists():
+            (user / SYNCED_STUB[0]).write_bytes(SYNCED_STUB[1].encode("utf-8"))
         if with_userdb:
             for db in RIME_SRC.glob("*.userdb"):
                 # The live Weasel keeps the leveldb files open; robocopy can
@@ -448,6 +460,36 @@ class Rime:
         if trips:
             sys.stderr.write(f"rime_harness: the segmentation guard tripped {trips} time(s); "
                              f"see {self.log_dir}\n")
+
+
+def sync_user_data(user_dir: Path, log_name: str = "harness-sync") -> tuple[bool, Path]:
+    """librime's own sync (RimeSyncUserData) on user_dir, without a session,
+    as DaoHuiDeployer /sync and Squirrel --sync do: backs up the user dicts
+    (*.userdb) and config files to <sync_dir>/<installation_id>/ and merges
+    every <sync_dir>/*/<dict>.userdb.txt. Once per process, like Rime().
+    Returns (started, log dir)."""
+    root = weasel_root()
+    dll = C.CDLL(str(root / "rime.dll"))
+    dll.rime_get_api.restype = _P(RimeApi)
+    api = dll.rime_get_api().contents
+    log_dir = Path(os.environ["TEMP"]) / "rime.harness" / log_name
+    shutil.rmtree(log_dir, ignore_errors=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    strings = [str(root / "data").encode(), str(user_dir).encode(), str(log_dir).encode()]
+    t = RimeTraits()
+    t.data_size = C.sizeof(RimeTraits) - C.sizeof(C.c_int)
+    t.shared_data_dir, t.user_data_dir, t.log_dir = strings
+    t.distribution_name, t.distribution_code_name, t.distribution_version = b"Rime Harness", b"harness", b"0.1"
+    t.app_name = f"rime.{log_name}".encode()
+    t.min_log_level = int(os.environ.get("RIME_LOG_LEVEL", "1"))
+    api.setup(C.byref(t))
+    api.initialize(C.byref(t))
+    if api.start_maintenance(1):
+        api.join_maintenance_thread()
+    ok = bool(api.sync_user_data())
+    api.join_maintenance_thread()
+    api.finalize()
+    return ok, log_dir
 
 
 def open_rime(name: str = "default", config: str = "project",

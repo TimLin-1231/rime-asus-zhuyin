@@ -5,6 +5,8 @@
 # The "terra_pinyin." prefix keeps learned data in terra_pinyin.userdb
 # (librime: {dictionary: x.y} implies {user_dict: x}).
 # Regenerate the imported tables with: python tools/build_lexicon.py
+# terra_pinyin.synced is written by the settings app's sync (other devices'
+# personal words); build_lexicon.py only makes an empty one where it is missing.
 
 ---
 name: terra_pinyin.asus
@@ -18,4 +20,5 @@ import_tables:
   - terra_pinyin.mcb        # Taiwan phrase frequencies (McBopomofo, MIT)
   - terra_pinyin.tw         # Taiwan MOE readings / spellings
   - terra_pinyin.personal
+  - terra_pinyin.synced     # personal words of the user's other devices (sync)
 ...
