@@ -8,13 +8,15 @@
 __include: bopomofo_tw.schema:/
 
 schema:
+  # The id stays asus_zhuyin (learned data and tools use it); only the
+  # displayed name avoids the ASUS trademark.
   schema_id: asus_zhuyin
-  name: 華碩風注音
+  name: 島輝注音
   version: "0.2.0"
   author:
     - TimLin-1231
   description: |
-    華碩智慧輸入法風格的注音方案（大千式鍵盤、臺灣字形）。
+    島輝智慧注音方案（大千式鍵盤、臺灣字形）。
     行內預覽首選、精簡候選泡泡；↓ 展開候選、1–9 選字。
     連按兩下 Shift 或 Ctrl+Space 切換中英。
     ` 符號小鍵盤；Ctrl+標點直接輸出全形標點；注音縮寫快捷文字本。

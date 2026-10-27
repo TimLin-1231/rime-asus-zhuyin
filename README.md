@@ -1,6 +1,8 @@
-# 華碩風智慧注音（Rime / 小狼毫）
+# 島輝智慧注音（Rime / 小狼毫）
 
 在小狼毫 0.17.4（librime 1.13.1）上重現並強化華碩智慧輸入法的體驗。
+本專案與華碩（ASUS）無關，不含華碩的程式碼或詞庫資料；文中提到華碩智慧輸入法只是用來比較操作方式。授權：GPL-3.0（`LICENSE`），第三方元件與資料見 `THIRD_PARTY.md`。
+方案 id 和檔名仍是 `asus_zhuyin` / `asus_*.lua`：改名會讓已經學到的資料（`*.userdb`）和所有工具對不上，所以只改了顯示的名稱。
 所有設定都在 `rime/`。小狼毫的使用者目錄（登錄檔 `HKCU\Software\Rime\Weasel\RimeUserDir`）直接指向這個資料夾。
 
 ## 目錄
@@ -284,7 +286,7 @@
 ## Email
 - 打過一次的 email（中文模式裡打的，或英文模式打完送出的）會記在 `rime/asus_learn.userdb`。
 - 也可以自己列在 `rime/emails.txt`（一行一個，`#` 開頭是註解，不進 git），改完重新部署。
-- 打前 3 個字以上，小框就會出現最常用的那個；就算前幾個字剛好也是注音（s108 → 你不安啊），Tab 送出的還是 email。
+- 打前 3 個字以上，小框就會出現最常用的那個；就算前幾個字剛好也是注音（t201 → 蛋白），Tab 送出的還是 email。
 - 不要的 email：展開候選選到它，按 Shift+Del。
 - 至少要打幾個字才提示：`patch:` 加上 `asus_email/min_prefix: 4`（小框的 ⇥ 提示和英文猜字清單用同一個設定）。
 
@@ -544,7 +546,7 @@ C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改�
 ## 回到上一版
 - **設定回到某個 commit**：`git log` 找到版本 → `git checkout <commit> -- rime/` → 重新部署。
 - **完全回到改動前的小狼毫**：
-  1. 匯入 `backups\20261006-003720-HKCU-Rime.reg`，把使用者目錄改回 `D:\Document\小狼豪輸入法`。
+  1. 匯入 `backups\` 裡安裝前匯出的 `*-HKCU-Rime.reg`，把使用者目錄改回原本的位置。
   2. 重新啟動小狼毫服務。
   3. 重新部署。
 - **改回華碩輸入法**：在 Windows 的語言設定切換輸入法就好，這個專案不會改到華碩的任何東西。

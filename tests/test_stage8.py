@@ -17,7 +17,7 @@ from zhuyin import reading_keys  # noqa: E402
 RESULTS: list[tuple[str, bool, str]] = []
 XK["Delete"] = 0xFFFF
 SHIFTED = set('~!@#$%^&*()_+{}|:"<>?') | set("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-EMAILS = "# my addresses\ntim.lin@example.com\ns108abc@test.org\n"
+EMAILS = "# my addresses\ntim.lin@example.com\nt201abc@test.org\n"
 
 
 def keys(text: str) -> str:
@@ -124,11 +124,12 @@ def main() -> int:
           alt is not None and out.startswith("我" + alt) and not s.composing, f"{alt!r} -> {out!r}")
 
     # -- Email addresses --------------------------------------------------------
-    r.clear(); type_text("s108"); s = r.snapshot()
+    # t201 also reads as Zhuyin (ㄔㄉㄢㄅ, converts to Chinese without the list).
+    r.clear(); type_text("t201"); s = r.snapshot()
     check("first keys of a listed address: shown in the bubble",
-          s.candidates and "⇥s108abc@test.org" in s.candidates[0][1], f"{s.candidates[:2]}")
+          s.candidates and "⇥t201abc@test.org" in s.candidates[0][1], f"{s.candidates[:2]}")
     press("Tab"); s = r.snapshot()
-    check("Tab types the whole address", "".join(r.committed) == "s108abc@test.org" and not s.composing,
+    check("Tab types the whole address", "".join(r.committed) == "t201abc@test.org" and not s.composing,
           f"{r.committed} {s.input!r}")
     r.clear(); type_text("tim"); c = [x for x, _ in r.snapshot().candidates]; r.clear()
     check("an English-looking start lists the address as a guess", "tim.lin@example.com" in c, f"{c}")

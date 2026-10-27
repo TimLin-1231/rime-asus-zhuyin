@@ -44,8 +44,10 @@ patch:
   style/layout/shadow_offset_x: 0
   style/layout/shadow_offset_y: 2
 
+  # Ids asus_light / asus_dark are kept (users' settings refer to them);
+  # the displayed names avoid the ASUS trademark.
   preset_color_schemes/asus_light:
-    name: 華碩淺色／ASUS Light
+    name: 島輝淺色／DaoHui Light
     author: TimLin-1231
     color_format: argb
     back_color: 0xFFF5F5F5
@@ -65,7 +67,7 @@ patch:
     hilited_mark_color: 0x00000000
 
   preset_color_schemes/asus_dark:
-    name: 華碩深色／ASUS Dark
+    name: 島輝深色／DaoHui Dark
     author: TimLin-1231
     color_format: argb
     back_color: 0xFF4D4D4D
