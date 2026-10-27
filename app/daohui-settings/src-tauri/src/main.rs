@@ -2,12 +2,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod about;
+mod autosync;
 mod config;
 mod deploy;
 mod download;
 mod features;
+mod gdrive;
 mod model;
 mod shell;
+mod sync;
+mod sync_merge;
 mod updates;
 mod userdata;
 mod version;
@@ -28,6 +32,7 @@ pub struct AppState {
     pub update_cancel: AtomicBool,
     pub model_busy: AtomicBool,
     pub model_cancel: AtomicBool,
+    pub sync_busy: AtomicBool,
 }
 
 /// Holds a busy flag for as long as it lives.
@@ -48,6 +53,11 @@ impl Drop for Busy<'_> {
 }
 
 fn main() {
+    // `--sync`: the headless sync run (Task Scheduler / LaunchAgent); no
+    // window, no Tauri.
+    if std::env::args().skip(1).any(|a| a == config::SYNC_FLAG) {
+        std::process::exit(sync::cli_main());
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
@@ -68,6 +78,11 @@ fn main() {
             model::download_model,
             model::cancel_model_download,
             model::verify_model,
+            sync::sync_info,
+            sync::set_sync_dir,
+            sync::pick_sync_dir,
+            sync::sync_now,
+            sync::set_auto_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the DaoHui settings app");

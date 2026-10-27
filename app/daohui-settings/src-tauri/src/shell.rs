@@ -3,7 +3,7 @@
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::{config, userdata};
+use crate::{config, sync, userdata};
 
 #[tauri::command]
 pub fn open_link(app: AppHandle, url: String) -> Result<(), String> {
@@ -13,13 +13,18 @@ pub fn open_link(app: AppHandle, url: String) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
-/// `target`: "user_dir", "backups" or "backup:<name>".
+/// `target`: "user_dir", "backups", "backup:<name>", "sync_dir" or "log".
 #[tauri::command]
 pub fn open_folder(app: AppHandle, target: String) -> Result<(), String> {
     let dir = config::user_dir();
     let path = match target.as_str() {
         "user_dir" => dir,
         "backups" => dir.join(config::BACKUP_DIR_NAME),
+        "log" => dir.join(config::LOG_DIR_NAME),
+        "sync_dir" => match sync::read_installation(&dir)?.sync_dir {
+            Some(d) => std::path::PathBuf::from(d),
+            None => return Err("還沒有設定同步資料夾。".into()),
+        },
         other => match other.strip_prefix("backup:") {
             Some(name) => userdata::backup_path(name)?,
             None => return Err("未知的資料夾。".into()),

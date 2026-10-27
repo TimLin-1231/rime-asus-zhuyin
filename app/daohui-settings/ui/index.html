@@ -33,6 +33,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.66 3.13 3 7 3s7-1.34 7-3V6"/><path d="M5 12v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6"/></svg>
         <span>學習資料</span>
       </button>
+      <button class="nav-item" data-page="sync">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5z"/><path d="M10 12.5l2-2 2 2M12 10.5V15"/></svg>
+        <span>同步</span>
+      </button>
       <button class="nav-item" data-page="model">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
         <span>模型</span>
@@ -184,7 +188,7 @@
     <section class="page" id="page-userdata" hidden>
       <header class="page-head">
         <h1>學習資料</h1>
-        <p>輸入法記住的詞和選字，只存在這台電腦。</p>
+        <p>輸入法記住的詞和選字存在這台電腦；開啟「同步」後也會帶到你的其他電腦。</p>
       </header>
       <div class="card">
         <div class="stats">
@@ -210,6 +214,76 @@
       <div class="notice ok pre" id="ud-result" hidden></div>
       <h2 class="section-title">還原</h2>
       <div class="card list" id="ud-backup-list"></div>
+    </section>
+
+    <!-- 同步 -->
+    <section class="page" id="page-sync" hidden>
+      <header class="page-head">
+        <h1>同步</h1>
+        <p>透過 Google 雲端硬碟，讓你的電腦共用學到的字詞、個人詞、電子郵件地址、快捷文字和功能開關。</p>
+      </header>
+      <div class="notice warn pre" id="sync-warning" hidden></div>
+      <div class="card">
+        <div class="row">
+          <div class="status-icon" id="sync-icon" data-state="idle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5z"/></svg>
+          </div>
+          <div class="row-main">
+            <div class="row-title" id="sync-status-title">尚未設定同步</div>
+            <div class="row-desc" id="sync-status-desc">—</div>
+          </div>
+          <button class="btn primary" id="sync-now" disabled>立即同步</button>
+        </div>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">同步資料夾</div>
+            <div class="row-desc">每台電腦都選 Google 雲端硬碟裡的同一個資料夾，建議用「我的雲端硬碟」裡的 DaoHui-sync。</div>
+            <div class="path-edit">
+              <input type="text" id="sync-dir" class="text-input mono" spellcheck="false" autocomplete="off"
+                     aria-label="同步資料夾" placeholder="例如 D:\GoogleDrive\DaoHui-sync">
+              <button class="btn" id="sync-pick">選擇…</button>
+              <button class="btn primary" id="sync-save" disabled>儲存</button>
+            </div>
+            <div class="detect" id="sync-detected" hidden>
+              <span>偵測到 Google 雲端硬碟：<span class="mono" id="sync-drive"></span></span>
+              <button class="link-btn" id="sync-use-detected">改用 <span class="mono" id="sync-suggested"></span></button>
+            </div>
+          </div>
+        </div>
+        <label class="row">
+          <div class="row-main">
+            <div class="row-title">自動同步</div>
+            <div class="row-desc" id="sync-auto-desc">登入時與每天一次，在背景同步。</div>
+          </div>
+          <input type="checkbox" class="switch" id="sync-auto">
+        </label>
+      </div>
+      <div class="notice ok pre" id="sync-result" hidden></div>
+
+      <h2 class="section-title">裝置</h2>
+      <div class="card">
+        <table class="table" id="sync-devices">
+          <thead><tr><th>裝置</th><th>系統</th><th>版本</th><th class="num">上次同步</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="notice warn">
+        <span><b>隱私</b>　同步會把你打過的字詞與選字、個人詞、電子郵件地址和快捷文字（可能含住址、電話）以未加密的純文字存進同步資料夾，也就是你的 Google 雲端硬碟。只用你自己的帳號，也不要把這個資料夾分享給別人。</span>
+      </div>
+      <div class="notice info pre">同步的內容：學到的字詞與選字、個人詞庫、emails.txt 的地址、shortcuts.txt 的快捷文字，以及「功能開關」頁的設定。
+快捷文字和功能開關以最後修改的為準，刪除的快捷文字也會同步。個人詞和電子郵件地址只會增加：在一台電腦刪掉的，下次同步時會從其他裝置回來（這一版的限制）。
+同步時輸入法會暫停幾秒，有新內容時會重新部署。</div>
+
+      <div class="actions">
+        <button class="btn" data-open="sync_dir" id="sync-open">開啟同步資料夾</button>
+        <button class="btn" data-open="log">開啟紀錄資料夾</button>
+        <span class="spacer"></span>
+        <button class="btn danger" id="sync-stop" hidden>停止同步</button>
+      </div>
+      <p class="foot-note">這台電腦的識別碼：<span class="mono" id="sync-id">—</span></p>
+      <p class="foot-note">設定檔：<span class="mono" id="sync-inst">—</span></p>
+      <p class="foot-note">紀錄：<span class="mono" id="sync-log">—</span></p>
     </section>
 
     <!-- 模型 -->

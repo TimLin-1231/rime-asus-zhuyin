@@ -188,6 +188,24 @@ pub fn format_key(key: &str) -> String {
     }
 }
 
+/// A YAML double-quoted scalar, as Rime writes non-alphanumeric strings
+/// (`sync_dir: "D:\\GoogleDrive\\DaoHui-sync"`).
+pub fn double_quoted(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 impl PatchFile {
     pub fn parse(text: &str) -> Self {
         let (bom, body) = match text.strip_prefix('\u{feff}') {
@@ -364,6 +382,75 @@ impl PatchFile {
         Ok(())
     }
 
+    /// Top-level entries (column 0), with their nested lines.
+    fn top_entries(&self) -> Vec<Entry> {
+        let mut out = Vec::new();
+        let mut j = 0;
+        while j < self.lines.len() {
+            let line = &self.lines[j];
+            if !is_meta(line) && indent_of(line) == 0 {
+                if let Some(kl) = parse_key_line(line) {
+                    let mut end = j + 1;
+                    for k in j + 1..self.lines.len() {
+                        let l = &self.lines[k];
+                        if !is_meta(l) {
+                            if indent_of(l) == 0 {
+                                break;
+                            }
+                            end = k + 1;
+                        }
+                    }
+                    out.push(Entry { line: j, end, key: kl.key });
+                    j = end;
+                    continue;
+                }
+            }
+            j += 1;
+        }
+        out
+    }
+
+    /// The scalar value of a top-level key such as `installation_id` in
+    /// Rime's `installation.yaml` (unquoted), or None.
+    pub fn get_top(&self, key: &str) -> Option<String> {
+        let entry = self.top_entries().into_iter().rfind(|e| e.key == key)?;
+        let kl = parse_key_line(&self.lines[entry.line])?;
+        if kl.value.is_empty() || kl.value.starts_with(['|', '>', '&', '*', '{', '[']) {
+            return None;
+        }
+        Some(unquote(kl.value))
+    }
+
+    /// Sets a top-level key to `value` (YAML text); an existing line keeps
+    /// its spelling and trailing comment, a new key is appended at the end.
+    pub fn set_top(&mut self, key: &str, value: &str) {
+        let entries = self.top_entries();
+        let matching: Vec<&Entry> = entries.iter().filter(|e| e.key == key).collect();
+        if matching.is_empty() {
+            self.lines.push(format!("{}: {}", format_key(key), value));
+            self.final_newline = true;
+            return;
+        }
+        for e in matching.iter().rev() {
+            let new_line = {
+                let line = &self.lines[e.line];
+                let kl = parse_key_line(line).expect("entry line parses");
+                format!("{}: {}{}", &line[..kl.colon], value, kl.comment)
+            };
+            self.lines.splice(e.line..e.end, [new_line]);
+        }
+    }
+
+    /// Removes a top-level key. Returns whether it was there.
+    pub fn remove_top(&mut self, key: &str) -> bool {
+        let entries = self.top_entries();
+        let matching: Vec<&Entry> = entries.iter().filter(|e| e.key == key).collect();
+        for e in matching.iter().rev() {
+            self.lines.drain(e.line..e.end);
+        }
+        !matching.is_empty()
+    }
+
     /// Removes `key` (with any nested lines). Returns whether it was there.
     #[allow(dead_code)]
     pub fn remove(&mut self, key: &str) -> bool {
@@ -512,6 +599,32 @@ patch:
         let mut f = PatchFile::parse("patch:\n  a: 1");
         f.set("a", "2").unwrap();
         assert_eq!(f.render(), "patch:\n  a: 2");
+    }
+
+    #[test]
+    fn top_level_keys_of_installation_yaml() {
+        let src = "distribution_code_name: DaoHui\ndistribution_name: \"島輝\"\n\
+installation_id: \"2489a486-0e52-406d-93e2-548612575a43\"  # keep\nrime_version: 1.13.1\n";
+        let mut f = PatchFile::parse(src);
+        assert_eq!(f.get_top("installation_id").as_deref(), Some("2489a486-0e52-406d-93e2-548612575a43"));
+        assert_eq!(f.get_top("distribution_name").as_deref(), Some("島輝"));
+        assert_eq!(f.get_top("sync_dir"), None);
+        let dir = r"D:\.rime-harness\sync-test\a b";
+        f.set_top("sync_dir", &double_quoted(dir));
+        assert_eq!(f.get_top("sync_dir").as_deref(), Some(dir));
+        assert_eq!(f.render(), format!("{src}sync_dir: \"D:\\\\.rime-harness\\\\sync-test\\\\a b\"\n"));
+        // Changing it keeps everything else and the line's position.
+        f.set_top("installation_id", "\"x\"");
+        assert!(f.render().contains("installation_id: \"x\"  # keep\nrime_version"));
+        assert!(f.remove_top("sync_dir"));
+        assert!(!f.remove_top("sync_dir"));
+        assert_eq!(f.render(), src.replace("\"2489a486-0e52-406d-93e2-548612575a43\"", "\"x\""));
+        // A `patch:` map's children are not top-level keys.
+        let g = PatchFile::parse("patch:\n  sync_dir: no\nsync_dir: '/Users/a/b'\n");
+        assert_eq!(g.get_top("sync_dir").as_deref(), Some("/Users/a/b"));
+        let mut e = PatchFile::parse("");
+        e.set_top("installation_id", "\"mac-air\"");
+        assert_eq!(e.render(), "installation_id: \"mac-air\"\n");
     }
 
     #[test]
