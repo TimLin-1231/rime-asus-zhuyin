@@ -29,6 +29,14 @@ __pycache__/
 rime/installation.yaml
 rime/user.yaml
 
+# DaoHui sync (app/daohui-settings/SYNC.md): other devices' words, state, log
+rime/terra_pinyin.synced.dict.yaml
+rime/daohui_sync_request
+rime/daohui_sync_state.json
+rime/daohui_sync.lock
+rime/log/
+rime/*.bak
+
 # Eval sets derived from personal exports
 tests/eval/private/
 
