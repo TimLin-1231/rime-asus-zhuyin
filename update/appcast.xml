@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  島輝 (DaoHui) for Windows: update feed. Read by DaoHuiServer.exe (WinSparkle,
+  DAOHUI_APPCAST_URL in D:\src\daohui include/DaoHuiBrand.h) and by the
+  settings app (app/daohui-settings, UPDATES.md: daohui:sha256 is required).
+  Newest item first. sparkle:os="windows": understood by the WinSparkle that
+  DaoHui bundles and by the settings app.
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:daohui="https://github.com/TimLin-1231/rime-asus-zhuyin/ns/appcast">
+  <channel>
+    <title>島輝 Windows</title>
+    <link>https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/update/appcast.xml</link>
+    <description>島輝輸入法 Windows 版更新</description>
+    <language>zh-TW</language>
+    <item>
+      <title>島輝 0.17.4.7</title>
+      <pubDate>Tue, 27 Oct 2026 13:40:00 +0800</pubDate>
+      <sparkle:version>0.17.4.7</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.7</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.7</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>第一個公開版本</li>
+          <li>英文模式預設直接輸入（驗證碼、密碼欄位正常）</li>
+          <li>Tab 切換中英、日期快打、數字大寫、緊貼英數字的半形標點</li>
+          <li>「島輝設定」：功能開關、學習資料備份、模型下載、檢查更新</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.7/daohui-0.17.4.7-installer.exe"
+                 sparkle:version="0.17.4.7"
+                 sparkle:os="windows"
+                 sparkle:installerArguments=""
+                 length="17562718"
+                 type="application/octet-stream"
+                 daohui:sha256="98541b2dbc8b8ee95a44a3a49816ba1fa4682f5a2e77a4ae2fd641fd8f3db413" />
+    </item>
+  </channel>
+</rss>
