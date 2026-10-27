@@ -440,6 +440,213 @@ $('#ud-refresh').addEventListener('click', () => loadUserdata().catch(() => {}))
 
 loaders.userdata = () => loadUserdata().catch(() => {});
 
+// ------------------------------------------------------------ 同步
+
+let syncState = null;
+let syncRunning = false;
+const OS_NAMES = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+
+function fmtTime(t) {
+  if (!t) return '—';
+  const d = new Date(t * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function fmtAgo(t) {
+  if (!t) return '從未同步';
+  const s = Math.max(0, Date.now() / 1000 - t);
+  if (s < 90) return '剛剛';
+  if (s < 3600) return `${Math.round(s / 60)} 分鐘前`;
+  if (s < 86400 * 2) return `${Math.round(s / 3600)} 小時前`;
+  return `${Math.round(s / 86400)} 天前`;
+}
+
+function syncDirty() {
+  const v = $('#sync-dir').value.trim();
+  return !!syncState && v !== (syncState.syncDir || '');
+}
+
+function updateSyncButtons() {
+  const s = syncState;
+  $('#sync-save').disabled = !s || !syncDirty() || !$('#sync-dir').value.trim() || syncRunning;
+  $('#sync-now').disabled = !s || !s.syncDir || syncRunning;
+}
+
+function renderSync(s) {
+  syncState = s;
+  const input = $('#sync-dir');
+  if (!input.dataset.edited) input.value = s.syncDir || '';
+
+  const icon = $('#sync-icon');
+  let title;
+  let desc;
+  if (!s.syncDir) {
+    icon.dataset.state = 'idle';
+    title = '尚未設定同步';
+    desc = '在下面選一個 Google 雲端硬碟裡的資料夾，每台電腦都選同一個，再按「立即同步」。';
+  } else if (!s.syncDirExists) {
+    icon.dataset.state = 'warn';
+    title = '找不到同步資料夾';
+    desc = `${s.syncDir} 不存在。Google 雲端硬碟是否已啟動並登入？`;
+  } else {
+    icon.dataset.state = 'ok';
+    title = '已開啟同步';
+    desc = s.lastSync ? `上次同步：${fmtTime(s.lastSync)}（${fmtAgo(s.lastSync)}）` : '這台電腦還沒有同步過，按「立即同步」開始。';
+  }
+  $('#sync-status-title').textContent = title;
+  $('#sync-status-desc').textContent = desc;
+
+  const det = $('#sync-detected');
+  det.hidden = !s.suggestedDir || s.suggestedDir === s.syncDir;
+  $('#sync-drive').textContent = s.detectedDrive || '';
+  $('#sync-suggested').textContent = s.suggestedDir || '';
+
+  const auto = $('#sync-auto');
+  auto.checked = s.autoSync.enabled;
+  auto.disabled = !s.autoSync.available || (!s.syncDir && !s.autoSync.enabled);
+  $('#sync-auto-desc').textContent = s.autoSync.available
+    ? `${s.autoSync.detail}。${s.autoSync.dryRun ? '（測試模式：只寫出設定檔，不會真的建立）' : ''}`
+    : s.autoSync.detail;
+
+  const tbody = $('#sync-devices tbody');
+  if (!s.devices.length) {
+    tbody.replaceChildren(el('tr', {}, el('td', { class: 'empty', colspan: 4 },
+      s.syncDir ? '同步資料夾裡還沒有裝置。按「立即同步」後，這台電腦會出現在這裡。' : '設定同步資料夾後，同步過的電腦會列在這裡。')));
+  } else {
+    tbody.replaceChildren(...s.devices.map((d) => el('tr', {},
+      el('td', {},
+        el('div', { class: 'device-name' }, d.host || d.id, d.isSelf ? el('span', { class: 'badge accent' }, '這台') : null),
+        el('div', { class: 'device-id mono' }, d.id)),
+      el('td', {}, OS_NAMES[d.os] || d.os || '—'),
+      el('td', {}, d.version || '—'),
+      el('td', { class: 'when', title: fmtTime(d.time) }, d.time ? fmtAgo(d.time) : '從未同步'))));
+  }
+
+  $('#sync-stop').hidden = !s.syncDir;
+  $('#sync-open').disabled = !s.syncDirExists;
+  $('#sync-id').textContent = s.installationId || '（第一次同步時建立）';
+  $('#sync-inst').textContent = s.installationFile;
+  $('#sync-log').textContent = s.logPath;
+
+  const warn = [];
+  if (!s.userDirExists) warn.push(`找不到使用者資料夾 ${s.userDir}。請先安裝並啟用一次島輝輸入法。`);
+  if (s.warning) warn.push(s.warning);
+  if (s.skipDeployer) warn.push('測試模式（DAOHUI_SKIP_DEPLOYER）：同步時不執行 Rime 同步，也不重新部署。');
+  const w = $('#sync-warning');
+  w.hidden = !warn.length;
+  w.textContent = warn.join('\n');
+  updateSyncButtons();
+}
+
+async function loadSync() {
+  renderSync(await call('sync_info'));
+}
+
+$('#sync-dir').addEventListener('input', () => {
+  $('#sync-dir').dataset.edited = syncDirty() ? '1' : '';
+  updateSyncButtons();
+});
+
+function setSyncInput(path) {
+  $('#sync-dir').value = path;
+  $('#sync-dir').dataset.edited = syncDirty() ? '1' : '';
+  updateSyncButtons();
+}
+
+$('#sync-pick').addEventListener('click', async () => {
+  const btn = $('#sync-pick');
+  busy(btn, true);
+  try {
+    const start = $('#sync-dir').value.trim() || (syncState && syncState.detectedDrive) || null;
+    const p = await call('pick_sync_dir', { start });
+    if (p) setSyncInput(p);
+  } catch (_) { /* toast shown */ } finally {
+    busy(btn, false);
+  }
+});
+
+$('#sync-use-detected').addEventListener('click', () => {
+  if (syncState && syncState.suggestedDir) setSyncInput(syncState.suggestedDir);
+});
+
+$('#sync-save').addEventListener('click', async () => {
+  const path = $('#sync-dir').value.trim();
+  if (!path) return;
+  const first = !syncState.syncDir;
+  const ok = await confirmDialog(first ? '開啟同步？' : '更換同步資料夾？',
+    `同步資料夾：${path}\n\n你打過的字詞與選字、個人詞、電子郵件地址和快捷文字會以純文字存進這個資料夾（你的 Google 雲端硬碟）。每台電腦都要選同一個資料夾。`,
+    first ? '開啟同步' : '更換');
+  if (!ok) return;
+  const btn = $('#sync-save');
+  busy(btn, true);
+  try {
+    const s = await call('set_sync_dir', { path });
+    $('#sync-dir').dataset.edited = '';
+    renderSync(s);
+    toast('已設定同步資料夾。按「立即同步」開始同步。');
+  } catch (_) { /* toast shown */ } finally {
+    btn.classList.remove('busy');
+    updateSyncButtons();
+  }
+});
+
+$('#sync-stop').addEventListener('click', async () => {
+  const ok = await confirmDialog('停止同步？',
+    '這台電腦不再同步，自動同步也會關閉。已經同步到這台的內容會留著，同步資料夾裡的檔案也不會刪除。', '停止同步', true);
+  if (!ok) return;
+  try {
+    $('#sync-dir').dataset.edited = '';
+    renderSync(await call('set_sync_dir', { path: null }));
+    $('#sync-result').hidden = true;
+  } catch (_) { /* toast shown */ }
+});
+
+$('#sync-auto').addEventListener('change', async (e) => {
+  const box = e.currentTarget;
+  const enabled = box.checked;
+  box.disabled = true;
+  try {
+    renderSync(await call('set_auto_sync', { enabled }));
+    toast(enabled ? '已開啟自動同步。' : '已關閉自動同步。');
+  } catch (_) {
+    box.checked = !enabled;
+    box.disabled = false;
+  }
+});
+
+$('#sync-now').addEventListener('click', async () => {
+  const btn = $('#sync-now');
+  syncRunning = true;
+  busy(btn, true);
+  updateSyncButtons();
+  const box = $('#sync-result');
+  try {
+    const r = await invoke('sync_now');
+    const lines = [`同步完成（${fmtTime(r.time)}）。`];
+    lines.push(r.devices.length
+      ? `其他裝置：${r.devices.join('、')}。`
+      : '還沒有其他裝置：在另一台電腦設定同一個資料夾，再同步一次。');
+    lines.push(r.changed.length ? `這台電腦已更新：${r.changed.join('、')}。` : '這台電腦沒有需要更新的內容。');
+    if (r.redeployed) lines.push('已重新部署，輸入法會套用新的內容。');
+    if (r.warnings.length) lines.push('', ...r.warnings.map((w) => `⚠ ${w}`));
+    box.textContent = lines.join('\n');
+    box.className = `notice pre ${r.warnings.length ? 'warn' : 'ok'}`;
+    box.hidden = false;
+  } catch (e) {
+    box.textContent = `同步失敗：${e}`;
+    box.className = 'notice pre error';
+    box.hidden = false;
+  } finally {
+    syncRunning = false;
+    btn.classList.remove('busy');
+    updateSyncButtons();
+    loadSync().catch(() => {});
+  }
+});
+
+loaders.sync = () => loadSync().catch(() => {});
+
 // ------------------------------------------------------------ 模型
 
 let modelState = null;
@@ -596,6 +803,31 @@ function mockInvoke(cmd, args) {
       downloading: false, license: 'CC-BY-4.0', sourceUrl: 'https://github.com/amzxyz/RIME-LMDG',
     },
   };
+  const now = Math.floor(Date.now() / 1000);
+  const syncInfo = {
+    userDir: 'C:\\Users\\you\\AppData\\Roaming\\DaoHui', userDirExists: true,
+    installationFile: 'C:\\Users\\you\\AppData\\Roaming\\DaoHui\\installation.yaml',
+    syncDir: 'D:\\GoogleDrive\\DaoHui-sync', syncDirExists: true,
+    installationId: '2489a486-0e52-406d-93e2-548612575a43',
+    detectedDrive: 'D:\\GoogleDrive', suggestedDir: 'D:\\GoogleDrive\\DaoHui-sync',
+    devices: [
+      { id: '2489a486-0e52-406d-93e2-548612575a43', os: 'windows', host: 'LAPTOP-PC', time: now - 3600, version: '0.17.4.7', isSelf: true },
+      { id: 'mac-macbook-air', os: 'macos', host: 'MacBook-Air', time: now - 86400 * 2, version: '1.1.2.14', isSelf: false },
+    ],
+    autoSync: { enabled: true, available: true, detail: '工作排程器「DaoHuiSync」：登入時與每天一次，電腦閒置時執行', dryRun: false },
+    lastSync: now - 3600, logPath: 'C:\\Users\\you\\AppData\\Roaming\\DaoHui\\log\\sync.log', skipDeployer: false, warning: null,
+  };
+  if (cmd === 'sync_info') return Promise.resolve(syncInfo);
+  if (cmd === 'set_sync_dir') return Promise.resolve({ ...syncInfo, syncDir: args.path, devices: args.path ? syncInfo.devices : [] });
+  if (cmd === 'set_auto_sync') return Promise.resolve({ ...syncInfo, autoSync: { ...syncInfo.autoSync, enabled: args.enabled } });
+  if (cmd === 'pick_sync_dir') return Promise.resolve('D:\\GoogleDrive\\DaoHui-sync');
+  if (cmd === 'sync_now') {
+    return Promise.resolve({
+      time: now, syncDir: syncInfo.syncDir, installationId: syncInfo.installationId, devices: ['mac-macbook-air'],
+      changed: ['terra_pinyin.synced.dict.yaml（新增 12 個詞）', 'shortcuts.txt（合併後 4 個縮寫）'],
+      exported: ['personal.txt', 'device.txt'], redeployed: true, warnings: [], log: [],
+    });
+  }
   if (cmd === 'save_features') return Promise.resolve({ ...data.get_features, settings: args.settings });
   if (cmd in data) return Promise.resolve(data[cmd]);
   return Promise.reject(new Error(`預覽模式不支援 ${cmd}`));

@@ -2,7 +2,7 @@
 //! Windows: `<install dir>\DaoHuiDeployer.exe /deploy`;
 //! macOS: `/Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui --reload`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -52,6 +52,12 @@ pub fn deployer_candidates() -> Vec<PathBuf> {
 const ARGS: &[&str] = DEPLOYER_ARGS;
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 const ARGS: &[&str] = &[];
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+const SYNC_ARGS: &[&str] = DEPLOYER_SYNC_ARGS;
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+const SYNC_ARGS: &[&str] = &[];
+/// Rime's sync exports and merges every user dictionary: allow more time.
+const SYNC_WAIT: Duration = Duration::from_secs(600);
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 const ASYNC: bool = DEPLOY_IS_ASYNC;
@@ -74,8 +80,12 @@ pub fn deployer_path() -> Option<PathBuf> {
 }
 
 fn run(exe: PathBuf) -> Result<String, String> {
-    let mut cmd = Command::new(&exe);
-    cmd.args(ARGS);
+    run_args(&exe, ARGS, DEPLOY_WAIT)
+}
+
+fn run_args(exe: &Path, args: &[&str], wait: Duration) -> Result<String, String> {
+    let mut cmd = Command::new(exe);
+    cmd.args(args);
     if let Some(dir) = exe.parent() {
         cmd.current_dir(dir);
     }
@@ -90,7 +100,7 @@ fn run(exe: PathBuf) -> Result<String, String> {
                     None => "部署程式異常結束。".into(),
                 })
             }
-            Ok(None) if start.elapsed() > DEPLOY_WAIT => {
+            Ok(None) if start.elapsed() > wait => {
                 return Ok("部署仍在背景進行中，完成後輸入法會自動套用。".into())
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(200)),
@@ -99,9 +109,8 @@ fn run(exe: PathBuf) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
-pub async fn redeploy() -> Result<String, String> {
-    let exe = deployer_path().ok_or_else(|| {
+fn find_deployer() -> Result<PathBuf, String> {
+    deployer_path().ok_or_else(|| {
         let tried: Vec<String> =
             deployer_candidates().iter().map(|p| p.display().to_string()).collect();
         if tried.is_empty() {
@@ -109,7 +118,31 @@ pub async fn redeploy() -> Result<String, String> {
         } else {
             format!("找不到部署程式，已找過：\n{}", tried.join("\n"))
         }
-    })?;
+    })
+}
+
+/// Redeploys and waits (Windows) or notifies the input method (macOS).
+pub fn deploy_blocking() -> Result<String, String> {
+    run(find_deployer()?)
+}
+
+/// Rime's own sync of the user data: `DaoHuiDeployer.exe /sync` (waits),
+/// `DaoHui --sync` (notifies the running input method).
+pub fn rime_sync_blocking() -> Result<String, String> {
+    let exe = find_deployer()?;
+    let msg = run_args(&exe, SYNC_ARGS, SYNC_WAIT)?;
+    Ok(if ASYNC {
+        "已通知輸入法執行 Rime 同步。".to_string()
+    } else if msg == done_message(false) {
+        "Rime 同步完成。".to_string()
+    } else {
+        msg
+    })
+}
+
+#[tauri::command]
+pub async fn redeploy() -> Result<String, String> {
+    let exe = find_deployer()?;
     tauri::async_runtime::spawn_blocking(move || run(exe))
         .await
         .map_err(|e| e.to_string())?

@@ -71,8 +71,54 @@ pub const MODEL_SIZE_HINT: u64 = 410_679_340;
 pub const MODEL_LICENSE: &str = "CC-BY-4.0";
 pub const MODEL_SOURCE_URL: &str = "https://github.com/amzxyz/RIME-LMDG";
 
+// ---------------------------------------------------------------- sync (SYNC.md)
+
+/// Rime's installation file in the user dir: `sync_dir` and
+/// `installation_id` (both Rime's own keys).
+pub const INSTALLATION_FILE: &str = "installation.yaml";
+pub const KEY_SYNC_DIR: &str = "sync_dir";
+pub const KEY_INSTALLATION_ID: &str = "installation_id";
+/// Sub-folder of Google Drive's "My Drive" suggested as the sync folder.
+pub const DEFAULT_SYNC_SUBDIR: &str = "DaoHui-sync";
+/// DaoHui's own files: `<sync_dir>/daohui/<installation_id>/`.
+pub const SYNC_DAOHUI_SUBDIR: &str = "daohui";
+pub const SYNC_PERSONAL_FILE: &str = "personal.txt";
+pub const SYNC_EMAILS_FILE: &str = "emails.txt";
+pub const SYNC_SHORTCUTS_FILE: &str = "shortcuts.txt";
+pub const SYNC_SETTINGS_FILE: &str = "settings.txt";
+pub const SYNC_DEVICE_FILE: &str = "device.txt";
+/// In the user dir. Personal words of this device (tools/build_lexicon.py)
+/// and the other devices' (written by the sync, imported by
+/// terra_pinyin.asus.dict.yaml).
+pub const PERSONAL_DICT_FILE: &str = "terra_pinyin.personal.dict.yaml";
+pub const SYNCED_DICT_FILE: &str = "terra_pinyin.synced.dict.yaml";
+pub const EMAILS_FILE: &str = "emails.txt";
+pub const SHORTCUTS_FILE: &str = "shortcuts.txt";
+/// Touched at the start of a sync run; asus_learn.lua then imports and
+/// exports its snapshot.
+pub const SYNC_TRIGGER_FILE: &str = "daohui_sync_request";
+/// What the last run saw (per-key change times), JSON.
+pub const SYNC_STATE_FILE: &str = "daohui_sync_state.json";
+/// Held while a run is in progress.
+pub const SYNC_LOCK_FILE: &str = "daohui_sync.lock";
+/// `<user dir>/log/sync.log`.
+pub const LOG_DIR_NAME: &str = "log";
+pub const SYNC_LOG_FILE: &str = "sync.log";
+/// Windows Task Scheduler task / macOS LaunchAgent running `--sync`.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub const SYNC_TASK_NAME: &str = "DaoHuiSync";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub const SYNC_AGENT_LABEL: &str = "io.github.timlin-1231.daohui.sync";
+/// Command-line flag of the headless sync run.
+pub const SYNC_FLAG: &str = "--sync";
+
 // ---------------------------------------------------------------- environment overrides
 
+/// `1`: a sync run does not call the deployer (Rime sync, redeploy).
+pub const ENV_SKIP_DEPLOYER: &str = "DAOHUI_SKIP_DEPLOYER";
+/// A folder: turning automatic sync on or off writes the task XML / plist
+/// and the commands there instead of running schtasks / launchctl.
+pub const ENV_AUTOSYNC_DRY_RUN: &str = "DAOHUI_AUTOSYNC_DRY_RUN";
 pub const ENV_USER_DIR: &str = "DAOHUI_USER_DIR";
 pub const ENV_INSTALL_DIR: &str = "DAOHUI_INSTALL_DIR";
 pub const ENV_APPCAST_URL: &str = "DAOHUI_APPCAST_URL";
@@ -91,6 +137,8 @@ mod platform {
     /// Deployer inside the install dir.
     pub const DEPLOYER_EXE: &str = "DaoHuiDeployer.exe";
     pub const DEPLOYER_ARGS: &[&str] = &["/deploy"];
+    /// Rime's own sync (RimeSyncUserData); returns when done.
+    pub const DEPLOYER_SYNC_ARGS: &[&str] = &["/sync"];
     /// The deployer returns when the deploy is done.
     pub const DEPLOY_IS_ASYNC: bool = false;
     /// Used when the deployer is neither next to this exe nor found via the
@@ -142,6 +190,9 @@ mod platform {
     /// The same, relative to `DAOHUI_INSTALL_DIR` (an "Input Methods" folder).
     pub const DEPLOYER_EXE_IN_INSTALL_DIR: &str = "DaoHui.app/Contents/MacOS/DaoHui";
     pub const DEPLOYER_ARGS: &[&str] = &["--reload"];
+    /// Squirrel's `--sync`: notifies the running input method, which runs
+    /// Rime's sync (RimeSyncUserData); returns at once.
+    pub const DEPLOYER_SYNC_ARGS: &[&str] = &["--sync"];
     /// `--reload` only notifies the input method; the deploy runs there.
     pub const DEPLOY_IS_ASYNC: bool = true;
     pub const APPCAST_OS: &[&str] = &["macos"];

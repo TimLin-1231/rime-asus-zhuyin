@@ -161,7 +161,7 @@ fn state_for(dir: &Path) -> Result<FeaturesState, String> {
 }
 
 /// Writes atomically and keeps the previous version as `<file>.bak`.
-fn save_in(dir: &Path, settings: &FeatureSettings) -> Result<bool, String> {
+pub(crate) fn save_in(dir: &Path, settings: &FeatureSettings) -> Result<bool, String> {
     let path = dir.join(CUSTOM_PATCH_FILE);
     let existing = read_text(&path)?;
     let out = apply_to_text(existing.as_deref(), settings)?;

@@ -375,7 +375,7 @@ fn plist_bundle_version(text: &str) -> Option<String> {
 
 /// The installed DaoHui's version: the feed is about the input method, not
 /// this app (whose own version is only the fallback).
-fn installed_version() -> Option<String> {
+pub(crate) fn installed_version() -> Option<String> {
     #[cfg(target_os = "windows")]
     {
         crate::winutil::installed_daohui_version()
