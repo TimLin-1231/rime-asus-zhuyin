@@ -7,18 +7,18 @@
     <description>島輝 DaoHui for macOS Appcast 更新頻道</description>
     <language>zh</language>
     <item>
-      <title>島輝 1.1.2.16</title>
-      <description><![CDATA[<p>島輝 1.1.2.16</p><ul><li>多台裝置同步：在「島輝設定 → 同步」選 Google 雲端硬碟裡的資料夾，與 Windows 同步學習資料、個人詞庫、email、快捷文字與功能開關</li><li>按「檢查新版本...」時，更新視窗會出現在最前面</li><li>英文模式預設直接輸入（驗證碼、密碼欄位正常）</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.16">完整的更新說明</a></p>]]></description>
+      <title>島輝 1.1.2.18</title>
+      <description><![CDATA[<p>島輝 1.1.2.18</p><ul><li>修正：程式內更新後，島輝在輸入法選單變灰、不能打字，要登出再登入才恢復。現在更新完會自動重新註冊、啟用並選取島輝</li><li>安裝後不再改動 app 裡的檔案，程式簽章保持完整</li><li>包含 1.1.2.16 的多台裝置同步：在「島輝設定 → 同步」選 Google 雲端硬碟裡的資料夾，與 Windows 同步學習資料、個人詞庫、email、快捷文字與功能開關</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.18">完整的更新說明</a></p>]]></description>
       <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
-      <pubDate>Tue, 27 Oct 2026 20:12:40 +0000</pubDate>
-      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.16/DaoHui-1.1.2.16.pkg"
-                 sparkle:version="1.1.2.16"
-                 sparkle:shortVersionString="1.1.2.16"
-                 sparkle:edSignature="o2pM8YXyqfsYH4UfmPAe3wKXK/hAOtltBZvxAwN8csnU+uqTyBWqD5v8NCrKdRxQ/ydguvdp0r2cy+ne1WvqDA=="
+      <pubDate>Wed, 28 Oct 2026 03:18:29 +0000</pubDate>
+      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.18/DaoHui-1.1.2.18.pkg"
+                 sparkle:version="1.1.2.18"
+                 sparkle:shortVersionString="1.1.2.18"
+                 sparkle:edSignature="KWi3GklnNvHHKAyw2HAsIe8kOObeu5XEukNTzsSGdEEYps2qLz/32mlqaMyZCx7ljy7qy5Z4wFcNUc6qW/ORAg=="
                  sparkle:os="macos"
-                 length="21178245"
+                 length="26372423"
                  type="application/octet-stream"
-                 daohui:sha256="41d853639c5215ee8bcb607dee52e3d86a2e9165833488277594503bd425a442"/>
+                 daohui:sha256="55ff03a37fa48757704f79b97784044367b75521218fb99161a6a9445acdee3f"/>
     </item>
   </channel>
 </rss>
