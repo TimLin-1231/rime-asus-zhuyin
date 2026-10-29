@@ -18,9 +18,17 @@ Nothing is downloaded or installed until the user presses 「下載並安裝」.
 Each feed is read by two programs: this app and the input method's own
 updater. On Windows that is WinSparkle in DaoHuiServer (the Weasel fork;
 `DAOHUI_APPCAST_URL` in `include/DaoHuiBrand.h`); on macOS it is Sparkle in
-`/Library/Input Methods/DaoHui.app` (the Squirrel fork), whose `SUFeedURL` is
-`appcast-macos.xml`. A feed has to satisfy both readers (see "macOS feed"
-below for what Sparkle needs).
+DaoHui 1.1.2.20 and older in `/Library/Input Methods/DaoHui.app` (the Squirrel
+fork), whose `SUFeedURL` is `appcast-macos.xml`. A feed has to satisfy both
+readers (see "macOS feed" below for what Sparkle needs).
+
+Since 1.1.2.21 the package moves the input method into the login user's
+`~/Library/Input Methods`, and its Sparkle reads `appcast-macos-app.xml`
+instead: the same item with the app zipped (`DaoHui-x.y.z.zip`), which Sparkle
+installs in the background without a password. This app does not read that
+feed (it installs `.pkg` files only); it looks for the installed input method
+in `~/Library/Input Methods` first, then in `/Library/Input Methods`
+(`config::info_plist_candidates`, `deploy::deployer_candidates`).
 
 ## Windows feed (`update/appcast.xml`)
 
@@ -157,4 +165,6 @@ enclosures; a feed with both still works, since enclosures are picked by
    `sign_update DaoHui-x.y.z.pkg` (Sparkle) for `sparkle:edSignature` and
    `length`.
 4. Add the new item, newest first, to `update/appcast.xml` (the `.exe`) and to
-   `update/appcast-macos.xml` (the `.pkg`); commit to `main`.
+   `update/appcast-macos.xml` (the `.pkg`); commit to `main`. The macOS release
+   workflow (daohui-squirrel) writes both macOS feeds; copy
+   `appcast-macos-app.xml` (the `.zip`) into `update/` as well.

@@ -187,6 +187,12 @@ mod platform {
     /// The installed input method's Info.plist (CFBundleVersion = the version
     /// updates are compared with).
     pub const INFO_PLIST: &str = "/Library/Input Methods/DaoHui.app/Contents/Info.plist";
+    /// The same two relative to $HOME, looked at first: since DaoHui 1.1.2.21
+    /// the package moves the input method into the login user's
+    /// `~/Library/Input Methods`, where Sparkle updates it without a password;
+    /// 1.1.2.20 and older are in `/Library/Input Methods` (above).
+    pub const DEPLOYER_EXE_HOME_SUBDIR: &str = "Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui";
+    pub const INFO_PLIST_HOME_SUBDIR: &str = "Library/Input Methods/DaoHui.app/Contents/Info.plist";
     /// The same, relative to `DAOHUI_INSTALL_DIR` (an "Input Methods" folder).
     pub const DEPLOYER_EXE_IN_INSTALL_DIR: &str = "DaoHui.app/Contents/MacOS/DaoHui";
     pub const DEPLOYER_ARGS: &[&str] = &["--reload"];
@@ -244,7 +250,19 @@ fn default_user_dir() -> PathBuf {
 
 #[cfg(not(target_os = "windows"))]
 fn default_user_dir() -> PathBuf {
-    env_path("HOME").unwrap_or_else(|| PathBuf::from("/")).join(USER_DIR_HOME_SUBDIR)
+    home_path(USER_DIR_HOME_SUBDIR)
+}
+
+/// `subdir` of $HOME.
+#[cfg(not(target_os = "windows"))]
+pub fn home_path(subdir: &str) -> PathBuf {
+    env_path("HOME").unwrap_or_else(|| PathBuf::from("/")).join(subdir)
+}
+
+/// The installed input method's Info.plist: `~/Library/Input Methods` first.
+#[cfg(target_os = "macos")]
+pub fn info_plist_candidates() -> Vec<PathBuf> {
+    vec![home_path(INFO_PLIST_HOME_SUBDIR), PathBuf::from(INFO_PLIST)]
 }
 
 pub fn appcast_url() -> String {

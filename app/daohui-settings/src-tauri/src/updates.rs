@@ -382,7 +382,10 @@ pub(crate) fn installed_version() -> Option<String> {
     }
     #[cfg(target_os = "macos")]
     {
-        std::fs::read_to_string(config::INFO_PLIST).ok().and_then(|t| plist_bundle_version(&t))
+        config::info_plist_candidates()
+            .iter()
+            .find_map(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| plist_bundle_version(&t))
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {

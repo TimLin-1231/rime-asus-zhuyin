@@ -1,6 +1,7 @@
 //! 重新部署: runs the input method's deployer.
 //! Windows: `<install dir>\DaoHuiDeployer.exe /deploy`;
-//! macOS: `/Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui --reload`.
+//! macOS: `~/Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui --reload`
+//! (`/Library/Input Methods` for DaoHui 1.1.2.20 and older).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -58,6 +59,7 @@ pub fn deployer_candidates() -> Vec<PathBuf> {
     if let Some(d) = config::env_path(ENV_INSTALL_DIR) {
         v.push(d.join(DEPLOYER_EXE_IN_INSTALL_DIR));
     }
+    v.push(config::home_path(DEPLOYER_EXE_HOME_SUBDIR));
     v.push(PathBuf::from(DEPLOYER_EXE));
     v
 }
@@ -183,6 +185,10 @@ mod tests {
             assert_eq!(ARGS, &["--reload"]);
             let ime = PathBuf::from("/Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui");
             assert!(deployer_candidates().contains(&ime));
+            let user_ime = config::home_path("Library/Input Methods/DaoHui.app/Contents/MacOS/DaoHui");
+            let found = deployer_candidates();
+            let at = |p: &PathBuf| found.iter().position(|c| c == p);
+            assert!(at(&user_ime).unwrap() < at(&ime).unwrap());
         }
     }
 }
