@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:daohui="https://github.com/TimLin-1231/rime-asus-zhuyin/ns/appcast">
+  <channel>
+    <title>【島輝】輸入法更新頻道（macOS）</title>
+    <link>https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/update/appcast-macos-app.xml</link>
+    <description>島輝 DaoHui for macOS Appcast 更新頻道</description>
+    <language>zh</language>
+    <item>
+      <title>島輝 1.1.2.21</title>
+      <description><![CDATA[<p>島輝 1.1.2.21</p><ul><li>自動更新：之後有新版時，島輝會在背景下載，等你停止打字一分鐘後自動安裝，不用再按更新，也不用輸入密碼</li><li>島輝裝在你自己的輸入法資料夾（~/Library/Input Methods）</li><li>包含 1.1.2.20 的修正：在網頁和一些 app 裡按 Backspace，不會再整串變成按鍵字母</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.21">完整的更新說明</a></p>]]></description>
+      <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
+      <pubDate>Thu, 29 Oct 2026 17:21:55 +0000</pubDate>
+      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.21/DaoHui-1.1.2.21.zip"
+                 sparkle:version="1.1.2.21"
+                 sparkle:shortVersionString="1.1.2.21"
+                 sparkle:edSignature="JNgMM5O8sF68PPDrFjoZKj2mnXxVCCzbWNICUUko+rBDrui/vUFmhIL2U0PQ9ENlabWBtDuCj4cPGSWNCguNBg=="
+                 sparkle:os="macos"
+                 length="26490125"
+                 type="application/octet-stream"
+                 daohui:sha256="670773db05f945516f7f81af1a48eed5395fe44f1d11450e4da9f2955e38d13e"/>
+    </item>
+  </channel>
+</rss>
