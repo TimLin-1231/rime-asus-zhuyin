@@ -25,6 +25,7 @@ schema:
 engine:
   processors:
     - lua_processor@*asus_shift  # double-tap Shift; must see every key, so first
+    - lua_processor@*asus_fix*processor  # Ctrl+R: AI correction (the front end asks the model)
     - lua_processor@*asus_learn*processor  # Shift/Ctrl+Delete forgets; learns on commit
     - lua_processor@*asus_english*processor  # English mode: words with guesses
     - lua_processor@*asus_email*processor  # Tab types a remembered email address
@@ -43,6 +44,7 @@ engine:
     - navigator
     - fluency_editor
   segmentors:
+    - lua_segmentor@*asus_fix*segmentor  # an AI correction shown: one segment
     - lua_segmentor@*asus_english*segmentor  # English mode: one English segment
     - ascii_segmentor
     - matcher
@@ -51,6 +53,7 @@ engine:
     - punct_segmentor
     - fallback_segmentor
   translators:
+    - lua_translator@*asus_fix*translator  # the AI correction, then the original
     - punct_translator
     - lua_translator@*asus_symbols*translator
     - lua_translator@*asus_shortcuts  # rime/shortcuts.txt
@@ -72,7 +75,8 @@ engine:
     - lua_filter@*asus_quick*filter  # open list: 今天 -> dates, Tab on a number -> its forms
     - lua_filter@*asus_lang*steady  # text shown stays while the next syllable is being typed
     - lua_filter@*asus_edit*filter  # text after the editing cursor stays as it was
-    - lua_filter@*asus_compact  # must stay last
+    - lua_filter@*asus_compact  # last but the AI status line
+    - lua_filter@*asus_fix*filter  # "AI 修正中…" on the first candidate
 
 # Half-width mode (the default, as in ASUS Smart Input) types ASCII ( ) ? ! :
 # directly, without a menu; full-width （）？！： stay on Ctrl+Shift+9/0, /,

@@ -94,6 +94,12 @@ end
 local function func(input, env)
   local ctx = env.engine.context
   local seg = ctx.composition:back()
+  -- An AI correction shown (asus_fix.lua): its two rows as they are.
+  if seg and seg:has_tag("asus_fix") then
+    env.raw_active = false
+    for cand in input:iter() do yield(cand) end
+    return
+  end
   local keep_rare = ctx:get_option("extended_charset")
   if ctx:get_option(EXPANDED) or (seg and seg:has_tag("asus_symbol")) then
     env.raw_active = false

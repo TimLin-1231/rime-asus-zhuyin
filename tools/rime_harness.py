@@ -59,7 +59,7 @@ XK = {
     "Tab": 0xFF09, "Left": 0xFF51, "Up": 0xFF52, "Right": 0xFF53, "Down": 0xFF54,
     "Page_Up": 0xFF55, "Page_Down": 0xFF56, "Home": 0xFF50, "End": 0xFF57,
     "Shift_L": 0xFFE1, "Shift_R": 0xFFE2, "Control_L": 0xFFE3, "Control_R": 0xFFE4,
-    "Caps_Lock": 0xFFE5, "F24": 0xFFD5, "KP_Enter": 0xFF8D,
+    "Caps_Lock": 0xFFE5, "F23": 0xFFD4, "F24": 0xFFD5, "KP_Enter": 0xFF8D,
     "KP_Multiply": 0xFFAA, "KP_Add": 0xFFAB, "KP_Subtract": 0xFFAD, "KP_Decimal": 0xFFAE,
     "KP_Divide": 0xFFAF, **{f"KP_{i}": 0xFFB0 + i for i in range(10)},
 }
@@ -164,8 +164,8 @@ _API_FIELDS = [
     ("free_status", _F(Bool, _P(RimeStatus))),
     ("set_option", _F(None, RimeSessionId, C.c_char_p, Bool)),
     ("get_option", _F(Bool, RimeSessionId, C.c_char_p)),
-    ("set_property", C.c_void_p),
-    ("get_property", C.c_void_p),
+    ("set_property", _F(None, RimeSessionId, C.c_char_p, C.c_char_p)),
+    ("get_property", _F(Bool, RimeSessionId, C.c_char_p, C.c_char_p, C.c_size_t)),
     ("get_schema_list", C.c_void_p),
     ("free_schema_list", C.c_void_p),
     ("get_current_schema", _F(Bool, RimeSessionId, C.c_char_p, C.c_size_t)),
@@ -417,6 +417,15 @@ class Rime:
 
     def get_option(self, name: str) -> bool:
         return bool(self.api.get_option(self.session, name.encode()))
+
+    def set_property(self, name: str, value: str) -> None:
+        self.api.set_property(self.session, name.encode(), value.encode("utf-8"))
+
+    def get_property(self, name: str, size: int = 1 << 16) -> str:
+        buf = C.create_string_buffer(size)
+        if not self.api.get_property(self.session, name.encode(), buf, size):
+            return ""
+        return buf.value.decode("utf-8")
 
     def _drain_commit(self) -> None:
         commit = RimeCommit()

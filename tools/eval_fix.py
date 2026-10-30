@@ -282,6 +282,39 @@ def score(label: str, cases: list[dict], times: list[float], only: list[str]) ->
                             "totals": totals}, ensure_ascii=False) + "\n")
 
 
+def ime_rescore(label: str, only: list[str]) -> None:
+    """The answers saved by the last full run, through the IME itself:
+    Ctrl+R, the answer as the front end gives it (lua/asus_fix.lua), Enter.
+    Measures the guard as shipped (all readings of each character)."""
+    from eval_ime import VARIANTS
+    from rime_harness import CONTROL_MASK, SHIFT_MASK, open_rime
+
+    raw = json.loads(raw_path(label).read_text(encoding="utf-8"))
+    cases = [c for c in json.loads(CASES.read_text(encoding="utf-8")) if c["set"] in only]
+    config, schema, exclude, extra = VARIANTS["asus"]
+    extra = dict(extra)
+    extra[f"{schema}.custom.yaml"] = ("patch:\n  translator/enable_user_dict: false\n"
+                                      "  asus_learn/enabled: false\n")
+    r = open_rime("fix-ime", config, schema, exclude=exclude, extra=extra)
+    for c in cases:
+        r.clear()
+        r.key(">", SHIFT_MASK)
+        r.clear()
+        r.set_option("_asus_fix", True)
+        for ch in c["keys"]:
+            r.key(ch, SHIFT_MASK if ch.isupper() else 0)
+        r.key("r", CONTROL_MASK)
+        rid = r.get_property("asus_fix_request").partition("\t")[0]
+        r.set_property("asus_fix_request", "")
+        answer = raw["answers"][c["set"] + "\t" + c["keys"]]
+        r.set_property("asus_fix_result", f"{rid}\t{answer}")
+        r.key("F23")
+        r.key("Return")
+        c["after"] = "".join(r.committed)
+    r.close()
+    score(label + "+ime-guard (rescored)", cases, raw["times"], only)
+
+
 def raw_path(label: str) -> Path:
     return ROOT / ".harness" / f"fix_raw_{re.sub(r'[^A-Za-z0-9._-]', '_', label)}.json"
 
@@ -290,6 +323,9 @@ def run(args: argparse.Namespace) -> None:
     only = args.sets.split(",") if args.sets else SETS
     cases = [c for c in json.loads(CASES.read_text(encoding="utf-8")) if c["set"] in only]
     suffix = "" if args.no_guard else "+guard"
+    if args.ime_rescore:
+        ime_rescore(args.model, only)
+        return
     if args.rescore:
         # The model's answers from the last full run, through the current guard.
         label = args.model or args.api_model or args.endpoint
@@ -334,6 +370,8 @@ def main() -> None:
     ap.add_argument("--sets", help="comma-separated subset of: " + ",".join(SETS))
     ap.add_argument("--no-guard", action="store_true", help="keep corrections that no longer read as typed")
     ap.add_argument("--rescore", action="store_true", help="score the answers saved by the last full run again")
+    ap.add_argument("--ime-rescore", action="store_true",
+                    help="the saved answers through the IME (lua/asus_fix.lua): the guard as shipped")
     args = ap.parse_args()
     if args.prepare:
         prepare()
