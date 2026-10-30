@@ -7,18 +7,18 @@
     <description>島輝 DaoHui for macOS Appcast 更新頻道</description>
     <language>zh</language>
     <item>
-      <title>島輝 1.1.2.21</title>
-      <description><![CDATA[<p>島輝 1.1.2.21</p><ul><li>自動更新：之後有新版時，島輝會在背景下載，等你停止打字一分鐘後自動安裝，不用再按更新，也不用輸入密碼</li><li>這次更新會把島輝搬到你自己的輸入法資料夾（~/Library/Input Methods），這是最後一次需要輸入密碼。如果更新後島輝變灰或不見，請登出再登入</li><li>包含 1.1.2.20 的修正：在網頁和一些 app 裡按 Backspace，不會再整串變成按鍵字母</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.21">完整的更新說明</a></p>]]></description>
+      <title>島輝 1.1.2.23</title>
+      <description><![CDATA[<p>島輝 1.1.2.23</p><ul><li>新功能「AI 修正」：組字時按 Ctrl+R，由這台 Mac 上的 AI 修正同音錯字、按錯鍵打錯的字和「的／得／地」；按 Enter 送出修正，Esc 回到原句。第一次使用前，請在輸入法選單選「下載 AI 修正模型（約 2.8 GB）…」</li><li>自動更新：之後的新版會在背景下載，等你停止打字一分鐘後自動安裝，不用再按更新，也不用輸入密碼</li><li>這次更新會把島輝搬到你自己的輸入法資料夾（~/Library/Input Methods），這是最後一次需要輸入密碼。如果更新後島輝變灰或不見，請登出再登入</li><li>包含 1.1.2.20 的修正：在網頁和一些 app 裡按 Backspace，不會再整串變成按鍵字母</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.23">完整的更新說明</a></p>]]></description>
       <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
-      <pubDate>Thu, 29 Oct 2026 17:21:55 +0000</pubDate>
-      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.21/DaoHui-1.1.2.21.pkg"
-                 sparkle:version="1.1.2.21"
-                 sparkle:shortVersionString="1.1.2.21"
-                 sparkle:edSignature="zfNF+PpKpYEZHbRO+A5B+DbcbGP0ZbESV7IAcPxPMGPjW3jegQcDvTZ3JANOeH58gD8wDl6UqK7/16pgn6f+CA=="
+      <pubDate>Fri, 30 Oct 2026 20:38:28 +0000</pubDate>
+      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.23/DaoHui-1.1.2.23.pkg"
+                 sparkle:version="1.1.2.23"
+                 sparkle:shortVersionString="1.1.2.23"
+                 sparkle:edSignature="B2y9yF+sUQ9d4MdLAI6KzcwUn26Y7hrGIjIpsoW8NW4XS9fvBulKpncJuf4XYYhWfiWCseHX0bRbG50TaknoCA=="
                  sparkle:os="macos"
-                 length="26375921"
+                 length="26444759"
                  type="application/octet-stream"
-                 daohui:sha256="66005e5465df90442d2d49a6c8d4b873f09f83fcd1fbed8dda1f24ce5640435e"/>
+                 daohui:sha256="80d4fc96d8872d5e6acdc5d2100c9c58b78f033bf1276d5c4b088a50f7314f08"/>
     </item>
   </channel>
 </rss>
