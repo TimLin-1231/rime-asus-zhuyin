@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import random
 import re
 import sys
 import time
@@ -40,9 +41,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / ".harness" / "fix_cases.json"
 HISTORY = ROOT / "reports" / "fix_history.jsonl"
-SETS = ["dev", "dev_typo", "dev_typo_end", "dev_stray", "dev_omit", "dev_swap", "particles", "mixed", "numbers",
-        "test", "test_typo", "test_typo_end", "test_stray", "test_omit", "test_swap", "particles_test",
-        "mixed_test", "numbers_test"]
+SETS = ["dev", "dev_typo", "dev_typo_end", "dev_stray", "dev_omit", "dev_swap", "dev_tone", "particles", "mixed",
+        "numbers", "test", "test_typo", "test_typo_end", "test_stray", "test_omit", "test_swap", "test_tone",
+        "particles_test", "mixed_test", "numbers_test"]
+SYLLABLES = ROOT / ".harness" / "fix_syllables.json"
+TONE_KEYS = " 6347"
 # Local models (tools/fetch_assist.py; the 9B outside D:\Document, which
 # Google Drive backs up).
 MODELS = {
@@ -97,19 +100,42 @@ def typed_zhuyin(keys: str, got: str) -> str:
     return " ".join("".join(out).split())
 
 
-# -- prepare: what the IME shows and commits for each case --------------------
-def prepare() -> None:
-    from eval_ime import VARIANTS, build_sets
-    from rime_harness import SHIFT_MASK, open_rime
+def inject_tone(keys: str, rng: random.Random) -> str:
+    """One tone key typed as another (ㄒㄧㄝ typed ㄒㄧㄝˇ: 些 shown as 血)."""
+    spots = [i for i, ch in enumerate(keys) if ch in TONE_KEYS and i > 0 and keys[i - 1] not in TONE_KEYS]
+    if not spots:
+        return keys
+    i = rng.choice(spots)
+    return keys[:i] + rng.choice([t for t in TONE_KEYS if t != keys[i]]) + keys[i + 1:]
 
-    sets = build_sets()
+
+def open_ime(name: str):
+    from eval_ime import VARIANTS
+    from rime_harness import open_rime
+
     config, schema, exclude, extra = VARIANTS["asus"]
     extra = dict(extra)
     extra[f"{schema}.custom.yaml"] = ("patch:\n  translator/enable_user_dict: false\n"
                                       "  asus_learn/enabled: false\n")
-    r = open_rime("fix", config, schema, exclude=exclude, extra=extra)
-    cases = []
+    return open_rime(name, config, schema, exclude=exclude, extra=extra)
+
+
+# -- prepare: what the IME shows and commits for each case --------------------
+def prepare() -> None:
+    """Types every set not in CASES yet (all of them the first time)."""
+    from eval_ime import build_sets
+    from rime_harness import SHIFT_MASK
+
+    sets = build_sets()
+    # One tone key slipped per sentence (the typo sets never touch tone keys).
+    sets["dev_tone"] = [(inject_tone(k, random.Random(8007 + i)), t) for i, (k, t) in enumerate(sets["dev"])]
+    sets["test_tone"] = [(inject_tone(k, random.Random(9007 + i)), t) for i, (k, t) in enumerate(sets["test"])]
+    cases = json.loads(CASES.read_text(encoding="utf-8")) if CASES.exists() else []
+    have = {c["set"] for c in cases}
+    r = open_ime("fix")
     for name in SETS:
+        if name in have:
+            continue
         for keys, text in sets.get(name, []):
             r.clear()
             r.key(">", SHIFT_MASK)  # commit 。: the same left context for every case
@@ -134,6 +160,71 @@ def messages(zhuyin: str, got: str) -> list[dict]:
         msgs.append({"role": "assistant", "content": want})
     msgs.append({"role": "user", "content": f"注音：{zhuyin}\n輸入法：{got}"})
     return msgs
+
+
+# -- second pass: same syllable, any tone -----------------------------------------
+# When the first answer changed nothing (or was refused), the model is asked
+# again, told that a tone key may have slipped, and held by a grammar to the
+# characters of each typed syllable in any tone (一血 -> 一些). Pure Chinese
+# input with one syllable per character only.
+TONE_HINT = "注音的聲調也可能按錯（例如一聲按成三聲），請依整句的意思選字。"
+# Written for this experiment; not in any eval set.
+TONE_EXAMPLE = ("ㄨㄛˇ ㄇㄣ˙ ㄧˋ ㄑㄧˇ ㄑㄩˋ ㄍㄨㄥ ㄩㄢˇ ㄙㄢˋ ㄅㄨˋ", "我們一起去公遠散步", "我們一起去公園散步")
+SAME_SYLLABLE = 6  # the IME's commonest characters per tone
+
+
+def tone_messages(zhuyin: str, got: str) -> list[dict]:
+    msgs = messages(zhuyin, got)
+    msgs[0]["content"] += TONE_HINT
+    zy, shown, want = TONE_EXAMPLE
+    msgs[1:1] = [{"role": "user", "content": f"注音：{zy}\n輸入法：{shown}"},
+                 {"role": "assistant", "content": want}]
+    return msgs
+
+
+def syllables_of(keys: str, got: str) -> list[str] | None:
+    """The typed keys of each character, or None unless every character is
+    Chinese and the keys split into exactly one syllable per character."""
+    syls = re.findall(r"[^ 6347]+[ 6347]", keys)
+    if len(syls) != len(got) or "".join(syls) != keys or not all("㐀" <= ch <= "鿿" for ch in got):
+        return None
+    return syls
+
+
+def same_syllable_chars(cases: list[dict]) -> dict[str, list[str]]:
+    """Base syllable keys (no tone) -> the IME's commonest characters of it in
+    every tone, cached in SYLLABLES."""
+    table = json.loads(SYLLABLES.read_text(encoding="utf-8")) if SYLLABLES.exists() else {}
+    bases = {s.rstrip(TONE_KEYS) for c in cases for s in (syllables_of(c["keys"], c["got"]) or [])}
+    missing = sorted(b for b in bases if b not in table)
+    if missing:
+        r = open_ime("fix-syllables")
+        for base in missing:
+            chars: list[str] = []
+            for tone in TONE_KEYS:
+                r.clear()
+                r.type(base + tone)
+                r.key("Down")  # the full list (the bubble shows one or two)
+                singles = [text for text, _ in r.snapshot().candidates if len(text) == 1]
+                for text in singles[:SAME_SYLLABLE]:
+                    if text not in chars:
+                        chars.append(text)
+                r.clear()
+            table[base] = chars
+        r.close()
+        SYLLABLES.write_text(json.dumps(table, ensure_ascii=False), encoding="utf-8")
+    return table
+
+
+def same_syllable_grammar(case: dict, table: dict[str, list[str]]) -> str | None:
+    syls = syllables_of(case["keys"], case["got"])
+    if not syls:
+        return None
+    rules = ["root ::= " + " ".join(f"s{i}" for i in range(len(syls)))]
+    for i, (ch, syl) in enumerate(zip(case["got"], syls)):
+        alts = [ch] + [c for c in table.get(syl.rstrip(TONE_KEYS), []) if c != ch]
+        rules.append(f"s{i} ::= " + " | ".join(json.dumps(a, ensure_ascii=False) for a in alts))
+    return "\n".join(rules)
 
 
 def text_keys(text: str) -> str | None:
@@ -213,10 +304,13 @@ def tidy(out: str, got: str) -> str:
     return out
 
 
-def correct(endpoint: str, api_model: str, key: str, case: dict) -> tuple[str, float]:
+def correct(endpoint: str, api_model: str, key: str, case: dict, msgs: list[dict] | None = None,
+            grammar: str | None = None) -> tuple[str, float]:
     """The model's answer (tidied, before the guard) and the time it took."""
-    body = {"messages": messages(typed_zhuyin(case["keys"], case["got"]), case["got"]), "max_tokens": 2 * len(case["got"]) + 32,
-            "temperature": 0.0}
+    body = {"messages": msgs or messages(typed_zhuyin(case["keys"], case["got"]), case["got"]),
+            "max_tokens": 2 * len(case["got"]) + 32, "temperature": 0.0}
+    if grammar:
+        body["grammar"] = grammar  # llama.cpp's server
     if api_model:
         body["model"] = api_model
     else:
@@ -331,7 +425,7 @@ def run(args: argparse.Namespace) -> None:
         label = args.model or args.api_model or args.endpoint
         raw = json.loads(raw_path(label).read_text(encoding="utf-8"))
         for c in cases:
-            c["after"] = guarded(raw["answers"][c["set"] + "	" + c["keys"]], c, not args.no_guard)
+            c["after"] = guarded(raw["answers"][c["set"] + "\t" + c["keys"]], c, not args.no_guard)
         score(label + suffix + " (rescored)", cases, raw["times"], only)
         return
     model = None
@@ -343,21 +437,50 @@ def run(args: argparse.Namespace) -> None:
         model = Model(port=8733, context=4096, model=MODELS[args.model])
         model.start(timeout=300)
         endpoint, label, key = model.url + "/v1/chat/completions", args.model, ""
+    # First answers already asked for (same model, same prompt) are reused;
+    # each pass keeps its own cache: answers and seconds per case.
+    def load(path: Path) -> dict:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        data.setdefault("answers", {})
+        data.setdefault("time", {})
+        old = sorted(data.get("times", []))  # (older caches: one list)
+        data["fallback"] = old[len(old) // 2] if old else 0.0
+        return data
+
+    first, second = load(raw_path(label)), load(raw_path(label + "-tone2"))
+    table = same_syllable_chars(cases) if args.two_pass else {}
     times = []
     try:
         for i, c in enumerate(cases):
-            c["raw"], dt = correct(endpoint, args.api_model, key, c)
+            k = c["set"] + "\t" + c["keys"]
+            if k in first["answers"]:
+                c["raw"], dt = first["answers"][k], first["time"].get(k, first["fallback"])
+            else:
+                c["raw"], dt = correct(endpoint, args.api_model, key, c)
+                first["answers"][k], first["time"][k] = c["raw"], dt
             c["after"] = guarded(c["raw"], c, not args.no_guard)
+            if args.two_pass and c["after"] == c["got"]:
+                g = same_syllable_grammar(c, table)
+                if g:
+                    if k in second["answers"]:
+                        raw2, dt2 = second["answers"][k], second["time"].get(k, 0.0)
+                    else:
+                        msgs = tone_messages(typed_zhuyin(c["keys"], c["got"]), c["got"])
+                        raw2, dt2 = correct(endpoint, args.api_model, key, c, msgs, g)
+                        second["answers"][k], second["time"][k] = raw2, dt2
+                    c["after"] = guarded(raw2, c, not args.no_guard)
+                    dt += dt2
             times.append(dt)
             if (i + 1) % 100 == 0:
                 print(f"  {i + 1}/{len(cases)}", file=sys.stderr, flush=True)
     finally:
         if model:
             model.stop()
-    if not args.sets:
-        raw_path(label).write_text(json.dumps({"answers": {c["set"] + "	" + c["keys"]: c["raw"] for c in cases},
-                                               "times": times}, ensure_ascii=False), encoding="utf-8")
-    score(label + suffix, cases, times, only)
+        for data, path in ((first, raw_path(label)), (second, raw_path(label + "-tone2"))):
+            if data["answers"]:
+                path.write_text(json.dumps({"answers": data["answers"], "time": data["time"]}, ensure_ascii=False),
+                                encoding="utf-8")
+    score(label + ("+two-pass" if args.two_pass else "") + suffix, cases, times, only)
 
 
 def main() -> None:
@@ -372,6 +495,9 @@ def main() -> None:
     ap.add_argument("--rescore", action="store_true", help="score the answers saved by the last full run again")
     ap.add_argument("--ime-rescore", action="store_true",
                     help="the saved answers through the IME (lua/asus_fix.lua): the guard as shipped")
+    ap.add_argument("--two-pass", action="store_true",
+                    help="when the first answer changes nothing, ask again held to each syllable's characters "
+                         "in any tone, told that a tone may have slipped")
     args = ap.parse_args()
     if args.prepare:
         prepare()
