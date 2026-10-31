@@ -15,6 +15,26 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.11</title>
+      <pubDate>Sat, 31 Oct 2026 01:25:00 -0500</pubDate>
+      <sparkle:version>0.17.4.11</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.11</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.11</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>AI 修正（Ctrl+R）會再想一次：第一次沒找到要改的地方時，自動再問一次，聲調按錯也修得到（例如「一血範例」→「一些範例」）</li>
+          <li>不需要重新下載模型</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.11/daohui-0.17.4.11-installer.exe"
+                 sparkle:version="0.17.4.11"
+                 sparkle:os="windows"
+                 sparkle:installerArguments=""
+                 length="17697428"
+                 type="application/octet-stream"
+                 daohui:sha256="d77606b2200cde5742f9936b71781d732b598ace8e1c50c50b2b0e2c167a6de2" />
+    </item>
+    <item>
       <title>島輝 0.17.4.10</title>
       <pubDate>Fri, 30 Oct 2026 21:30:00 -0500</pubDate>
       <sparkle:version>0.17.4.10</sparkle:version>

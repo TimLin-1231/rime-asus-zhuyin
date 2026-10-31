@@ -7,18 +7,18 @@
     <description>島輝 DaoHui for macOS Appcast 更新頻道</description>
     <language>zh</language>
     <item>
-      <title>島輝 1.1.2.23</title>
-      <description><![CDATA[<p>島輝 1.1.2.23</p><ul><li>新功能「AI 修正」：組字時按 Ctrl+R，由這台 Mac 上的 AI 修正同音錯字、按錯鍵打錯的字和「的／得／地」。改好的句子會顯示出來，按 Enter 送出，按 Esc 回到原句。文字不會離開這台 Mac</li><li>第一次使用前，請在島輝的輸入法選單選「下載 AI 修正模型（約 2.8 GB）…」，下載好會通知你</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.23">完整的更新說明</a></p>]]></description>
+      <title>島輝 1.1.2.24</title>
+      <description><![CDATA[<p>島輝 1.1.2.24</p><ul><li>AI 修正（Ctrl+R）會再想一次：第一次沒找到要改的地方時，自動再問一次，聲調按錯也修得到（例如「一血範例」→「一些範例」）。第二次只會換成同一個注音、不同聲調的字</li><li>不需要重新下載模型</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.24">完整的更新說明</a></p>]]></description>
       <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
-      <pubDate>Fri, 30 Oct 2026 20:38:28 +0000</pubDate>
-      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.23/DaoHui-1.1.2.23.zip"
-                 sparkle:version="1.1.2.23"
-                 sparkle:shortVersionString="1.1.2.23"
-                 sparkle:edSignature="4KlQoUeTsOQrZyBqMVtpS0cD21+tRit2C7bPm1DNFkYM749Ugy2LEcJzMNO8AHhZIwr1EGPrcji/05z1MxchBw=="
+      <pubDate>Sat, 31 Oct 2026 06:20:17 +0000</pubDate>
+      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.24/DaoHui-1.1.2.24.zip"
+                 sparkle:version="1.1.2.24"
+                 sparkle:shortVersionString="1.1.2.24"
+                 sparkle:edSignature="ha1T/TovHEwaUVtPbteSJjXWWSWH9jKTO8RcMvxzeD3FgpN3Lae7SPSSkRJ1ie6SYztbzsYuRnqZK6XdrjA3BA=="
                  sparkle:os="macos"
-                 length="26555446"
+                 length="26556757"
                  type="application/octet-stream"
-                 daohui:sha256="a6ddfe5651fa6ce4d09979ffae7b96befb1a079f3e70069ae515f0fd2b625d42"/>
+                 daohui:sha256="759b5ca2b6c25f43227baaaf16176ee15156ea3ecc638d02aa51d66139c2ac78"/>
     </item>
   </channel>
 </rss>
