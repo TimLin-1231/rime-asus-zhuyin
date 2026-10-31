@@ -15,6 +15,25 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.13</title>
+      <pubDate>Sat, 31 Oct 2026 12:40:00 -0500</pubDate>
+      <sparkle:version>0.17.4.13</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.13</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.13</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>修正：還在選字時按 Ctrl+V 無法貼上。現在會先送出畫面上的字，再貼上剪貼簿的內容</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.13/daohui-0.17.4.13-installer.exe"
+                 sparkle:version="0.17.4.13"
+                 sparkle:os="windows"
+                 sparkle:installerArguments=""
+                 length="17703667"
+                 type="application/octet-stream"
+                 daohui:sha256="53788d5868ef38176096df638fc78861c904f5aaddf4394b93e37227cefd2ab4" />
+    </item>
+    <item>
       <title>島輝 0.17.4.12</title>
       <pubDate>Sat, 31 Oct 2026 11:50:00 -0500</pubDate>
       <sparkle:version>0.17.4.12</sparkle:version>
