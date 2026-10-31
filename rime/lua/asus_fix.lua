@@ -16,6 +16,11 @@
 --      (asus_fix), with the original as the second candidate. Enter commits
 --      it, Esc goes back to the original, any other key goes back and works
 --      on the original.
+--   4. An answer that changes nothing (or that guard() refuses) is followed
+--      by a second request, put in asus_fix_request while F23 is handled:
+--      a tone key may have slipped (一血 for 一些), so the model is held to
+--      the characters of each typed syllable in any tone. The front end
+--      looks for a request after every key it sends, F23 included.
 -- Only a front end that can ask sets the option _asus_fix; without it Ctrl+R
 -- is left alone. asus_fix/enabled: false turns the feature off.
 -- The prompt, tidy() and guard() follow tools/eval_fix.py, where they were
@@ -50,6 +55,12 @@ local EXAMPLES = {
   { "ㄓㄜˋ ㄐㄧㄚ ㄘㄢ ㄊㄧㄥ ㄉㄜ˙ ㄈㄨˊ ㄨˋ ㄏㄣˇ ㄏㄠˇ", "這家餐廳的服物很好", "這家餐廳的服務很好" },
   { "ㄒㄧㄚˋ ㄌㄧˇ ㄅㄞˋ ㄉㄜ˙ demo ㄒㄧㄢ ㄑㄩˇ ㄒㄧㄠ", "下禮拜的demo先取消", "下禮拜的demo先取消" },
 }
+-- The second pass (eval_fix.py --two-pass): the hint goes after SYSTEM, the
+-- example before EXAMPLES.
+local TONE_HINT = "注音的聲調也可能按錯（例如一聲按成三聲），請依整句的意思選字。"
+local TONE_EXAMPLE = { "ㄨㄛˇ ㄇㄣ˙ ㄧˋ ㄑㄧˇ ㄑㄩˋ ㄍㄨㄥ ㄩㄢˇ ㄙㄢˋ ㄅㄨˋ", "我們一起去公遠散步", "我們一起去公園散步" }
+local SAME_SYLLABLE = 6  -- the IME's commonest characters of a syllable, per tone
+local TONE_KEYS = { " ", "6", "3", "4", "7" }
 
 -- Characters ------------------------------------------------------------------
 local function chars(s)
@@ -106,16 +117,84 @@ local function message(role, content)
   return '{"role":"' .. role .. '","content":' .. json_str(content) .. "}"
 end
 
-local function request_body(zhuyin, text)
-  local msgs = { message("system", SYSTEM) }
-  for _, ex in ipairs(EXAMPLES) do
+-- The chat request; with a grammar (llama.cpp's server), the second pass.
+local function request_body(zhuyin, text, grammar)
+  local msgs = { message("system", grammar and (SYSTEM .. TONE_HINT) or SYSTEM) }
+  local examples = grammar and { TONE_EXAMPLE } or {}
+  for _, ex in ipairs(EXAMPLES) do examples[#examples + 1] = ex end
+  for _, ex in ipairs(examples) do
     msgs[#msgs + 1] = message("user", "注音：" .. ex[1] .. "\n輸入法：" .. ex[2])
     msgs[#msgs + 1] = message("assistant", ex[3])
   end
   msgs[#msgs + 1] = message("user", "注音：" .. zhuyin .. "\n輸入法：" .. text)
   local n = utf8.len(text) or #text
   return '{"messages":[' .. table.concat(msgs, ",") .. '],"max_tokens":' .. (2 * n + 32)
-      .. ',"temperature":0,"cache_prompt":true}'
+      .. ',"temperature":0,"cache_prompt":true'
+      .. (grammar and (',"grammar":' .. json_str(grammar)) or "") .. "}"
+end
+
+-- The typed keys of each character, or nil unless every character is
+-- Chinese and the keys split into exactly one syllable per character.
+local function syllables_of(keys, text)
+  local syls = {}
+  for s in keys:gmatch("[^ 6347]+[ 6347]") do syls[#syls + 1] = s end
+  if table.concat(syls) ~= keys or #syls ~= utf8.len(text) then return nil end
+  for _, cp in utf8.codes(text) do
+    if cp < 0x3400 or cp > 0x9fff then return nil end
+  end
+  return syls
+end
+
+-- The IME's commonest single characters of a syllable (keys without the
+-- tone) in every tone, as the bubble would show them.
+local function same_syllable(env, base)
+  if env.same[base] then return env.same[base] end
+  if env.tr == nil then
+    local ok, tr = pcall(function()
+      return Component.Translator(env.engine, "", "script_translator@translator")
+    end)
+    env.tr = ok and tr or false
+    local ok_tw, tw = pcall(Opencc, "t2tw.json")
+    env.tw = ok_tw and tw or false  -- Taiwan forms, as the simplifier gives
+  end
+  local found, seen = {}, {}
+  for _, tone in ipairs(TONE_KEYS) do
+    local q = base .. tone
+    local seg = Segment(0, #q)
+    seg.tags = Set({ "abc" })
+    local t = env.tr and env.tr:query(q, seg)
+    local n = 0
+    if t then
+      for c in t:iter() do
+        if n >= SAME_SYLLABLE then break end
+        if c._end == #q and utf8.len(c.text) == 1 then
+          local ch = env.tw and env.tw:convert(c.text) or c.text
+          n = n + 1
+          if not seen[ch] and not ch:find('["\\]') then seen[ch], found[#found + 1] = true, ch end
+        end
+      end
+    end
+  end
+  env.same[base] = found
+  return found
+end
+
+-- Each character of text, or another of the same syllable in any tone.
+local function same_syllable_grammar(env, keys, text)
+  local syls = syllables_of(keys, text)
+  if not syls then return nil end
+  local root, rules, i = {}, {}, 0
+  for _, cp in utf8.codes(text) do
+    local ch = utf8.char(cp)
+    i = i + 1
+    local alts = { '"' .. ch .. '"' }
+    for _, c in ipairs(same_syllable(env, syls[i]:sub(1, -2))) do
+      if c ~= ch then alts[#alts + 1] = '"' .. c .. '"' end
+    end
+    root[#root + 1] = "s" .. (i - 1)
+    rules[#rules + 1] = "s" .. (i - 1) .. " ::= " .. table.concat(alts, " | ")
+  end
+  return "root ::= " .. table.concat(root, " ") .. "\n" .. table.concat(rules, "\n")
 end
 
 -- The answer -------------------------------------------------------------------
@@ -314,10 +393,21 @@ function processor.init(env)
   local on = env.engine.schema.config:get_bool("asus_fix/enabled")
   env.enabled = (on == nil) or on
   env.serial = 0
+  env.same = {}  -- same_syllable(), by syllable
 end
 
 local function set_state(ctx, value)
   if (ctx:get_property(STATE) or "") ~= value then ctx:set_property(STATE, value) end
+end
+
+-- Puts a request for the front end; with a grammar, the second pass.
+local function ask(env, ctx, input, text, grammar)
+  env.serial = env.serial + 1
+  local id = env.serial .. "." .. os.time()
+  env.pending = { id = id, input = input, text = text, time = os.time(), second = grammar ~= nil }
+  ctx:set_property(REQUEST, id .. "\t" .. request_body(typed_zhuyin(input, text), text, grammar))
+  set_state(ctx, "busy\t" .. input)
+  ctx:refresh_non_confirmed_composition()
 end
 
 local function leave_shown(ctx, refresh)
@@ -345,6 +435,11 @@ local function on_answer(env, ctx)
     if fixed ~= p.text and guard(fixed, p.text, p.input) then
       ctx:set_property(SHOWN, p.input .. "\t" .. fixed .. "\t" .. p.text)
     else
+      local grammar = not p.second and same_syllable_grammar(env, p.input, p.text)
+      if grammar then
+        ask(env, ctx, p.input, p.text, grammar)  -- once more, any tone
+        return
+      end
       note = "沒有要改的"
     end
   end
@@ -400,12 +495,7 @@ function processor.func(key, env)
     if env.pending and env.pending.input == ctx.input then return kAccepted end
     local text = ctx:get_commit_text()
     if text == "" then return kAccepted end
-    env.serial = env.serial + 1
-    local id = env.serial .. "." .. os.time()
-    env.pending = { id = id, input = ctx.input, text = text, time = os.time() }
-    ctx:set_property(REQUEST, id .. "\t" .. request_body(typed_zhuyin(ctx.input, text), text))
-    set_state(ctx, "busy\t" .. ctx.input)
-    ctx:refresh_non_confirmed_composition()
+    ask(env, ctx, ctx.input, text)
     return kAccepted
   end
   return kNoop

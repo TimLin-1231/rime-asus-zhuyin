@@ -15,6 +15,9 @@ key is read from the file and never printed).
     python tools/eval_fix.py --model qwen --rescore   the answers of the last
                                                   full run through the current
                                                   guard (no model needed)
+    python tools/eval_fix.py --model qwen --ime-rescore --two-pass   through
+                                                  the IME as shipped, both
+                                                  requests (lua/asus_fix.lua)
 
 Sets come from tools/eval_ime.py (the typo sets are the same seeded
 injections). Dev sets list every case that changed; held-out sets (test,
@@ -376,37 +379,87 @@ def score(label: str, cases: list[dict], times: list[float], only: list[str]) ->
                             "totals": totals}, ensure_ascii=False) + "\n")
 
 
-def ime_rescore(label: str, only: list[str]) -> None:
+def ime_rescore(label: str, only: list[str], two_pass: bool = False) -> None:
     """The answers saved by the last full run, through the IME itself:
     Ctrl+R, the answer as the front end gives it (lua/asus_fix.lua), Enter.
-    Measures the guard as shipped (all readings of each character)."""
+    Measures the guard as shipped (all readings of each character). With
+    two_pass, the second request the IME then makes is answered too: from
+    the --two-pass cache when its grammar is the one asked with there,
+    otherwise by the model (started when first needed)."""
     from eval_ime import VARIANTS
     from rime_harness import CONTROL_MASK, SHIFT_MASK, open_rime
 
     raw = json.loads(raw_path(label).read_text(encoding="utf-8"))
     cases = [c for c in json.loads(CASES.read_text(encoding="utf-8")) if c["set"] in only]
+    old = sorted(raw.get("times", []))  # (older caches: one list)
+    times = [raw.get("time", {}).get(c["set"] + "\t" + c["keys"], old[len(old) // 2] if old else 0.0)
+             for c in cases]
+    if two_pass:
+        old2 = raw_path(label + "-tone2")
+        old2 = json.loads(old2.read_text(encoding="utf-8")) if old2.exists() else {"answers": {}, "time": {}}
+        mine_path = raw_path(label + "-tone2-ime")
+        mine = (json.loads(mine_path.read_text(encoding="utf-8")) if mine_path.exists()
+                else {"answers": {}, "time": {}, "grammar": {}})
+        table = same_syllable_chars(cases)
+        model, asked, live = None, 0, 0
     config, schema, exclude, extra = VARIANTS["asus"]
     extra = dict(extra)
     extra[f"{schema}.custom.yaml"] = ("patch:\n  translator/enable_user_dict: false\n"
                                       "  asus_learn/enabled: false\n")
     r = open_rime("fix-ime", config, schema, exclude=exclude, extra=extra)
-    for c in cases:
-        r.clear()
-        r.key(">", SHIFT_MASK)
-        r.clear()
-        r.set_option("_asus_fix", True)
-        for ch in c["keys"]:
-            r.key(ch, SHIFT_MASK if ch.isupper() else 0)
-        r.key("r", CONTROL_MASK)
-        rid = r.get_property("asus_fix_request").partition("\t")[0]
-        r.set_property("asus_fix_request", "")
-        answer = raw["answers"][c["set"] + "\t" + c["keys"]]
-        r.set_property("asus_fix_result", f"{rid}\t{answer}")
-        r.key("F23")
-        r.key("Return")
-        c["after"] = "".join(r.committed)
-    r.close()
-    score(label + "+ime-guard (rescored)", cases, raw["times"], only)
+    try:
+        for i, c in enumerate(cases):
+            k = c["set"] + "\t" + c["keys"]
+            r.clear()
+            r.key(">", SHIFT_MASK)
+            r.clear()
+            r.set_option("_asus_fix", True)
+            for ch in c["keys"]:
+                r.key(ch, SHIFT_MASK if ch.isupper() else 0)
+            r.key("r", CONTROL_MASK)
+            rid = r.get_property("asus_fix_request").partition("\t")[0]
+            r.set_property("asus_fix_request", "")
+            r.set_property("asus_fix_result", f"{rid}\t{raw['answers'][k]}")
+            r.key("F23")
+            rid, _, body = r.get_property("asus_fix_request").partition("\t")
+            if two_pass and rid:
+                r.set_property("asus_fix_request", "")
+                g = json.loads(body)["grammar"]
+                asked += 1
+                if mine["grammar"].get(k) == g:
+                    answer, dt = mine["answers"][k], mine["time"].get(k, 0.0)
+                elif k in old2["answers"] and same_syllable_grammar(c, table) == g:
+                    answer, dt = old2["answers"][k], old2["time"].get(k, 0.0)
+                else:
+                    if model is None:
+                        from assist.llm import Model
+                        model = Model(port=8733, context=4096, model=MODELS[label])
+                        model.start(timeout=300)
+                    req = urllib.request.Request(model.url + "/v1/chat/completions", data=body.encode("utf-8"),
+                                                 headers={"Content-Type": "application/json"})
+                    t0 = time.perf_counter()
+                    with urllib.request.urlopen(req, timeout=120) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                    dt = time.perf_counter() - t0
+                    answer = tidy(data["choices"][0]["message"].get("content") or "", c["got"])
+                    live += 1
+                mine["answers"][k], mine["time"][k], mine["grammar"][k] = answer, dt, g
+                times[i] += dt
+                r.set_property("asus_fix_result", f"{rid}\t{answer}")
+                r.key("F23")
+            r.key("Return")
+            c["after"] = "".join(r.committed)
+            if (i + 1) % 100 == 0:
+                print(f"  {i + 1}/{len(cases)}", file=sys.stderr, flush=True)
+    finally:
+        r.close()
+        if two_pass:
+            if model:
+                model.stop()
+            mine_path.write_text(json.dumps(mine, ensure_ascii=False), encoding="utf-8")
+    if two_pass:
+        print(f"second requests: {asked} ({live} asked of the model now)")
+    score(label + ("+two-pass" if two_pass else "") + "+ime-guard (rescored)", cases, times, only)
 
 
 def raw_path(label: str) -> Path:
@@ -418,7 +471,7 @@ def run(args: argparse.Namespace) -> None:
     cases = [c for c in json.loads(CASES.read_text(encoding="utf-8")) if c["set"] in only]
     suffix = "" if args.no_guard else "+guard"
     if args.ime_rescore:
-        ime_rescore(args.model, only)
+        ime_rescore(args.model, only, args.two_pass)
         return
     if args.rescore:
         # The model's answers from the last full run, through the current guard.

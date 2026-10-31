@@ -50,6 +50,15 @@ def main() -> int:
         r.key("F23")
         return r.snapshot()
 
+    def answer_both(rid: str, text: str, second: str):
+        """Answer, and answer the second request (any tone) that follows an
+        answer changing nothing with second; (snapshot, a second was asked)."""
+        answer(rid, text)
+        rid2 = r.get_property("asus_fix_request").partition("\t")[0]
+        if not rid2:
+            return r.snapshot(), False
+        return answer(rid2, second), True
+
     # The IME shows 應用城市 for these keys (a dev sentence).
     want = "請重新啟動應用程式"
     handled, rid, body, shown = start(want)
@@ -103,7 +112,7 @@ def main() -> int:
                              ("資料前處理花了很多時間", "資料前處理花了很長時間", "a rewording that reads differently"),
                              ("我晚一點再回覆你", "我晚一點回覆你", "a dropped word")):
         _, rid, _, shown = start(text)
-        s = answer(rid, wrong)
+        s, _ = answer_both(rid, wrong, wrong)
         check(f"rejected: {why}", s.preview == shown and any("沒有要改的" in c for _, c in s.candidates[:1]),
               f"{s.preview!r} {s.candidates[:1]}")
     r.clear()
@@ -114,6 +123,8 @@ def main() -> int:
     rid = r.get_property("asus_fix_request").partition("\t")[0]
     s = answer(rid, shown.replace("10", "十"))
     check("rejected: a number turned into 十", s.preview == shown, f"{shown!r} -> {s.preview!r}")
+    check("and no second request for input with a number", r.get_property("asus_fix_request") == "",
+          r.get_property("asus_fix_request")[:80])
 
     # A stray key (n in ㄔㄨㄙㄥˊ): asus_typo answers for the segment too.
     r.clear()
@@ -135,13 +146,62 @@ def main() -> int:
     check("and Enter commits it as shown", "".join(r.committed) == long_want, repr(r.committed))
 
     _, rid, _, shown = start("我們比較了三種不同的方法")
-    s = answer(rid, "我們比較了三种不同的方法")
+    s, _ = answer_both(rid, "我們比較了三种不同的方法", "我們比較了三种不同的方法")
     check("rejected: a simplified character (種 -> 种)", s.preview == shown, repr(s.preview))
+
+    # The second pass: a tone key slipped (ㄒㄧㄝˇ for 些) and the IME shows 一血.
+    tone_want = "你可以給我一些範例嗎"
+    tone_keys = "".join(k[:-1] + "3" if ch == "些" else k for ch, k in zip(tone_want, reading_keys(tone_want)[0]))
+    r.clear()
+    r.set_option("_asus_fix", True)
+    r.type(tone_keys)
+    shown = r.snapshot().preview
+    r.key("r", CONTROL_MASK)
+    rid, _, body = r.get_property("asus_fix_request").partition("\t")
+    check("the first request has no grammar", '"grammar"' not in body and "聲調" not in body)
+    answer(rid, shown)  # the first answer changes nothing
+    rid2, _, body2 = r.get_property("asus_fix_request").partition("\t")
+    check("an answer changing nothing is followed by a second request", rid2 not in ("", rid), repr(rid2))
+    try:
+        req = json.loads(body2)
+        rules = req["grammar"].splitlines()
+        s6 = rules[7] if len(rules) > 7 else ""
+        check("the second request: the tone hint and its example",
+              req["messages"][0]["content"].endswith("請依整句的意思選字。") and len(req["messages"]) == 14
+              and req["messages"][1]["content"].endswith("輸入法：我們一起去公遠散步"), req["messages"][1]["content"])
+        check("and a grammar: each character or another of its syllable in any tone",
+              rules[0] == "root ::= " + " ".join(f"s{i}" for i in range(len(tone_want)))
+              and s6.startswith('s6 ::= "血" | ') and '"些"' in s6 and '"寫"' in s6 and '"謝"' in s6
+              and '"範"' not in s6, s6[:80])
+    except (ValueError, KeyError) as e:
+        check("the second request: the tone hint and its example", False, f"{e}: {body2[:200]}")
+    s = r.snapshot()
+    check("the bubble still says AI 修正中…", s.candidates and "AI 修正中" in s.candidates[0][1], f"{s.candidates[:1]}")
+    s = answer(rid, tone_want)
+    check("an answer to the first request now is dropped", s.preview == shown, repr(s.preview))
+    s = answer(rid2, tone_want)
+    check("the second answer is shown", s.preview == tone_want and "血→些" in s.candidates[0][1],
+          f"{s.preview!r} {s.candidates[:1]}")
+    r.key("Return")
+    check("and Enter commits it", "".join(r.committed) == tone_want, repr(r.committed))
+    r.clear()
+    r.set_option("_asus_fix", True)
+    r.type(tone_keys)
+    r.key("r", CONTROL_MASK)
+    rid = r.get_property("asus_fix_request").partition("\t")[0]
+    s, second = answer_both(rid, shown, shown)
+    check("a second answer changing nothing: 沒有要改的, and no third request",
+          second and s.preview == shown and "沒有要改的" in s.candidates[0][1]
+          and r.get_property("asus_fix_request") == "", f"{second} {s.candidates[:1]}")
+    _, rid, _, shown = start(want)
+    s = answer(rid, want)
+    check("a correction from the first answer asks nothing more", s.preview == want
+          and r.get_property("asus_fix_request") == "", repr(s.preview))
 
     _, rid, _, shown = start(want)
     s = answer(rid, "!需要先下載 AI 模型")
-    check("a front-end message is shown", s.preview == shown and "需要先下載" in s.candidates[0][1],
-          f"{s.candidates[:1]}")
+    check("a front-end message is shown", s.preview == shown and "需要先下載" in s.candidates[0][1]
+          and r.get_property("asus_fix_request") == "", f"{s.candidates[:1]}")
     r.type("u")
     s = r.snapshot()
     check("and gone with the next key", not any("需要先下載" in c for _, c in s.candidates), f"{s.candidates[:1]}")
