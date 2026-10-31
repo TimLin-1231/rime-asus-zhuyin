@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod about;
+mod ai;
 mod autosync;
 mod config;
 mod deploy;
@@ -32,6 +33,8 @@ pub struct AppState {
     pub update_cancel: AtomicBool,
     pub model_busy: AtomicBool,
     pub model_cancel: AtomicBool,
+    pub ai_busy: AtomicBool,
+    pub ai_cancel: AtomicBool,
     pub sync_busy: AtomicBool,
 }
 
@@ -78,6 +81,9 @@ fn main() {
             model::download_model,
             model::cancel_model_download,
             model::verify_model,
+            ai::ai_status,
+            ai::download_ai,
+            ai::cancel_ai_download,
             sync::sync_info,
             sync::set_sync_dir,
             sync::pick_sync_dir,

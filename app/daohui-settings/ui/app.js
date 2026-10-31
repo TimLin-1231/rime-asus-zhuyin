@@ -738,7 +738,77 @@ $('#m-verify').addEventListener('click', async () => {
 
 $('#m-deploy').addEventListener('click', (e) => redeploy(e.currentTarget));
 
-loaders.model = async () => renderModel(await call('model_status'));
+// ------------------------------------------------------------ AI 修正 (Ctrl+R)
+
+const aiSpeed = speedTracker();
+
+function renderAi(s) {
+  $('#ai-path').textContent = s.dir || '—';
+  const badge = $('#ai-badge');
+  const icon = $('#ai-icon');
+  const dl = $('#ai-download');
+  if (s.serverReady && s.modelReady) {
+    badge.className = 'badge ok';
+    badge.textContent = '已安裝';
+    icon.dataset.state = 'ok';
+    $('#ai-desc').textContent = '已就緒：打字時按 Ctrl+R。';
+    dl.hidden = true;
+  } else {
+    badge.className = 'badge warn';
+    badge.textContent = '未安裝';
+    icon.dataset.state = 'warn';
+    $('#ai-desc').textContent = s.partialBytes
+      ? `已下載一部分，還要約 ${fmtBytes(s.sizeHint)}，可以繼續。`
+      : `需要下載 llama.cpp 與 Qwen3.5-4B 模型（約 ${fmtBytes(s.sizeHint)}）。`;
+    dl.hidden = false;
+    dl.textContent = s.partialBytes ? '繼續下載' : '下載';
+  }
+  dl.disabled = !s.configured || s.downloading;
+}
+
+listen('ai-progress', (ev) => {
+  const p = ev.payload;
+  if (p.phase === 'download') {
+    const sp = aiSpeed(p.downloaded);
+    const total = p.total ? ` / ${fmtBytes(p.total)}` : '';
+    let eta = '';
+    if (sp > 0 && p.total) {
+      const sec = Math.round((p.total - p.downloaded) / sp);
+      eta = sec > 90 ? ` · 約 ${Math.round(sec / 60)} 分鐘` : ` · 約 ${sec} 秒`;
+    }
+    showProgress('#ai-progress', '#ai-progress-text', p,
+      `${fmtBytes(p.downloaded)}${total}${sp ? ` · ${fmtBytes(sp)}/s` : ''}${eta}`);
+  } else if (p.phase === 'unpack') {
+    showProgress('#ai-progress', '#ai-progress-text', { downloaded: 0, total: null }, '正在解壓縮 llama.cpp…');
+  } else if (p.phase === 'done') {
+    $('#ai-progress').hidden = true;
+  }
+});
+
+$('#ai-download').addEventListener('click', async () => {
+  const btn = $('#ai-download');
+  busy(btn, true);
+  $('#ai-cancel').hidden = false;
+  try {
+    renderAi(await invoke('download_ai'));
+    $('#ai-progress-text').textContent = '下載完成，SHA-256 驗證通過。打字時按 Ctrl+R 就能用。';
+  } catch (e) {
+    $('#ai-progress-text').textContent = String(e);
+    if (!String(e).startsWith('已取消')) toast(String(e), 'error');
+    renderAi(await invoke('ai_status'));
+  } finally {
+    btn.classList.remove('busy');
+    $('#ai-cancel').hidden = true;
+    $('#ai-progress').hidden = true;
+  }
+});
+
+$('#ai-cancel').addEventListener('click', () => invoke('cancel_ai_download'));
+
+loaders.model = async () => {
+  renderModel(await call('model_status'));
+  renderAi(await call('ai_status'));
+};
 
 // ------------------------------------------------------------ start
 
@@ -801,6 +871,10 @@ function mockInvoke(cmd, args) {
       fileName: 'wanxiang-lts-zh-hant.gram', path: 'C:\\Users\\you\\AppData\\Roaming\\DaoHui\\wanxiang-lts-zh-hant.gram',
       exists: false, bytes: 0, partialBytes: 0, sizeHint: 410679340, configured: false, url: null, sha256: null,
       downloading: false, license: 'CC-BY-4.0', sourceUrl: 'https://github.com/amzxyz/RIME-LMDG',
+    },
+    ai_status: {
+      configured: true, dir: 'C:\\Users\\you\\AppData\\Local\\DaoHui\\ai', serverReady: false, modelReady: false,
+      partialBytes: 0, sizeHint: 2773022007, downloading: false,
     },
   };
   const now = Math.floor(Date.now() / 1000);

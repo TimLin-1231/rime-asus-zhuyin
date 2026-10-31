@@ -316,6 +316,27 @@
       </div>
       <p class="foot-note">萬象語言模型（RIME-LMDG，amzxyz），授權 CC-BY-4.0。<button class="link-btn" data-link="model">來源 ↗</button></p>
       <p class="foot-note">檔案位置：<span class="mono" id="m-path">—</span></p>
+
+      <div class="card" id="ai-card">
+        <div class="row model-head">
+          <div class="status-icon" id="ai-icon" data-state="idle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6-4.6-1.9 4.6-1.9z"/><path d="M18 15l.9 2.1 2.1.9-2.1.9L18 21l-.9-2.1-2.1-.9 2.1-.9z"/></svg>
+          </div>
+          <div class="row-main">
+            <div class="row-title">AI 修正（Ctrl+R）</div>
+            <div class="row-desc" id="ai-desc">—</div>
+          </div>
+          <span class="badge" id="ai-badge"></span>
+        </div>
+        <div class="progress" id="ai-progress" hidden><div class="bar"></div></div>
+        <div class="progress-text" id="ai-progress-text"></div>
+        <div class="actions">
+          <button class="btn primary" id="ai-download">下載</button>
+          <button class="btn" id="ai-cancel" hidden>暫停</button>
+        </div>
+        <p class="hint">打字時、還沒按 Enter 前按 Ctrl+R，由這台電腦上的 AI 修正同音錯字、按錯鍵打錯的字和「的／得／地」。改好的句子按 Enter 送出，按 Esc 回到原句。文字不會離開這台電腦。</p>
+      </div>
+      <p class="foot-note">llama.cpp（MIT）與 Qwen3.5-4B（Apache-2.0）。檔案位置：<span class="mono" id="ai-path">—</span></p>
     </section>
   </main>
 </div>
