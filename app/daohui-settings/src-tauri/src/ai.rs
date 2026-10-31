@@ -4,8 +4,11 @@
 //! those look in (streaming, the model resumable, SHA-256 checked). Text is
 //! only ever processed on this computer.
 //!
-//! Windows: `%LOCALAPPDATA%\DaoHui\ai\llama\llama-server.exe` (the Vulkan
-//! build, which falls back to the CPU) and `...\ai\<MODEL_FILE>`.
+//! Windows: `%USERPROFILE%\.daohui\ai\llama\llama-server.exe` (the Vulkan
+//! build, which falls back to the CPU) and `...\ai\<MODEL_FILE>`. Not under
+//! AppData: Windows redirects AppData for packaged (MSIX) apps and what they
+//! start, and the input method's server may be started from such an app
+//! (DaoHui for Windows 0.17.4.10, DaoHuiAI.cpp).
 //! macOS: `~/Library/DaoHui/ai/llama-b11559/llama-server` and the model, the
 //! same layout the input menu's own download makes.
 
@@ -56,7 +59,7 @@ const SERVER: Option<(&str, &str, u64)> = None;
 pub fn ai_dir() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        config::env_path("LOCALAPPDATA").map(|d| d.join("DaoHui").join("ai"))
+        config::env_path("USERPROFILE").map(|d| d.join(".daohui").join("ai"))
     }
     #[cfg(target_os = "macos")]
     {
@@ -222,8 +225,9 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "windows")]
-    fn ai_dir_is_local_app_data() {
-        let d = ai_dir().expect("LOCALAPPDATA");
-        assert!(d.ends_with(Path::new("DaoHui").join("ai")));
+    fn ai_dir_is_outside_app_data() {
+        let d = ai_dir().expect("USERPROFILE");
+        assert!(d.ends_with(Path::new(".daohui").join("ai")));
+        assert!(!d.to_string_lossy().to_lowercase().contains("appdata"));
     }
 }
