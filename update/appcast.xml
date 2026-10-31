@@ -15,6 +15,26 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.10</title>
+      <pubDate>Fri, 30 Oct 2026 21:30:00 -0500</pubDate>
+      <sparkle:version>0.17.4.10</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.10</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.10</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>修正：AI 修正（Ctrl+R）在某些情況下找不到模型。模型改放在使用者資料夾的 .daohui\ai，請到「島輝設定 → 模型 → AI 修正」重新下載一次</li>
+          <li>AI 修正：打字時按 Ctrl+R，由這台電腦上的 AI 修正同音錯字、按錯鍵打錯的字和「的／得／地」；Enter 送出、Esc 回到原句</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.10/daohui-0.17.4.10-installer.exe"
+                 sparkle:version="0.17.4.10"
+                 sparkle:os="windows"
+                 sparkle:installerArguments=""
+                 length="17697461"
+                 type="application/octet-stream"
+                 daohui:sha256="11c17b93da1b1eff5723e11449c913b1fdea148411c541d18907ed62b63ac2dc" />
+    </item>
+    <item>
       <title>島輝 0.17.4.9</title>
       <pubDate>Fri, 30 Oct 2026 19:10:00 -0500</pubDate>
       <sparkle:version>0.17.4.9</sparkle:version>
