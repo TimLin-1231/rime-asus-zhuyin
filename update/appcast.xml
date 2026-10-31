@@ -15,6 +15,27 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.12</title>
+      <pubDate>Sat, 31 Oct 2026 11:50:00 -0500</pubDate>
+      <sparkle:version>0.17.4.12</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.12</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.12</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>修正：點工作列、用 Chrome 時出現「沒有回應」，卡住 1.5 到 4 秒以上。現在島輝每次等伺服器都有上限，伺服器也不會再跟工作列互相等待</li>
+          <li>候選窗改用 CPU 繪製，不會每次都叫醒獨立顯示卡</li>
+          <li>安裝後請重新開機，已經開著的程式才會換成新版</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.12/daohui-0.17.4.12-installer.exe"
+                 sparkle:version="0.17.4.12"
+                 sparkle:os="windows"
+                 sparkle:installerArguments=""
+                 length="17701767"
+                 type="application/octet-stream"
+                 daohui:sha256="b2fd58202332142a4e9927296ee7eacadec32db499ec4edf7e2fb351575bb142" />
+    </item>
+    <item>
       <title>島輝 0.17.4.11</title>
       <pubDate>Sat, 31 Oct 2026 01:25:00 -0500</pubDate>
       <sparkle:version>0.17.4.11</sparkle:version>
