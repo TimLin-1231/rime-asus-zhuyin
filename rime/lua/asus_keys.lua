@@ -3,6 +3,9 @@
 --
 --   * Ctrl+Space toggles ascii_mode (double-tap Shift does too, in
 --     asus_shift.lua). What is being typed is committed first.
+--   * Paste (Ctrl+V, Ctrl+Shift+V, Shift+Insert) while composing commits
+--     what is shown and lets the key through: the application pastes after
+--     it. (Rime's emacs bindings would turn Ctrl+V into Page_Down.)
 --   * Shift+letter types a capital letter (English, see asus_lang.lua).
 --   * Space right after an English word commits the input plus that space.
 --   * BackSpace removes a whole completed syllable (one character).
@@ -25,6 +28,7 @@ local XK_Left, XK_Right, XK_Up = 0xff51, 0xff53, 0xff52
 local XK_Page_Up, XK_Page_Down = 0xff55, 0xff56
 local XK_BackSpace = 0xff08
 local XK_Return, XK_KP_Enter = 0xff0d, 0xff8d
+local XK_V, XK_v, XK_Insert = 0x56, 0x76, 0xff63
 -- Numpad keys and the character each one types.
 local KEYPAD = { [0xffaa] = "*", [0xffab] = "+", [0xffad] = "-", [0xffae] = ".", [0xffaf] = "/" }
 for i = 0, 9 do KEYPAD[0xffb0 + i] = tostring(i) end
@@ -162,6 +166,15 @@ local function func(key, env)
   end
   if ctx.input:sub(1, 1) == "`" then
     return kNoop  -- symbol keyboard (asus_symbols.lua) owns these keys
+  end
+
+  -- Paste: commit what is shown, then the application gets the key. No
+  -- next-word prediction (asus_predict.lua): the pasted text comes next.
+  if ((code == XK_v or code == XK_V) and key:ctrl() and not key:alt() and not key:super())
+      or (code == XK_Insert and key:shift() and not key:ctrl() and not key:alt()) then
+    ctx:commit()
+    ctx:clear()
+    return kRejected
   end
 
   -- Tab while composing is asus_tab.lua's; a double Tab that nothing could

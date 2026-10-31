@@ -59,7 +59,7 @@ XK = {
     "Tab": 0xFF09, "Left": 0xFF51, "Up": 0xFF52, "Right": 0xFF53, "Down": 0xFF54,
     "Page_Up": 0xFF55, "Page_Down": 0xFF56, "Home": 0xFF50, "End": 0xFF57,
     "Shift_L": 0xFFE1, "Shift_R": 0xFFE2, "Control_L": 0xFFE3, "Control_R": 0xFFE4,
-    "Caps_Lock": 0xFFE5, "F23": 0xFFD4, "F24": 0xFFD5, "KP_Enter": 0xFF8D,
+    "Caps_Lock": 0xFFE5, "F23": 0xFFD4, "F24": 0xFFD5, "KP_Enter": 0xFF8D, "Insert": 0xFF63,
     "KP_Multiply": 0xFFAA, "KP_Add": 0xFFAB, "KP_Subtract": 0xFFAD, "KP_Decimal": 0xFFAE,
     "KP_Divide": 0xFFAF, **{f"KP_{i}": 0xFFB0 + i for i in range(10)},
 }
