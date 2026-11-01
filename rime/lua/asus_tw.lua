@@ -6,9 +6,13 @@
 -- Taiwan corpus never uses, one character away from a common Taiwan word with
 -- one of its readings). The best candidate is rewritten when the typed keys
 -- are exactly that reading; what the user once picked is left alone.
+-- Entries whose Taiwan word starts with "!" are preferences the user asked
+-- for (城市 -> 程式, tools/build_lexicon.py PREFER_OVER): always rewritten;
+-- corrections learned in context still win (asus_learn.lua comes after).
 --
 --   filter  lua_filter@*asus_tw  (after asus_typo, before asus_grammar)
--- asus_tw/enabled: false turns it off.
+-- asus_tw/enabled: false turns it off; asus_tw/prefer: false only the
+-- preferences.
 
 local MAX_LEN = 4
 
@@ -23,6 +27,8 @@ local cc  -- shared by all sessions
 local function init(env)
   local v = env.engine.schema.config:get_bool("asus_tw/enabled")
   env.enabled = (v == nil) or v
+  local p = env.engine.schema.config:get_bool("asus_tw/prefer")
+  env.prefer = (p == nil) or p
   if env.enabled and cc == nil then
     local ok, c = pcall(Opencc, "asus_tw.json")
     cc = ok and c or false
@@ -53,7 +59,7 @@ local function boundaries(cand, n)
 end
 
 -- Taiwan spelling of cand's text (syllables syl), or nil.
-local function rewrite(cand, syl)
+local function rewrite(cand, syl, prefer)
   local text = cand.text
   local cs = chars(text)
   if #cs ~= #syl then return nil end
@@ -70,8 +76,10 @@ local function rewrite(cand, syl)
       local v = forms and forms[1]
       if v then
         local y, keys = v:match("^(.-),(.*)$")
+        local asked = y and y:sub(1, 1) == "!"
+        if asked then y = prefer and y:sub(2) or nil end
         local typed = table.concat(syl, "", i, i + len - 1)
-        if y and keys:gsub("_", " ") == typed and not learn.chosen(typed, x) then
+        if y and keys:gsub("_", " ") == typed and (asked or not learn.chosen(typed, x)) then
           local ys = chars(y)
           for j = 1, len do cs[i + j - 1] = ys[j] end
           changed, hit = true, true
@@ -97,7 +105,7 @@ local function func(input, env)
     if first then
       first = false
       local syl = require("asus_learn").syllables(ctx.input:sub(cand.start + 1, cand._end))
-      local text = syl and rewrite(cand, syl)
+      local text = syl and rewrite(cand, syl, env.prefer)
       if text then
         top = text
         yield(ShadowCandidate(cand, cand.type, text, cand.comment))

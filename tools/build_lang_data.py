@@ -259,7 +259,12 @@ def build_tw_table(cc_dir: Path) -> int:
     X's possible readings (當機, 座標, 帳號). OpenCC text dict
     opencc/asus_tw.* : X<TAB>Y,<Dachen keys of Y with "_" for Space>; the
     filter in lua/asus_tw.lua checks the typed keys before replacing.
+    Also the user's preferences, build_lexicon.PREFER_OVER: X = the rival,
+    Y = "!" + the word (城市 -> !程式), for the reading the two share; "!":
+    replaced even where the user once picked X (learned corrections, which
+    come after, still win in their context).
     """
+    from build_lexicon import PREFER_OVER
     from zhuyin import pinyin_to_symbols, symbols_to_keys, weasel_root
 
     def norm(syl: str) -> str:
@@ -272,11 +277,15 @@ def build_tw_table(cc_dir: Path) -> int:
             occ[word] = int(n)
     # Taiwan words by reading: (syllables...) -> (count, word)
     by_reading: dict[tuple[str, ...], tuple[int, str]] = {}
+    preferred = {word for word, _ in PREFER_OVER}
+    mcb_readings: dict[str, set[tuple[str, ...]]] = {}  # (only the preferred words)
     for line in (MCB_DIR / "BPMFMappings.txt").read_text(encoding="utf-8").splitlines():
         parts = line.split()
         if len(parts) < 3:
             continue
         word, syls = parts[0], tuple(norm(s) for s in parts[1:])
+        if word in preferred:
+            mcb_readings.setdefault(word, set()).add(syls)
         n = occ.get(word, 0)
         if 2 <= len(word) <= 4 and len(syls) == len(word) and n >= TW_MIN_COUNT:
             if syls not in by_reading or n > by_reading[syls][0]:
@@ -316,6 +325,13 @@ def build_tw_table(cc_dir: Path) -> int:
         if best:
             keys = symbols_to_keys(" ".join(best[2])).replace(" ", "_")
             lines.append(f"{word}\t{best[1]},{keys}")
+    for word, rival in PREFER_OVER:
+        shared = [s for s in sorted(mcb_readings.get(word, ()))
+                  if all(syl in readings.get(ch, ()) for ch, syl in zip(rival, s))]
+        if len(rival) == len(word) and shared:
+            keys = symbols_to_keys(" ".join(shared[0])).replace(" ", "_")
+            lines = [s for s in lines if not s.startswith(rival + "\t")]
+            lines.append(f"{rival}\t!{word},{keys}")
     lines.sort(key=lambda s: s.encode())
     (cc_dir / "asus_tw.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (cc_dir / "asus_tw.json").write_text(

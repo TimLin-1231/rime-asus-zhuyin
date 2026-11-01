@@ -266,7 +266,8 @@ def main() -> int:
     r.close()
 
     # Learning sees a cursor pick like any other correction.
-    r2 = open_rime("stage6-learn")
+    # (Without the 程式 preference, asus_tw.lua: 應用城市 is the text to fix.)
+    r2 = open_rime("stage6-learn", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_tw/prefer: false\n"})
     r2.set_option("prediction", False)
     r2.clear(); r2.type(keys("請重新啟動應用程式")); before = r2.snapshot().preview
     r2.key("Left"); r2.key("Left"); r2.key("Down")

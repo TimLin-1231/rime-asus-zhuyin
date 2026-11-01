@@ -443,6 +443,8 @@ end
 -- committed, and learn every changed word.
 local function learn_corrections(ctx, final, now, picks, forgot, left)
   if not orig or orig.input ~= ctx.input or final == orig.text then return end
+  -- Keys picked as Zhuyin (asus_compact.lua; ㄚ for 8␣) are no correction.
+  if final:find("\227\132[\133-\175]") then return end
   local syl, starts = syllables(ctx.input)
   if not syl then return end
   local fc, oc = chars(final), chars(orig.text)
@@ -866,6 +868,7 @@ local function note_pick(key, env)
   end
   local cand = seg:get_candidate_at(index)
   if cand and cand.type == "quick" then return end  -- a date or number form (asus_quick.lua)
+  if cand and cand.type == "zhuyin" then return end  -- the keys as Zhuyin (asus_compact.lua)
   if cand and cand.type ~= "sentence" then
     env.picks[seg.start .. ":" .. cand._end] = true
   end

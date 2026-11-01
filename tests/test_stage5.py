@@ -18,6 +18,9 @@ from zhuyin import reading_keys  # noqa: E402
 
 XK["Delete"] = 0xFFFF
 RESULTS: list[tuple[str, bool, str]] = []
+# The language model's 應用城市 is the wrong conversion to learn from here:
+# without the 程式 preference (asus_tw.lua).
+NO_PREFER = "  asus_tw/prefer: false\n"
 
 
 def keys(text: str) -> str:
@@ -30,7 +33,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def decay_case() -> None:
     """Run in a subprocess: weights halve every 40 seconds here."""
-    extra = {"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/half_life_days: 0.000463\n"}
+    extra = {"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/half_life_days: 0.000463\n" + NO_PREFER}
     r = open_rime("stage5-decay", extra=extra)
     t = Typist(r, SHIFT_MASK, CONTROL_MASK)
     t.enter(keys("我把程式碼上傳到伺服器了"), "我把程式碼上傳到伺服器了")
@@ -46,7 +49,7 @@ def main() -> int:
     if sys.argv[1:] == ["--decay"]:
         decay_case()
         return 0
-    r = open_rime("stage5")
+    r = open_rime("stage5", extra={"asus_zhuyin.custom.yaml": "patch:\n" + NO_PREFER})
     t = Typist(r, SHIFT_MASK, CONTROL_MASK)
     r.set_option("prediction", False)
 

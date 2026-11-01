@@ -159,6 +159,13 @@ def build_tw(floor: int, prefer: bool, mcb: dict[tuple[str, str], int] | None = 
 
 MCB_DIR = ROOT / "third_party" / "mcbopomofo"
 
+# (word, rival): the word comes first for the reading both share -- its
+# weight becomes the rival's + 1, so a sentence still goes by the language
+# model. Asked for by the user: ㄔㄥˊ ㄕˋ is 程式 (城市 31754 > 程式 25894).
+PREFER_OVER = [
+    ("程式", "城市"),
+]
+
 
 def build_mcb() -> tuple[list[tuple[str, str, int]], dict]:
     """Taiwan phrase frequencies from McBopomofo (MIT): BPMFMappings + phrase.occ.
@@ -166,6 +173,7 @@ def build_mcb() -> tuple[list[tuple[str, str, int]], dict]:
     Counts are rescaled to essay.txt's scale by the median essay/occ ratio of
     words frequent in both corpora, so the two weight sources are comparable.
     Explicit entries suppress essay.txt's (mainland) weight for the same word.
+    PREFER_OVER is applied last.
     """
     occ: dict[str, int] = {}
     for line in (MCB_DIR / "phrase.occ").read_text(encoding="utf-8").splitlines():
@@ -190,7 +198,14 @@ def build_mcb() -> tuple[list[tuple[str, str, int]], dict]:
             continue
         seen.add(key)
         rows.append((word, key[1], max(1, round(occ[word] * scale))))
-    return rows, {"scale": round(scale, 2), "skipped": skipped}
+    weights = {(w, r): n for w, r, n in rows}
+    preferred = 0
+    for word, rival in PREFER_OVER:
+        for i, (w, r, n) in enumerate(rows):
+            if w == word and weights.get((rival, r), 0) >= n:
+                rows[i] = (w, r, weights[(rival, r)] + 1)
+                preferred += 1
+    return rows, {"scale": round(scale, 2), "skipped": skipped, "preferred": preferred}
 
 
 def build_personal(personal_weight: int) -> tuple[list[tuple[str, str, int]], int]:

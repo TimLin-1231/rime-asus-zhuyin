@@ -579,6 +579,12 @@ function processor.func(key, env)
     local menu = ctx:has_menu()
     local units = units_of(ctx)
     local caret = last_word_start(ctx, units) or (not menu and #units > 0 and #units) or nil
+    -- Stray keys right before an unfinished last word are part of it (cc =
+    -- a stray c + ㄏ: the list is for both, its Zhuyin row reads ㄏㄏ).
+    while caret and caret > 1 and units[caret].kind == "zh" and units[caret - 1].kind == "stray"
+        and units[caret - 1].e == units[caret].s and not ctx.input:find("[ 6347]", units[caret - 1].s + 1) do
+      caret = caret - 1
+    end
     if caret and (caret > 1 or not menu) then
       st = { input = ctx.input, caret = caret, units = units }
       open_list(ctx, st)
@@ -894,5 +900,22 @@ local function text_after(ctx, p)
   return st and text_between(st, p, #st.input) or nil
 end
 
+-- Key offset where the list open at the cursor starts (asus_compact.lua: its
+-- Zhuyin row), when everything from there to the end is Chinese or stray
+-- keys; nil otherwise.
+local function list_keys(ctx)
+  local st = load(ctx)
+  if not st or st.ins or not ctx:get_option(EXPANDED) then return nil end
+  local u = st.units[st.caret]
+  if not u or tonumber(ctx:get_property(SPAN) or "") ~= u.s then return nil end
+  local e = u.s
+  for i = st.caret, #st.units do
+    local v = st.units[i]
+    if (v.kind ~= "zh" and v.kind ~= "stray") or v.s ~= e then return nil end
+    e = v.e
+  end
+  return (e == #ctx.input) and u.s or nil
+end
+
 return { processor = processor, filter = { init = filter_init, func = filter }, translator = translator,
-         text_after = text_after }
+         text_after = text_after, list_keys = list_keys }

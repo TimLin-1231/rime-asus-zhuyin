@@ -301,7 +301,9 @@ def setup() -> None:
         if os.lstat(SYNC).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
             raise SystemExit(f"{SYNC} is a junction; not deleting it")
         shutil.rmtree(SYNC)
-    custom = ("patch:\n  asus_sync/check_seconds: 0\n"
+    # (asus_tw/prefer off: the language model's 應用城市 is the conversion
+    # that the correction synced here fixes.)
+    custom = ("patch:\n  asus_sync/check_seconds: 0\n  asus_tw/prefer: false\n"
               "  engine/processors/@before 0: lua_processor@*asus_dbdump\n")
     for dev, did in DEVICES.items():
         inst = f'installation_id: "{did}"\n'

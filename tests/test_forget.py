@@ -28,7 +28,9 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("forget")  # learning is on in the project config
+    # Learning is on in the project config. (asus_tw/prefer off: the language
+    # model's 應用城市 is the wrong text to correct here.)
+    r = open_rime("forget", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_tw/prefer: false\n"})
     t = Typist(r, SHIFT_MASK, CONTROL_MASK)
     r.set_option("prediction", False)
 

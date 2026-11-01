@@ -8,7 +8,8 @@
 -- syllable (no tone key yet), its Zhuyin reading is shown as the comment,
 -- like the blue reading bubble in ASUS Smart Input.
 -- Pressing Down (handled in asus_keys.lua) sets the _asus_expanded option and
--- this filter then passes the full candidate list through untouched. The `
+-- this filter then passes the full candidate list through untouched, plus
+-- the keys typed as Zhuyin (ㄔㄥˊㄕˋ) as the last row of the first page. The `
 -- symbol keyboard (asus_symbols.lua) is always shown in full.
 --
 -- The keys typed so far follow the comment ("你好　su3cl3", Space shown as
@@ -45,6 +46,52 @@ local function pending_reading(input)
     out[#out + 1] = z
   end
   return table.concat(out)
+end
+
+local TONE_MARKS = { [" "] = "", ["6"] = "ˊ", ["3"] = "ˇ", ["4"] = "ˋ", ["7"] = "˙", ["'"] = "" }
+
+-- Keys as Zhuyin with tone marks (first tone unmarked), nil if any key is
+-- not a Zhuyin key.
+local function as_zhuyin(keys)
+  local out = {}
+  for i = 1, #keys do
+    local k = keys:sub(i, i)
+    local z = KEY_TO_ZHUYIN[k] or TONE_MARKS[k]
+    if not z then return nil end
+    out[#out + 1] = z
+  end
+  local s = table.concat(out)
+  return s ~= "" and s or nil
+end
+
+-- The Zhuyin row of the open list of seg, the last segment, when it is for
+-- Chinese at the end of the input: its keys as Zhuyin. At the editing cursor
+-- (Down at the end of a sentence lists its last word) only when the rest of
+-- the input is Chinese (asus_edit.lua). In the ordinary list also the keys
+-- of the stray keys dropped right before it (cc = a stray c + ㄏ gives ㄏㄏ),
+-- which show nothing, so picking it gives what the row reads.
+local function zhuyin_row(ctx, seg)
+  if not seg:has_tag("abc") or seg._end ~= #ctx.input then return nil end
+  for _, tag in ipairs({ "asus_en", "asus_num", "asus_stray", "asus_symbol", "asus_open" }) do
+    if seg:has_tag(tag) then return nil end
+  end
+  local from = seg.start
+  if (ctx:get_property("asus_edit") or "") ~= "" then
+    if require("asus_edit").list_keys(ctx) ~= seg.start then return nil end
+  else
+    if ctx.caret_pos ~= #ctx.input then return nil end
+    local ok, segs = pcall(function() return ctx.composition:toSegmentation():get_segments() end)
+    if ok and segs then
+      for i = #segs - 1, 1, -1 do
+        local s = segs[i]
+        local c = s:get_selected_candidate()
+        if s._end ~= from or not s:has_tag("asus_stray") or (c and c.text ~= "") then break end
+        from = s.start
+      end
+    end
+  end
+  local text = as_zhuyin(ctx.input:sub(from + 1))
+  return text and Candidate("zhuyin", seg.start, #ctx.input, text, "") or nil
 end
 
 -- CJK Extension B+ and the compatibility supplement (e.g. 𦃕) are almost never
@@ -94,8 +141,10 @@ end
 local function func(input, env)
   local ctx = env.engine.context
   local seg = ctx.composition:back()
-  -- An AI correction shown (asus_fix.lua): its two rows as they are.
-  if seg and seg:has_tag("asus_fix") then
+  -- An AI correction shown (asus_fix.lua): its two rows as they are. (Spans
+  -- with a typo fix carry the same tag, asus_lang.lua: not those.)
+  if seg and seg:has_tag("asus_fix")
+      and (ctx:get_property("asus_fix_shown") or ""):match("^([^\t]*)\t") == ctx.input then
     env.raw_active = false
     for cand in input:iter() do yield(cand) end
     return
@@ -105,14 +154,26 @@ local function func(input, env)
     env.raw_active = false
     -- (The highlighted row may stand in for a shorter candidate, with the
     -- text after it: asus_list.lua.)
+    local zhuyin = ctx:get_option(EXPANDED) and seg and zhuyin_row(ctx, seg)
+    local zhuyin_at = env.engine.schema.page_size - 1
     local row, first = -1, nil
     for cand in input:iter() do
       if keep_rare or not is_rare(cand.text) then
+        -- (The filter runs for every segment's candidates: only the list of
+        -- the last segment gets the row.)
+        if zhuyin and cand.start ~= seg.start then zhuyin = nil end
+        if zhuyin and cand.text == zhuyin.text then zhuyin = nil end
+        if zhuyin and row + 1 == zhuyin_at then
+          row = row + 1
+          yield(zhuyin)
+          zhuyin = nil
+        end
         row = row + 1
         first = first or cand
         yield(list.wrap(ctx, row, first, cand))
       end
     end
+    if zhuyin and first then yield(zhuyin) end
     return
   end
   local reading = pending_reading(ctx.input:sub(1, ctx.caret_pos))

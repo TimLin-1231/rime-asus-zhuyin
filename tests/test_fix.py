@@ -30,8 +30,10 @@ def keys_for(text: str) -> str:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
+    # (asus_tw/prefer off: the language model's 應用城市 is the wrong text here.)
     r = open_rime("fix", extra={"asus_zhuyin.custom.yaml": (
-        "patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: false\n")})
+        "patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: false\n"
+        "  asus_tw/prefer: false\n")})
 
     def start(text: str, support: bool = True):
         """Type text's keys, press Ctrl+R; (handled, id, body, shown)."""
