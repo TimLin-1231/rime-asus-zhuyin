@@ -1,7 +1,34 @@
-# 島輝智慧注音（Rime / 小狼毫）
+# 島輝智慧注音 DaoHui
 
-在小狼毫 0.17.4（librime 1.13.1）上重現並強化華碩智慧輸入法的體驗。
+Windows 與 macOS 上的智慧注音輸入法。以 [Rime 輸入法引擎](https://rime.im)為基礎，操作方式仿照華碩智慧輸入法，再加上句中改字、打錯鍵自動更正、中英混打、自我學習和本機 AI 修正。
+
+*A smart Zhuyin (Bopomofo) input method for Traditional Chinese on Windows and macOS, built on the Rime engine. It is modeled on ASUS Smart Input (not affiliated with ASUS) and adds mid-sentence editing, typo correction, mixed Chinese/English typing, self-learning and on-device AI correction (llama.cpp). Changes are measured with a Python harness that drives `rime.dll` on evaluation sets.*
+
+<!-- 示範 GIF：錄好後放進 docs/，在這裡加上 ![島輝示範](docs/demo.gif) -->
+
+## 下載
+
+| 平台 | 下載 | 安裝說明 |
+|---|---|---|
+| Windows 8.1–11（64 位元） | [最新版安裝檔](https://github.com/TimLin-1231/daohui-weasel/releases/latest) | [daohui-weasel](https://github.com/TimLin-1231/daohui-weasel#安裝輸入法) |
+| macOS 13 以上 | [預先發行版（尚未簽章）](https://github.com/TimLin-1231/daohui-squirrel/releases) | [daohui-squirrel](https://github.com/TimLin-1231/daohui-squirrel#安裝輸入法) |
+
+## 特色
+
+- **行內預覽、直式選字清單**：首選直接出現在行內；按 ↓ 展開直排的清單，選完一個字接著選下一個。
+- **句中改字**：←／→ 移動游標，在句子中間換字、刪字、插字，不用整句重打。
+- **打錯鍵自動更正**：按到旁邊的鍵、多按一個鍵會自動修正，原本的結果在 ↓ 第二個。
+- **中英混打**：直接打英文會自動判斷（我用python跑model），拼錯的英文字會自動換成對的。
+- **自我學習**：改過一次的字詞，之後在別的句子裡也會用你選的；學錯了按 Shift+Del 忘掉。
+- **台灣用語優先**：打出當機、座標、帳號，而不是宕機、坐標、賬號。
+- **本機 AI 修正**：組字時按 Ctrl+R，由本機的語言模型修正同音錯字、按錯鍵的字和的／得／地（模型要另外下載）。
+- **隱私**：學習資料預設只存在本機；AI 修正在本機執行，文字不會離開你的電腦。
+
 本專案與華碩（ASUS）無關，不含華碩的程式碼或詞庫資料；文中提到華碩智慧輸入法只是用來比較操作方式。授權：GPL-3.0-or-later，即 GNU GPL 第 3 版或（由你選擇）任何更新版本（`LICENSE`），第三方元件與資料見 `THIRD_PARTY.md`。
+
+## 開發說明
+
+這個 repo 是島輝的 Rime 方案、Lua、詞庫與評估工具、設定程式（`app/`）和寫作小幫手（`assist/`）；Windows 與 macOS 的輸入法程式在 [daohui-weasel](https://github.com/TimLin-1231/daohui-weasel)、[daohui-squirrel](https://github.com/TimLin-1231/daohui-squirrel)。下面的說明以 Windows 開發環境為準：在小狼毫 0.17.4（librime 1.13.1）上重現並強化華碩智慧輸入法的體驗。
 方案 id 和檔名仍是 `asus_zhuyin` / `asus_*.lua`：改名會讓已經學到的資料（`*.userdb`）和所有工具對不上，所以只改了顯示的名稱。
 所有設定都在 `rime/`。小狼毫的使用者目錄（登錄檔 `HKCU\Software\Rime\Weasel\RimeUserDir`）直接指向這個資料夾。
 
@@ -540,32 +567,32 @@
 
 ## 測試
 ```
-C:\Users\User\anaconda3\python.exe tests\test_stage1.py
-C:\Users\User\anaconda3\python.exe tests\test_stage2.py
-C:\Users\User\anaconda3\python.exe tests\test_stage3.py
-C:\Users\User\anaconda3\python.exe tests\test_stage4.py
-C:\Users\User\anaconda3\python.exe tests\test_stage5.py
-C:\Users\User\anaconda3\python.exe tests\test_stage6.py
-C:\Users\User\anaconda3\python.exe tests\test_stage7.py
-C:\Users\User\anaconda3\python.exe tests\test_stage8.py
-C:\Users\User\anaconda3\python.exe tests\test_stage9.py
-C:\Users\User\anaconda3\python.exe tests\test_stage10.py
-C:\Users\User\anaconda3\python.exe tests\test_stage11.py
-C:\Users\User\anaconda3\python.exe tests\test_stage12.py
-C:\Users\User\anaconda3\python.exe tests\test_stage13.py
-C:\Users\User\anaconda3\python.exe tests\test_stage14.py
-C:\Users\User\anaconda3\python.exe tests\test_stage16.py
-C:\Users\User\anaconda3\python.exe tests\test_stage17.py
-C:\Users\User\anaconda3\python.exe tests\test_en_case.py
-C:\Users\User\anaconda3\python.exe tests\test_en_short.py
-C:\Users\User\anaconda3\python.exe tests\test_en_edge.py
-C:\Users\User\anaconda3\python.exe tests\test_steady.py
-C:\Users\User\anaconda3\python.exe tools\eval_flicker.py --variants asus stock
-C:\Users\User\anaconda3\python.exe tests\test_backup.py
-C:\Users\User\anaconda3\python.exe tests\test_assist.py --llm
-C:\Users\User\anaconda3\python.exe tests\test_numbers.py
-C:\Users\User\anaconda3\python.exe tools\eval_ime.py --note "說明這次改了什麼"
-C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改了什麼"
+python tests\test_stage1.py
+python tests\test_stage2.py
+python tests\test_stage3.py
+python tests\test_stage4.py
+python tests\test_stage5.py
+python tests\test_stage6.py
+python tests\test_stage7.py
+python tests\test_stage8.py
+python tests\test_stage9.py
+python tests\test_stage10.py
+python tests\test_stage11.py
+python tests\test_stage12.py
+python tests\test_stage13.py
+python tests\test_stage14.py
+python tests\test_stage16.py
+python tests\test_stage17.py
+python tests\test_en_case.py
+python tests\test_en_short.py
+python tests\test_en_edge.py
+python tests\test_steady.py
+python tools\eval_flicker.py --variants asus stock
+python tests\test_backup.py
+python tests\test_assist.py --llm
+python tests\test_numbers.py
+python tools\eval_ime.py --note "說明這次改了什麼"
+python tools\eval_learn.py --note "說明這次改了什麼"
 ```
 評估表格的括號裡是**同一版評估集**上一次的數字，可以直接前後對照。階段 10 起，句子的正確率看的是按 Enter 送出後的文字（之前看的是送出前行內顯示的文字），因為句尾的數字鍵要到送出時才決定是不是數字。
 
@@ -591,11 +618,11 @@ C:\Users\User\anaconda3\python.exe tools\eval_learn.py --note "說明這次改�
 - 指令（都在專案資料夾執行）：
 
 ```
-C:\Users\User\anaconda3\python.exe tools\backup_learn.py              現在備份一次（會停 1–3 秒）
-C:\Users\User\anaconda3\python.exe tools\backup_learn.py --list       列出備份
-C:\Users\User\anaconda3\python.exe tools\backup_learn.py --restore latest         看看會還原什麼（不會動）
-C:\Users\User\anaconda3\python.exe tools\backup_learn.py --restore latest --yes   真的還原；現有資料先移到 backups\learn\_before-restore-…
-C:\Users\User\anaconda3\python.exe tools\backup_learn.py --uninstall  取消每日排程（--install 重新註冊）
+python tools\backup_learn.py              現在備份一次（會停 1–3 秒）
+python tools\backup_learn.py --list       列出備份
+python tools\backup_learn.py --restore latest         看看會還原什麼（不會動）
+python tools\backup_learn.py --restore latest --yes   真的還原；現有資料先移到 backups\learn\_before-restore-…
+python tools\backup_learn.py --uninstall  取消每日排程（--install 重新註冊）
 ```
 - 排程每次執行的結果記在 `backups/learn/backup.log`。
 - **還原是全有或全無**：先核對備份的每個檔案和備份當時的雜湊值一致，在現有檔案旁邊準備好完整的一份並再核對一次，才停掉小狼毫、把現有資料移到一旁、換上新的；任何一步失敗就把已經做的步驟全部倒回去。
