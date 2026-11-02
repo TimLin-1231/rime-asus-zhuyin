@@ -60,11 +60,12 @@ pub const TAB_DOUBLE_MS_RANGE: (u32, u32) = (150, 1500);
 // ---------------------------------------------------------------- language model
 
 pub const MODEL_FILE_NAME: &str = "wanxiang-lts-zh-hant.gram";
-// Upstream, as in tools/fetch_models.py (amzxyz/RIME-LMDG, CC-BY-4.0). The
-// "LTS" tag can be re-uploaded: then the hash no longer matches and the
-// download is refused, so a pinned mirror on a DaoHui release is still wanted.
-pub const MODEL_URL: &str =
-    "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hant.gram";
+// The LTS file of amzxyz/RIME-LMDG (CC-BY-4.0) as of 2026-10-06, the one
+// the evaluations were run with, pinned on a release of this project:
+// upstream re-uploads "LTS" in place (2026-10-12: a different 399,617,068-byte
+// file), which made every download from there fail the hash check. Same file
+// in tools/fetch_models.py and install/mac.sh.
+pub const MODEL_URL: &str = "https://github.com/TimLin-1231/rime-asus-zhuyin/releases/download/model-wanxiang-lts-20261006/wanxiang-lts-zh-hant.gram";
 pub const MODEL_SHA256: &str = "53b678ce17f1d80c75dd51976b697a5d1fc2cd6a13670652069b227b40157c98";
 /// Approximate size, for display before the download starts.
 pub const MODEL_SIZE_HINT: u64 = 410_679_340;
@@ -111,6 +112,9 @@ pub const SYNC_TASK_NAME: &str = "DaoHuiSync";
 pub const SYNC_AGENT_LABEL: &str = "io.github.timlin-1231.daohui.sync";
 /// Command-line flag of the headless sync run.
 pub const SYNC_FLAG: &str = "--sync";
+/// Command-line flag the installer starts the app with after a first install:
+/// the 模型 page, which downloads the language model if it is missing.
+pub const FIRST_RUN_FLAG: &str = "--first-run";
 
 // ---------------------------------------------------------------- environment overrides
 

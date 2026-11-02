@@ -55,6 +55,18 @@ impl Drop for Busy<'_> {
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchOptions {
+    /// Started by the installer after a first install (`--first-run`).
+    first_run: bool,
+}
+
+#[tauri::command]
+fn launch_options() -> LaunchOptions {
+    LaunchOptions { first_run: std::env::args().skip(1).any(|a| a == config::FIRST_RUN_FLAG) }
+}
+
 fn main() {
     // `--sync`: the headless sync run (Task Scheduler / LaunchAgent); no
     // window, no Tauri.
@@ -65,6 +77,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
+            launch_options,
             about::about_info,
             shell::open_link,
             shell::open_folder,

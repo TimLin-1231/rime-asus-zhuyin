@@ -20,8 +20,10 @@ MODELS = [
      "0488ebd6688f900a39200f2b794f2f99bcbf1e8fc27280ae4a2324b08b1559c1",
      41415724),
     # Current language model (rime/grammar.yaml); CC-BY-4.0, amzxyz/RIME-LMDG.
+    # Its LTS file of 2026-10-06, pinned on this project's releases: upstream
+    # re-uploads "LTS" in place (a different file since 2026-10-12).
     ("wanxiang-lts-zh-hant.gram",
-     "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hant.gram",
+     "https://github.com/TimLin-1231/rime-asus-zhuyin/releases/download/model-wanxiang-lts-20261006/wanxiang-lts-zh-hant.gram",
      "53b678ce17f1d80c75dd51976b697a5d1fc2cd6a13670652069b227b40157c98",
      410679340),
     # English word and word-pair frequencies for the suggestions

@@ -1,0 +1,70 @@
+# The one-line Mac install (install/mac.sh), on a real Mac: a fresh install
+# piped into bash the way the README tells users, a second run (already up
+# to date, model already there), then --uninstall.
+name: Mac install script
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "install/mac.sh"
+      - "update/appcast-macos-app.xml"
+      - ".github/workflows/install-mac.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-mac-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # -eo pipefail: a failing install is not hidden by tee
+    shell: bash
+
+jobs:
+  install:
+    name: install, again, uninstall
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fresh install (piped into bash)
+        run: cat install/mac.sh | bash 2>&1 | tee install.log
+
+      - name: Check the app, the input source and the model
+        run: |
+          set -x
+          app="$HOME/Library/Input Methods/DaoHui.app"
+          test -x "$app/Contents/MacOS/DaoHui"
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Contents/Info.plist")
+          grep -q "sparkle:version=\"$version\"" update/appcast-macos-app.xml
+          ! xattr -p com.apple.quarantine "$app" 2> /dev/null
+          codesign --verify --deep "$app"
+          model="$HOME/Library/DaoHui/wanxiang-lts-zh-hant.gram"
+          test "$(stat -f%z "$model")" = 410679340
+          test "$(shasum -a 256 "$model" | awk '{print $1}')" = 53b678ce17f1d80c75dd51976b697a5d1fc2cd6a13670652069b227b40157c98
+          test ! -e "$model.part"
+          grep -q "島輝裝好了" install.log
+          # Selecting the input source needs a logged-in GUI session; report what the runner did.
+          grep -E "已經切換到島輝|已經加入" install.log
+
+      - name: Run again (nothing to download)
+        run: |
+          cat install/mac.sh | bash 2>&1 | tee again.log
+          grep -q "已經是最新版" again.log
+          grep -q "已經下載過了" again.log
+
+      - name: Uninstall
+        run: |
+          cat install/mac.sh | bash -s -- --uninstall 2>&1 | tee uninstall.log
+          test ! -e "$HOME/Library/Input Methods/DaoHui.app"
+          test -f "$HOME/Library/DaoHui/wanxiang-lts-zh-hant.gram"
+
+      - name: Refuses sudo
+        run: |
+          ! cat install/mac.sh | sudo bash 2>&1 | tee sudo.log
+          grep -q "請不要用 sudo" sudo.log

@@ -6,12 +6,26 @@ Windows 與 macOS 上的智慧注音輸入法。以 [Rime 輸入法引擎](https
 
 <!-- 示範 GIF：錄好後放進 docs/，在這裡加上 ![島輝示範](docs/demo.gif) -->
 
-## 下載
+## 安裝
 
-| 平台 | 下載 | 安裝說明 |
-|---|---|---|
-| Windows 8.1–11（64 位元） | [最新版安裝檔](https://github.com/TimLin-1231/daohui-weasel/releases/latest) | [daohui-weasel](https://github.com/TimLin-1231/daohui-weasel#安裝輸入法) |
-| macOS 13 以上 | [預先發行版（尚未簽章）](https://github.com/TimLin-1231/daohui-squirrel/releases) | [daohui-squirrel](https://github.com/TimLin-1231/daohui-squirrel#安裝輸入法) |
+**Windows**（64 位元 Windows 10、11）
+
+1. 下載 **[DaoHui-Setup.exe](https://github.com/TimLin-1231/daohui-weasel/releases/latest/download/DaoHui-Setup.exe)**，打開它。
+2. 出現「Windows 已保護您的電腦」時按「**其他資訊**」→「**仍要執行**」；問「是否允許這個 App 變更您的裝置？」時按「**是**」。
+3. 等它裝完，按「**完成**」。會自動開始下載語言模型（約 410 MB），下載時可以照常打字。
+
+**Mac**（macOS 13 以上，Apple 晶片和 Intel 都可以）
+
+1. 按 <kbd>⌘</kbd>＋<kbd>空白鍵</kbd>，輸入「**終端機**」，按 <kbd>return</kbd>。
+2. 把下面這一行貼進去，按 <kbd>return</kbd>，等它顯示「✔ 島輝裝好了」：
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/install/mac.sh | bash
+   ```
+
+裝好就會切換到島輝。連按兩下 <kbd>Shift</kbd> 切換中文／英文，<kbd>↓</kbd> 打開選字清單。之後會自動更新。
+
+每一步的畫面說明、遇到問題怎麼辦、怎麼移除：**[安裝教學](docs/install.md)**。
 
 ## 特色
 

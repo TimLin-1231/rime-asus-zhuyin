@@ -678,7 +678,7 @@ function renderModel(s) {
   dl.disabled = !s.configured || s.downloading;
   $('#m-verify').disabled = !s.exists;
   $('#m-hint').textContent = s.configured
-    ? '下載可以暫停，之後從中斷處繼續；完成後會驗證 SHA-256。下載後請重新部署。'
+    ? '下載可以暫停，之後從中斷處繼續；完成後會驗證 SHA-256，並自動重新部署讓輸入法載入。'
     : '模型的下載網址尚未設定（開發中版本）。';
 }
 
@@ -701,14 +701,17 @@ listen('model-progress', (ev) => {
   }
 });
 
-$('#m-download').addEventListener('click', async () => {
+/** Downloads the model, then redeploys so the input method loads it.
+ *  True when the model is in place. */
+async function downloadModel() {
   const btn = $('#m-download');
   busy(btn, true);
   $('#m-cancel').hidden = false;
   $('#m-verify').disabled = true;
+  let ok = false;
   try {
     renderModel(await invoke('download_model'));
-    $('#m-progress-text').textContent = '下載完成，SHA-256 驗證通過。請重新部署讓輸入法載入模型。';
+    ok = true;
   } catch (e) {
     $('#m-progress-text').textContent = String(e);
     if (!String(e).startsWith('已取消')) toast(String(e), 'error');
@@ -718,7 +721,44 @@ $('#m-download').addEventListener('click', async () => {
     $('#m-cancel').hidden = true;
     $('#m-progress').hidden = true;
   }
-});
+  if (ok) {
+    $('#m-progress-text').textContent = '下載完成，SHA-256 驗證通過。正在重新部署…';
+    try {
+      await invoke('redeploy');
+      $('#m-progress-text').textContent = '下載完成，輸入法已經載入語言模型。';
+    } catch (e) {
+      $('#m-progress-text').textContent = `下載完成，但重新部署沒有成功：${e}\n請按「重新部署」再試一次。`;
+    }
+  }
+  return ok;
+}
+
+$('#m-download').addEventListener('click', () => downloadModel());
+
+/** After a first install (the installer starts the app with --first-run):
+ *  say that DaoHui is ready and fetch the model without a click. */
+async function firstRun() {
+  const welcome = $('#m-welcome');
+  welcome.textContent = '島輝已經裝好了，現在就可以打字。';
+  welcome.hidden = false;
+  const s = await call('model_status');
+  renderModel(s);
+  if (s.exists) {
+    welcome.textContent = '島輝已經裝好了，可以開始打字。語言模型也已經在了，可以關掉這個視窗。';
+    return;
+  }
+  if (!s.configured || s.downloading) return;
+  welcome.textContent = '島輝已經裝好了，現在就可以打字。\n'
+    + `正在下載語言模型${$('#m-size').textContent}，完成後整句選字會更準確。下載時可以照常打字；`
+    + '關掉這個視窗會暫停下載，之後從開始選單打開「島輝設定」，在這一頁按「繼續下載」。';
+  if (await downloadModel()) {
+    welcome.textContent = '全部完成：島輝已經用上語言模型了，可以關掉這個視窗。';
+  } else {
+    welcome.className = 'notice warn pre';
+    welcome.textContent = '島輝已經可以打字，但語言模型這次沒有下載完（原因在下面）。\n'
+      + '網路順的時候按「繼續下載」，會從中斷的地方接著下載。';
+  }
+}
 
 $('#m-cancel').addEventListener('click', () => invoke('cancel_model_download'));
 
@@ -817,6 +857,13 @@ loaders.model = async () => {
     about = await invoke('about_info');
     $('#foot-version').textContent = `版本 ${about.version}`;
   } catch (_) { /* shown on the about page */ }
+  let launch = { firstRun: false };
+  try { launch = await invoke('launch_options'); } catch (_) { /* keep the default */ }
+  if (launch && launch.firstRun) {
+    show('model');
+    firstRun().catch(() => {});
+    return;
+  }
   let start = location.hash.slice(1);
   if (!start) {
     try { start = localStorage.getItem('daohui.page') || 'about'; } catch (_) { start = 'about'; }
@@ -831,6 +878,8 @@ function mockListen() { return Promise.resolve(() => {}); }
 function mockInvoke(cmd, args) {
   const settings = { rawKeys: true, prediction: true, tabDoubleMs: 400, learnEnabled: true, englishCompose: false };
   const data = {
+    // index.html#first-run previews what the installer opens
+    launch_options: { firstRun: location.hash === '#first-run' },
     about_info: {
       name: '島輝', nameEn: 'DaoHui', version: '0.1.0', license: 'GPL-3.0-or-later',
       licenseUrl: 'https://www.gnu.org/licenses/gpl-3.0.html',
