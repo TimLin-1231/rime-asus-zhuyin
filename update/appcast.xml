@@ -15,6 +15,29 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.17</title>
+      <pubDate>Tue, 03 Nov 2026 02:23:00 +0000</pubDate>
+      <sparkle:version>0.17.4.17</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.17</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.17</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>修正：還沒按 Enter 時按 Ctrl+V，貼上的內容有時會被打好的字蓋掉。現在先出現打好的字，接著才貼上</li>
+          <li>新的「島輝設定」外觀，像 macOS 的系統設定</li>
+          <li>安裝和更新不再問任何問題，也不用重新開機</li>
+          <li>修正：島輝設定下載語言模型時驗證失敗</li>
+          <li>ㄔㄥˊㄕˋ 首選是「程式」；打開的選字清單最後一列是你打的注音</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.17/daohui-0.17.4.17-installer.exe"
+                 sparkle:version="0.17.4.17"
+                 sparkle:os="windows"
+                 sparkle:installerArguments="/S"
+                 length="17693415"
+                 type="application/octet-stream"
+                 daohui:sha256="593c41cf3a5e75805a729a6191203855b64e448c75fa7e359c0781c17af3a9a1" />
+    </item>
+    <item>
       <title>島輝 0.17.4.13</title>
       <pubDate>Sat, 31 Oct 2026 12:40:00 -0500</pubDate>
       <sparkle:version>0.17.4.13</sparkle:version>
