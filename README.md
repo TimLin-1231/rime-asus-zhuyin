@@ -11,7 +11,10 @@ Windows 與 macOS 上的智慧注音輸入法。以 [Rime 輸入法引擎](https
 **Windows**（64 位元 Windows 10、11）
 
 1. 下載 **[DaoHui-Setup.exe](https://github.com/TimLin-1231/daohui-weasel/releases/latest/download/DaoHui-Setup.exe)**，打開它。
-2. 出現「Windows 已保護您的電腦」時按「**其他資訊**」→「**仍要執行**」；問「是否允許這個 App 變更您的裝置？」時按「**是**」。
+2. 出現「Windows 已保護您的電腦」時按「**其他資訊**」→「**仍要執行**」；問「您是否要允許這個來自未知發行者的 App 變更您的裝置?」時按「**是**」。
+
+   <img src="docs/img/win-smartscreen.svg" alt="藍色的「Windows 已保護您的電腦」視窗：先按「其他資訊」，再按「仍要執行」" width="600">
+
 3. 等它裝完，按「**完成**」。會自動開始下載語言模型（約 410 MB），下載時可以照常打字。
 
 **Mac**（macOS 13 以上，Apple 晶片和 Intel 都可以）
@@ -22,6 +25,8 @@ Windows 與 macOS 上的智慧注音輸入法。以 [Rime 輸入法引擎](https
    ```bash
    curl -fsSL https://raw.githubusercontent.com/TimLin-1231/rime-asus-zhuyin/main/install/mac.sh | bash
    ```
+
+   <img src="docs/img/mac-terminal.svg" alt="終端機畫面：貼上指令後依序顯示下載、安裝、選用輸入法、下載語言模型，最後是綠色的「✔ 島輝裝好了」" width="600">
 
 裝好就會切換到島輝。連按兩下 <kbd>Shift</kbd> 切換中文／英文，<kbd>↓</kbd> 打開選字清單。之後會自動更新。
 
@@ -45,6 +50,20 @@ Windows 與 macOS 上的智慧注音輸入法。以 [Rime 輸入法引擎](https
 這個 repo 是島輝的 Rime 方案、Lua、詞庫與評估工具、設定程式（`app/`）和寫作小幫手（`assist/`）；Windows 與 macOS 的輸入法程式在 [daohui-weasel](https://github.com/TimLin-1231/daohui-weasel)、[daohui-squirrel](https://github.com/TimLin-1231/daohui-squirrel)。下面的說明以 Windows 開發環境為準：在小狼毫 0.17.4（librime 1.13.1）上重現並強化華碩智慧輸入法的體驗。
 方案 id 和檔名仍是 `asus_zhuyin` / `asus_*.lua`：改名會讓已經學到的資料（`*.userdb`）和所有工具對不上，所以只改了顯示的名稱。
 所有設定都在 `rime/`。小狼毫的使用者目錄（登錄檔 `HKCU\Software\Rime\Weasel\RimeUserDir`）直接指向這個資料夾。
+
+```mermaid
+flowchart LR
+    KEY["鍵盤"] --> FE["島輝前端<br/>Windows：daohui-weasel<br/>Mac：daohui-squirrel"]
+    FE <--> RIME["librime"]
+    RIME <--> SCHEMA["島輝注音方案<br/>rime/ ＋ rime/lua/asus_*.lua"]
+    SCHEMA --> DICT["詞庫"]
+    SCHEMA --> GRAM["語言模型 .gram"]
+    SCHEMA <--> USERDB["學習資料 .userdb"]
+    FE -->|"Ctrl+R"| AI["本機 llama.cpp<br/>Qwen3.5-4B"]
+    SET["島輝設定 app/"] -.->|"下載、設定、部署"| RIME
+```
+
+一個按鍵經過哪些 Lua 模組、AI 修正怎麼運作、新版本怎麼發佈和更新、測試怎麼跑：見 **[島輝的架構](docs/architecture.md)**。
 
 ## 目錄
 

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="380" viewBox="0 0 680 380" font-family="'Microsoft JhengHei UI','Microsoft JhengHei','PingFang TC','Noto Sans TC','Noto Sans CJK TC',sans-serif">
+  <title>按 Windows 鍵＋空白鍵，選「島輝」（示意圖）</title>
+  <rect width="680" height="380" rx="16" fill="#E9EDF2"/>
+
+  <!-- keys -->
+  <text x="40" y="58" font-size="17" font-weight="700" fill="#1F2328">按住 Windows 鍵，再按空白鍵</text>
+  <rect x="40" y="82" width="92" height="56" rx="8" fill="#fff" stroke="#9AA4B2" stroke-width="1.5"/>
+  <rect x="40" y="132" width="92" height="6" rx="3" fill="#C9D1DB"/>
+  <g transform="translate(70 96)" fill="#0B6BCB">
+    <rect width="13" height="13"/><rect x="15" width="13" height="13"/>
+    <rect y="15" width="13" height="13"/><rect x="15" y="15" width="13" height="13"/>
+  </g>
+  <text x="152" y="118" font-size="26" fill="#1F2328">＋</text>
+  <rect x="190" y="82" width="200" height="56" rx="8" fill="#fff" stroke="#9AA4B2" stroke-width="1.5"/>
+  <rect x="190" y="132" width="200" height="6" rx="3" fill="#C9D1DB"/>
+  <text x="290" y="116" font-size="15" fill="#1F2328" text-anchor="middle">空白鍵</text>
+  <text font-size="14" fill="#3B4350">
+    <tspan x="40" y="184">右下角會出現輸入法清單，</tspan>
+    <tspan x="40" y="206">繼續按空白鍵移到「島輝」再放開。</tspan>
+    <tspan x="40" y="240">也可以直接點工作列右下角的</tspan>
+    <tspan x="40" y="262">「中」或「ENG」來選。</tspan>
+  </text>
+
+  <!-- flyout -->
+  <rect x="380" y="150" width="270" height="164" fill="#2B2B2B"/>
+  <text x="396" y="190" font-size="20" fill="#fff">ENG</text>
+  <text font-size="13" fill="#fff">
+    <tspan x="450" y="180">英文 (美國)</tspan>
+    <tspan x="450" y="198" fill="#BDBDBD">美式鍵盤</tspan>
+  </text>
+  <rect x="380" y="214" width="270" height="56" fill="#4A4A4A"/>
+  <rect x="380" y="214" width="4" height="56" fill="#4CA2FF"/>
+  <text x="404" y="250" font-size="22" fill="#fff">中</text>
+  <text font-size="13" fill="#fff">
+    <tspan x="450" y="238">中文 (繁體，台灣)</tspan>
+    <tspan x="450" y="258" font-weight="700">島輝</tspan>
+  </text>
+  <text x="396" y="298" font-size="12" fill="#9CC9FF">語言喜好設定</text>
+  <rect x="374" y="208" width="282" height="68" rx="8" fill="none" stroke="#FF4D4F" stroke-width="3"/>
+
+  <!-- taskbar -->
+  <rect x="300" y="334" width="380" height="46" fill="#202020"/>
+  <text x="430" y="362" font-size="13" fill="#fff">⌃</text>
+  <text x="466" y="363" font-size="15" fill="#fff">中</text>
+  <rect x="456" y="342" width="34" height="30" rx="4" fill="none" stroke="#FF4D4F" stroke-width="2"/>
+  <text font-size="11" fill="#fff" text-anchor="middle">
+    <tspan x="560" y="354">下午 03:00</tspan>
+    <tspan x="560" y="370">2026/11/2</tspan>
+  </text>
+
+  <text x="664" y="22" font-size="11" fill="#6B7280" text-anchor="end">示意圖</text>
+</svg>

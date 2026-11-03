@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="440" viewBox="0 0 920 440" font-family="'Microsoft JhengHei UI','Microsoft JhengHei','PingFang TC','Noto Sans TC','Noto Sans CJK TC',sans-serif">
+  <title>Windows 已保護您的電腦：先按「其他資訊」，再按「仍要執行」（示意圖）</title>
+  <rect width="920" height="440" rx="16" fill="#E9EDF2"/>
+
+  <!-- step 1 -->
+  <circle cx="36" cy="38" r="14" fill="#E5484D"/>
+  <text x="36" y="43.5" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+  <text x="58" y="44" font-size="17" font-weight="700" fill="#1F2328">按「其他資訊」</text>
+
+  <rect x="20" y="64" width="420" height="340" fill="#0B5CAD"/>
+  <text x="420" y="92" font-size="16" fill="#fff" text-anchor="middle">✕</text>
+  <text x="44" y="132" font-size="26" fill="#fff">Windows 已保護您的電腦</text>
+  <text font-size="14" fill="#fff">
+    <tspan x="44" y="172">Microsoft Defender SmartScreen 已防止某個</tspan>
+    <tspan x="44" y="194">無法辨識的應用程式啟動。執行此應用程式可</tspan>
+    <tspan x="44" y="216">能會讓您的電腦暴露在風險中。</tspan>
+  </text>
+  <text x="44" y="252" font-size="14" fill="#fff" text-decoration="underline">其他資訊</text>
+  <rect x="36" y="232" width="72" height="28" rx="6" fill="none" stroke="#FF4D4F" stroke-width="3"/>
+  <rect x="118" y="233" width="96" height="26" rx="13" fill="#E5484D"/>
+  <text x="166" y="251" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">先按這裡</text>
+  <rect x="326" y="352" width="98" height="34" fill="none" stroke="#fff" stroke-width="1.5"/>
+  <text x="375" y="374" font-size="14" fill="#fff" text-anchor="middle">不要執行</text>
+
+  <!-- step 2 -->
+  <circle cx="496" cy="38" r="14" fill="#E5484D"/>
+  <text x="496" y="43.5" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+  <text x="518" y="44" font-size="17" font-weight="700" fill="#1F2328">再按「仍要執行」</text>
+
+  <rect x="480" y="64" width="420" height="340" fill="#0B5CAD"/>
+  <text x="880" y="92" font-size="16" fill="#fff" text-anchor="middle">✕</text>
+  <text x="504" y="132" font-size="26" fill="#fff">Windows 已保護您的電腦</text>
+  <text font-size="14" fill="#fff">
+    <tspan x="504" y="172">Microsoft Defender SmartScreen 已防止某個</tspan>
+    <tspan x="504" y="194">無法辨識的應用程式啟動。執行此應用程式可</tspan>
+    <tspan x="504" y="216">能會讓您的電腦暴露在風險中。</tspan>
+  </text>
+  <text font-size="14" fill="#fff">
+    <tspan x="504" y="256">應用程式：</tspan>
+    <tspan x="590" y="256">DaoHui-Setup.exe</tspan>
+    <tspan x="504" y="280">發行者：</tspan>
+    <tspan x="590" y="280">未知的發行者</tspan>
+  </text>
+  <rect x="680" y="352" width="98" height="34" fill="none" stroke="#fff" stroke-width="1.5"/>
+  <text x="729" y="374" font-size="14" fill="#fff" text-anchor="middle">仍要執行</text>
+  <rect x="786" y="352" width="98" height="34" fill="none" stroke="#fff" stroke-width="1.5"/>
+  <text x="835" y="374" font-size="14" fill="#fff" text-anchor="middle">不要執行</text>
+  <rect x="673" y="345" width="112" height="48" rx="8" fill="none" stroke="#FF4D4F" stroke-width="3"/>
+  <rect x="681" y="306" width="96" height="26" rx="13" fill="#E5484D"/>
+  <text x="729" y="324" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">再按這裡</text>
+  <path d="M729 332 L729 343" stroke="#E5484D" stroke-width="3"/>
+
+  <text x="904" y="428" font-size="11" fill="#6B7280" text-anchor="end">示意圖</text>
+</svg>

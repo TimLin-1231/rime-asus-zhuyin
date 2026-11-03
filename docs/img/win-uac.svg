@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="400" viewBox="0 0 560 400" font-family="'Microsoft JhengHei UI','Microsoft JhengHei','PingFang TC','Noto Sans TC','Noto Sans CJK TC',sans-serif">
+  <title>使用者帳戶控制：按「是」（示意圖）</title>
+  <rect width="560" height="400" rx="16" fill="#E9EDF2"/>
+
+  <rect x="40" y="28" width="480" height="344" fill="#2B2B2B"/>
+  <rect x="40" y="28" width="480" height="122" fill="#F2B705"/>
+  <text x="62" y="56" font-size="13" fill="#1F1F1F">使用者帳戶控制</text>
+  <text font-size="20" fill="#1F1F1F">
+    <tspan x="62" y="96">您是否要允許這個來自未知發行者的</tspan>
+    <tspan x="62" y="126">App 變更您的裝置?</tspan>
+  </text>
+
+  <rect x="62" y="170" width="34" height="34" rx="6" fill="#4A90D9"/>
+  <text x="79" y="194" font-size="18" font-weight="700" fill="#fff" text-anchor="middle">島</text>
+  <text x="108" y="193" font-size="15" fill="#fff">DaoHui-Setup.exe</text>
+  <text font-size="13" fill="#E6E6E6">
+    <tspan x="62" y="232">發行者：未知</tspan>
+    <tspan x="62" y="254">檔案來源：此電腦上的硬碟</tspan>
+  </text>
+  <text x="62" y="284" font-size="13" fill="#7DB8F0">顯示更多詳細資料</text>
+
+  <rect x="62" y="312" width="210" height="38" fill="#5A5A5A"/>
+  <text x="167" y="337" font-size="15" fill="#fff" text-anchor="middle">是</text>
+  <rect x="288" y="312" width="210" height="38" fill="#5A5A5A"/>
+  <text x="393" y="337" font-size="15" fill="#fff" text-anchor="middle">否</text>
+  <rect x="55" y="305" width="224" height="52" rx="8" fill="none" stroke="#FF4D4F" stroke-width="3"/>
+  <rect x="186" y="276" width="86" height="26" rx="13" fill="#E5484D"/>
+  <text x="229" y="294" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">按「是」</text>
+
+  <text x="544" y="388" font-size="11" fill="#6B7280" text-anchor="end">示意圖</text>
+</svg>
