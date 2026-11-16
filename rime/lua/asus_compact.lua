@@ -118,7 +118,11 @@ local function init(env)
         return
       end
       local seg = ctx.composition:back()
-      if seg and seg.menu and env.raw_active then
+      -- Only for the input the filter last made the two raw rows for: after
+      -- BackSpace a kept segment keeps its old menu (one row, the filter does
+      -- not run again), and row 1 would select nothing, so librime would show
+      -- and commit the raw keys (su3xx, BackSpace twice: su3, not 你).
+      if seg and seg.menu and env.raw_active == ctx.input then
         seg.selected_index = 1
       end
     end)
@@ -229,7 +233,7 @@ local function func(input, env)
       local is_trailing = (cand._end == #ctx.input) and (ctx.caret_pos == #ctx.input)
       if raw_keys and is_trailing and reading ~= "" and cand.type ~= "number"
          and cand.type ~= "edit" and (ctx:get_property("asus_edit") or "") == "" then
-        env.raw_active = true
+        env.raw_active = ctx.input  -- the input these rows are for (see init)
         local tail = ctx.input:sub(1, ctx.caret_pos):match("[^ 6347']*$") or ""
         local prefix = ""
         if #tail > 0 and #cand.text >= #tail and cand.text:sub(-#tail) == tail then

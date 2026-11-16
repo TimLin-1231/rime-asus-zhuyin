@@ -43,6 +43,28 @@ EXTRA_DISABLED = {
     )
 }
 
+# Stray keys typed after a tone key, then BackSpace back to that tone key:
+# (keys, BackSpaces, inline text and Enter commit). Kept segments keep their
+# old menus, and the raw row selection once stuck to them, so the raw keys
+# (su3) were shown and committed (process audit 2026-11-16, step A8).
+BS_BACK_TO_TONE = (
+    ("su3xx", 2, "你"), ("su3dc", 2, "你"), ("su3jj", 2, "你"), ("su3cl3dc", 2, "你好"),
+    ("ji3m/4xx", 2, "我用"), ("su3cl3ww", 2, "你好"), ("su3cl3qq", 2, "你好"),
+    ("su3cl3,,", 2, "你好"), ("su3cl3aa", 2, "你好"),
+)
+
+
+def bs_back_to_tone(r, keys: str, n: int) -> tuple[str, str]:
+    """Type keys, press BackSpace n times, then Return: (inline text, commit)."""
+    r.clear()
+    r.type(keys)
+    for _ in range(n):
+        r.key("BackSpace")
+    preview = r.snapshot().preview
+    r.key("Return")
+    return preview, "".join(r.committed)
+
+
 ZHUYIN_CHARS = set("ㄅㄆㄇㄈㄉㄊㄋㄌㄍㄎㄏㄐㄑㄒㄓㄔㄕㄖㄗㄘㄙㄧㄨㄩㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦˉˊˇˋ˙　")
 
 
@@ -78,12 +100,19 @@ def run_disabled_child() -> int:
     cand0_before_enter = s.top
     r.key("Return")
     committed = "".join(r.committed)
+    r.set_option("prediction", False)
+    bs_lines = []
+    for keys, n, _ in BS_BACK_TO_TONE:
+        preview, got = bs_back_to_tone(r, keys, n)
+        bs_lines.append(f"BS_BACK:{keys}\t{preview}\t{got}")
     r.close()
 
     # In disabled mode, su previews and commits Chinese '你'
     print(f"PREVIEW:{preview_before_enter}")
     print(f"CAND0:{cand0_before_enter}")
     print(f"COMMITTED:{committed}")
+    for line in bs_lines:
+        print(line)
     return 0
 
 
@@ -317,6 +346,16 @@ def main() -> int:
         proc.returncode == 0 and disabled_committed == "你",
         f"rc={proc.returncode}, disabled_committed={disabled_committed!r}, want '你'",
     )
+    # The BackSpace-to-tone cases of 2.8d with the mode off (same child).
+    disabled_bs = {}
+    for line in out.splitlines():
+        if line.startswith("BS_BACK:"):
+            keys, preview, got = line.split("BS_BACK:", 1)[1].split("\t")
+            disabled_bs[keys] = (preview, got)
+    for keys, n, want in BS_BACK_TO_TONE:
+        got = disabled_bs.get(keys)
+        check("Tier 1", f"T1_toggle_disabled_bs_back_to_tone_{keys}", got == (want, want),
+              f"(inline, commit)={got!r}, want {(want, want)!r}")
 
     # -------------------------------------------------------------------------
     # Tier 2: Boundary & Corner Cases
@@ -469,6 +508,13 @@ def main() -> int:
     r.key("Return")
     check("Tier 2", "T2_split_keys_return_commits_dc", "".join(r.committed).endswith("dc"),
           f"committed={r.committed!r}")
+
+    # 2.8d Stray keys after a tone key, deleted with BackSpace back to it: the
+    # finished characters are shown and committed, not the raw keys (su3).
+    for keys, n, want in BS_BACK_TO_TONE:
+        preview, got = bs_back_to_tone(r, keys, n)
+        check("Tier 2", f"T2_bs_back_to_tone_{keys}", (preview, got) == (want, want),
+              f"(inline, commit)={(preview, got)!r}, want {(want, want)!r}")
 
     # 2.8c Numpad keys while composing: what is shown is committed, then the
     # character (top-row digits are Zhuyin keys); in an open list 1-9 pick.
