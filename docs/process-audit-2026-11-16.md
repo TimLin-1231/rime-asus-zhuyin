@@ -259,7 +259,13 @@ python "C:\Users\User\AppData\Local\Temp\claude\9e0a2d41513ffaf2\a3b664e8-01c6-4
 - A4：新增 `tools/doctor.py`。分兩級：FAIL 是現在就影響打字或學習資料的問題，結束碼 1；WARN 是整理類的提醒。用假資料夾確認過，備份失敗、備份過期、部署落後都會報 FAIL。
 - 正在執行的伺服器還是背景優先權：修正從下一次排程重啟（00:30）起才生效，在那之前可以從開始功能表執行「島輝算法服務」立刻恢復。
 
-其餘步驟都還沒執行。A 組多數會動到正在使用的系統，需要你同意。
+**2026-11-16 稍晚再套用 A6、A7a、A8、B1 到 B6、B8、B9、B10**，細節和還剩下的部分見 `docs/dev/OPEN.md`：
+
+- 測試結果寫在 `.harness/test_runs/`（不是下面 B3 寫的 `reports/test_runs/`），那是連到 Google Drive 範圍外的目錄連結。
+- hook 的自我測試在 `tests/test_pretooluse_hook.py`，會跟著整套測試一起跑。
+- A8 的修正在 `rime/lua/asus_compact.lua`，要重新部署才會到你的輸入法。
+
+還沒做的：A3（要重新編譯發佈）、A5（要你決定）、A7b 和 B7（動到系統設定或要刪東西，要你同意），以及 B5、B9 各一半。
 
 ### A 組：輸入法的實際問題
 

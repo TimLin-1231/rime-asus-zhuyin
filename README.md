@@ -47,9 +47,10 @@ Windows 與 macOS 上的智慧注音輸入法。以 [Rime 輸入法引擎](https
 
 ## 開發說明
 
-這個 repo 是島輝的 Rime 方案、Lua、詞庫與評估工具、設定程式（`app/`）和寫作小幫手（`assist/`）；Windows 與 macOS 的輸入法程式在 [daohui-weasel](https://github.com/TimLin-1231/daohui-weasel)、[daohui-squirrel](https://github.com/TimLin-1231/daohui-squirrel)。下面的說明以 Windows 開發環境為準：在小狼毫 0.17.4（librime 1.13.1）上重現並強化華碩智慧輸入法的體驗。
+這個 repo 是島輝的 Rime 方案、Lua、詞庫與評估工具、設定程式（`app/`）和寫作小幫手（`assist/`）；Windows 與 macOS 的輸入法程式在 [daohui-weasel](https://github.com/TimLin-1231/daohui-weasel)、[daohui-squirrel](https://github.com/TimLin-1231/daohui-squirrel)。下面的說明以 Windows 開發環境為準。Windows 版島輝是小狼毫 0.17.4 的分支（librime 1.13.1），伺服器叫 `DaoHuiServer`、部署程式叫 `DaoHuiDeployer`；下文說「小狼毫」的地方，多半是在講兩者共用的那套行為。
 方案 id 和檔名仍是 `asus_zhuyin` / `asus_*.lua`：改名會讓已經學到的資料（`*.userdb`）和所有工具對不上，所以只改了顯示的名稱。
-所有設定都在 `rime/`。小狼毫的使用者目錄（登錄檔 `HKCU\Software\Rime\Weasel\RimeUserDir`）直接指向這個資料夾。
+所有設定都在 `rime/`。在開發用的這台電腦上，島輝的使用者目錄（登錄檔 `HKCU\Software\DaoHui` 的 `RimeUserDir`）直接指向這個資料夾，所以 **`rime/` 就是正在使用的輸入法設定**：改了之後，下次「重新部署」就上線。舊的小狼毫也還裝著，它的 `HKCU\Software\Rime\Weasel\RimeUserDir` 指向同一個資料夾；不要在輸入法清單裡選它，兩個伺服器會搶同一份學習資料（2026-11 發生過，備份因此連續失敗 8 天）。一般使用者的島輝用 `%APPDATA%\DaoHui`。
+在這個 repo 工作的規則在 [`CLAUDE.md`](CLAUDE.md)，現況、未結事項和發佈步驟在 [`docs/dev/`](docs/dev/)；開工前先跑 `python tools/doctor.py`（唯讀的健康檢查）。
 
 ```mermaid
 flowchart LR
@@ -69,7 +70,7 @@ flowchart LR
 
 | 路徑 | 內容 |
 |---|---|
-| `rime/` | 小狼毫使用者目錄：方案、Lua、外觀設定 |
+| `rime/` | 島輝的使用者目錄（這台電腦上正在使用）：方案、Lua、外觀設定 |
 | `rime/lua/asus_shift.lua` | 連按兩下 Shift 切換中英（排在所有處理器最前面，才看得到每一個按鍵） |
 | `rime/lua/asus_keys.lua` | Ctrl+Space 切換中英、空白／Backspace、展開選單後的按鍵 |
 | `rime/lua/asus_compact.lua` | 精簡候選泡泡（只顯示首選，以及尚未打聲調的注音） |
@@ -80,7 +81,7 @@ flowchart LR
 | `rime/lua/asus_english.lua` | 英文模式的組字與猜字（補完、拼字更正、email）、空白鍵自動修正、下一個詞 |
 | `rime/lua/asus_email.lua` | Email 提示：打前幾個字就出現完整的 email，Tab 送出 |
 | `tools/eval_edit.py` | 改字評估：句子打錯時改到對要按幾個鍵、能不能改好 |
-| `assist/` | 寫作小幫手：選取文字按 Ctrl+Alt+W，文法修正、改寫、續寫（獨立的小程式，不經過小狼毫） |
+| `assist/` | 寫作小幫手：選取文字按 Ctrl+Alt+W，文法修正、改寫、續寫（獨立的小程式，不經過輸入法） |
 | `start_assist.bat` | 啟動寫作小幫手 |
 | `tools/fetch_assist.py` | 下載小幫手用的 Harper、llama.cpp 和模型（不進 git） |
 | `tools/eval_assist.py` | 小幫手的文法修正評估 |
@@ -93,7 +94,9 @@ flowchart LR
 | `tools/make_eval_set.py` | 從 `tests/eval/sentences.txt` 產生評估用的按鍵序列（採台灣教育部讀音） |
 | `tools/fetch_models.py` | 下載語言模型 `.gram` 和英文詞頻表（不進 git） |
 | `tools/tsf_test.py` | 在真的記事本裡自動打字、切視窗，檢查沒送出的字有沒有保留 |
-| `tests/test_stage1.py` | 階段 1 的行為測試 |
+| `tests/test_*.py` | 行為測試（追蹤中的每一個都會跑，見「測試」） |
+| `tools/run_tests.py` | 跑全部測試的唯一指令：每個檔有逾時，結果寫進 `.harness/test_runs/` |
+| `tools/doctor.py` | 健康檢查（唯讀）：伺服器優先權、兩個伺服器同時在跑、備份、部署、worktree、`gh` 帳號 |
 | `reports/eval_history.jsonl` | 歷次評估結果 |
 | `backups/` | 改動前的完整備份（不進 git） |
 
@@ -201,7 +204,7 @@ flowchart LR
   - 一個字後面多一個字母（systemd、repos、configs）；第一個字母通常不會是打錯的那一個，所以差在第一個字母的幾乎不改（dtype 不是 type）。
   - 有其他大寫的字（GPU、iPhone）、有數字或符號的字（x86、node.js、e-mail）、email。
   - 三個字母的字只修正固定的幾個（teh、hte、adn、yuo、nto…），所以 aws 不會變 was。
-- **還原**：修正後緊接著按 Backspace（或 Esc），行內變回你打的字，再按空白就照打的送出。**還原過的字之後不再修正**，直到小狼毫重新啟動（重開機、重新部署）；要永久保留就把它加進 `lexicon/english_words.txt`，或在中文模式打這個字後按 Ctrl+Enter。
+- **還原**：修正後緊接著按 Backspace（或 Esc），行內變回你打的字，再按空白就照打的送出。**還原過的字之後不再修正**，直到輸入法重新啟動（重開機、重新部署）；要永久保留就把它加進 `lexicon/english_words.txt`，或在中文模式打這個字後按 Ctrl+Enter。
 - **按 Enter 送出不會修正**：Enter 永遠是「照我打的」。
 - **程式編輯器**（VS Code、Cursor、Visual Studio、PyCharm、IntelliJ、Sublime Text）預設不修正、也不顯示下一個詞（變數名稱不是錯字），猜字照常。清單在 `rime/weasel.custom.yaml` 的 `asus_en_noauto`，刪掉那一行就會修正，照樣加一行就能關掉別的程式。
 - **全部關掉**：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_english/autocorrect: false`。
@@ -220,7 +223,7 @@ flowchart LR
 同一套判斷規則，用在中文模式打的英文字上：
 
 - **句子中間的英文字**（後面已經接著打了別的字）：直接顯示修正後的字。例如 `這個enviroment有問題` 行內顯示「這個environment有問題」，Enter 送出的就是修正後的。
-  - 想要原本打的：← 把游標移到那個字，↓，清單是「現在的字、修正的字（標「更正」）、**你打的字**、其他猜字」，選你打的那個。**選過一次之後，這個字就不再修正**，直到小狼毫重新啟動；要永久保留，就把它加進 `lexicon/english_words.txt`，或單獨打這個字按 Ctrl+Enter 送出一次。
+  - 想要原本打的：← 把游標移到那個字，↓，清單是「現在的字、修正的字（標「更正」）、**你打的字**、其他猜字」，選你打的那個。**選過一次之後，這個字就不再修正**，直到輸入法重新啟動；要永久保留，就把它加進 `lexicon/english_words.txt`，或單獨打這個字按 Ctrl+Enter 送出一次。
 - **正在打的最後一個字不會動**（可能還沒打完）：行內照打的顯示，小框照常列出猜字，Tab 選。這時按 **Enter 是照打的送出**。
 - **英文字後面按空白**（例如在中文模式連續打英文句子）：跟英文模式一樣，先顯示修正後的字（有底線、小框顯示 `⌫你打的字`），下一個鍵才送出；緊接著按 Backspace 或 Esc 還原，還原過的字不再修正。
 - 單獨一個 `i` 在句子中間不會變成 `I`（變數名稱）。程式編輯器（`asus_en_noauto`）和 `asus_english/autocorrect: false` 一樣會關掉這裡的修正。
@@ -318,7 +321,7 @@ flowchart LR
 - 限制：滑鼠點到別的位置輸入法不會知道，那之後的第一次續寫可能接錯地方（按任何鍵就消失）；只看得到經由輸入法打的字，貼上的、原本就在文件裡的看不到；只有英文模式。
 
 ### 英文模式打久了不再變慢
-階段 14 順便修掉的問題：猜字用的暫存資料在英文模式從來不會清掉，打過的字越多、每個按鍵越慢（評估時連續打 650 個字，每鍵從 2.4 ms 漲到 14 ms；小狼毫不重開的話會一直累積）。現在每鍵固定約 2 ms。
+階段 14 順便修掉的問題：猜字用的暫存資料在英文模式從來不會清掉，打過的字越多、每個按鍵越慢（評估時連續打 650 個字，每鍵從 2.4 ms 漲到 14 ms；輸入法不重開的話會一直累積）。現在每鍵固定約 2 ms。
 
 ## 寫作小幫手（階段 15）
 輸入法只看得到「正在打的那個字」，整句的文法、改寫要另一個程式來做。`assist/` 是一個常駐的小程式，在任何程式裡都能用：
@@ -509,7 +512,7 @@ flowchart LR
   以及把送出的文字切成詞用的詞表（`rime/opencc/asus_seg.*`，自我學習用）。
 - **語言模型**：`wanxiang-lts-zh-hant.gram`（[RIME-LMDG](https://github.com/amzxyz/RIME-LMDG)，CC-BY-4.0）。
   它是用開發集 A/B 評估選出來的，`rime/grammar.yaml` 裡有改回舊模型的方法。
-- **英文猜字**：`rime/opencc/asus_en_prefix.*`（每個開頭最多 5 個補完）和 `asus_en_fix.*`（前 40,000 個常用字的拼字更正，差一個字母：多、少、錯、前後顛倒），由 `build_lang_data.py` 產生。小狼毫啟動後第一次打字時多花約 0.7 秒載入，只發生一次。
+- **英文猜字**：`rime/opencc/asus_en_prefix.*`（每個開頭最多 5 個補完）和 `asus_en_fix.*`（前 40,000 個常用字的拼字更正，差一個字母：多、少、錯、前後顛倒），由 `build_lang_data.py` 產生。輸入法啟動後第一次打字時多花約 0.7 秒載入，只發生一次。
 - **英文詞彙**：來自舊小狼毫的 `easy_en` 詞頻表，加上 `lexicon/english_words.txt`（你自己的英文專有名詞，一行一個）。
 - **英文字的大小寫**：中文模式用小寫打的英文字，如果詞庫裡的寫法在第一個字母以外還有大寫，就換成那個寫法（api → API、nato → NATO）。但 `easy_en` 有三千多個字只有全大寫的寫法，其中很多是一般的字和人名（CORE、FAX、ADMIN、ALICE、CONFIG、BRANSON），所以以前打 core 會變成 CORE。現在 `build_lang_data.py` 只在「看起來是縮寫」時才保留全大寫：
   - 最多 5 個字母，而且 SymSpell 的詞表（全小寫的一般單字）沒有這個字，才保留大寫：USA、NATO、HTML、RISC、CPU。其他的照你打的小寫：core、aids、alice、adams、americas、config。
@@ -550,7 +553,7 @@ flowchart LR
 - **英文詞**：用 Ctrl+Enter 送出的字母、句子裡打過的英文詞。
 - **下一個詞**：把你送出的文字切成詞，同樣的兩個詞前後出現兩次（或接受預測一次），之後就會排在預測的第一個。
 - **淡化**：學到的東西每 90 天權重減半（`asus_learn/half_life_days`），太舊的會自動刪掉。
-- **忘記**：Shift+Del（見上表）。整個清空：結束小狼毫服務 → 刪除 `rime/asus_learn.userdb` 資料夾 → 重新啟動。
+- **忘記**：Shift+Del（見上表）。整個清空：結束島輝算法服務（`DaoHuiServer`）→ 刪除 `rime/asus_learn.userdb` 資料夾 → 從開始功能表「島輝輸入法 → 島輝算法服務」重新啟動。
 - **關閉**：`rime/asus_zhuyin.custom.yaml` 的 `patch:` 加上 `asus_learn/enabled: false`，再重新部署（小狼毫自己的學習不受影響）。
 - **多台電腦同步**（`asus_sync.lua`，由設定程式的「同步」頁打開）：使用者資料夾的 `installation.yaml` 有 `sync_dir` 才會動作，沒有就完全不讀也不寫同步資料夾。
   - 每台電腦把學到的東西寫成一份文字快照 `<sync_dir>/daohui/<installation_id>/asus_learn.txt`（整份寫好再改名，內容沒變就不寫），再把其他電腦的快照併進來：同一筆取「淡化到同一時間後權重比較大」的那份，原樣保留，所以同一份併兩次、A→B→A 來回都不會越加越多。
@@ -593,40 +596,30 @@ flowchart LR
 你自己也會打的那個詞受保護，所以學到的新詞只在相同前後文出現；要它到處都用，就在其他句子再改一次。
 
 ## 部署
-1. 修改 `rime/` 裡的檔案。
-2. 系統匣的小狼毫圖示按右鍵 →「**重新部署**」。
-3. 如果是改了 `RimeUserDir`，或是第一次在新電腦上使用：先跑 `python tools/fetch_models.py`、`python tools/build_lexicon.py` 和 `python tools/build_lang_data.py`，再重新啟動小狼毫服務（重開機最簡單），然後重新部署。
-4. 詞表的快速格式（選用，但建議）：`build_lang_data.py` 若找到 `third_party/opencc-build/src/tools/Release/opencc_dict.exe`，會把 `rime/opencc/` 的詞表轉成二進位的 ocd2，小狼毫啟動後第一次打字的載入時間從約 1.8 秒降到約 0.5 秒。編譯方法（需要 Visual Studio 2022 Build Tools）：下載 [OpenCC 1.1.9](https://github.com/BYVoid/OpenCC/archive/refs/tags/ver.1.1.9.tar.gz) 解壓到 `third_party/`，用 VS 內附的 cmake 執行 `cmake -S third_party/OpenCC-ver.1.1.9 -B third_party/opencc-build -G "Visual Studio 17 2022" -A x64 -DBUILD_DOCUMENTATION=OFF -DENABLE_GTEST=OFF -DPYTHON_EXECUTABLE=<python.exe>`，再 `cmake --build third_party/opencc-build --config Release --target opencc_dict`。沒有這個工具時照常用文字詞表。
+1. 修改 `rime/` 裡的檔案。在開發用的電腦上這就是正在使用的設定，所以還沒改完、還沒測過的東西不要留在這裡過夜。
+2. 開始功能表「島輝輸入法 →【島輝】重新部署」（或語言列上的島輝圖示按右鍵 →「重新部署」）。
+3. 如果是改了 `RimeUserDir`，或是第一次在新電腦上使用：先跑 `python tools/fetch_models.py`、`python tools/build_lexicon.py` 和 `python tools/build_lang_data.py`，再重新啟動島輝算法服務（開始功能表「島輝輸入法 → 島輝算法服務」，或重開機），然後重新部署。
+4. 詞表的快速格式（選用，但建議）：`build_lang_data.py` 若找到 `third_party/opencc-build/src/tools/Release/opencc_dict.exe`，會把 `rime/opencc/` 的詞表轉成二進位的 ocd2，輸入法啟動後第一次打字的載入時間從約 1.8 秒降到約 0.5 秒。編譯方法（需要 Visual Studio 2022 Build Tools）：下載 [OpenCC 1.1.9](https://github.com/BYVoid/OpenCC/archive/refs/tags/ver.1.1.9.tar.gz) 解壓到 `third_party/`，用 VS 內附的 cmake 執行 `cmake -S third_party/OpenCC-ver.1.1.9 -B third_party/opencc-build -G "Visual Studio 17 2022" -A x64 -DBUILD_DOCUMENTATION=OFF -DENABLE_GTEST=OFF -DPYTHON_EXECUTABLE=<python.exe>`，再 `cmake --build third_party/opencc-build --config Release --target opencc_dict`。沒有這個工具時照常用文字詞表。
 
 ## 測試
+跑測試只用一個指令：
+
 ```
-python tests\test_stage1.py
-python tests\test_stage2.py
-python tests\test_stage3.py
-python tests\test_stage4.py
-python tests\test_stage5.py
-python tests\test_stage6.py
-python tests\test_stage7.py
-python tests\test_stage8.py
-python tests\test_stage9.py
-python tests\test_stage10.py
-python tests\test_stage11.py
-python tests\test_stage12.py
-python tests\test_stage13.py
-python tests\test_stage14.py
-python tests\test_stage16.py
-python tests\test_stage17.py
-python tests\test_en_case.py
-python tests\test_en_short.py
-python tests\test_en_edge.py
-python tests\test_steady.py
-python tools\eval_flicker.py --variants asus stock
-python tests\test_backup.py
-python tests\test_assist.py --llm
-python tests\test_numbers.py
+python tools\run_tests.py
+```
+
+- 清單是 `git ls-files tests/test_*.py`：每一個追蹤中的測試檔都會跑，一次一個，每個檔有逾時，逾時連子行程一起結束。新的測試檔要先 `git add` 才會被跑到。
+- 結果寫進 `.harness/test_runs/<時間>-<commit>.json`。說「全部通過」時附上那個結果檔的名字。
+- 加 `--both` 會再用「先顯示按鍵」模式（`asus_lang/raw_keys: true`，產品的預設）跑一輪；只跑幾個檔就把檔名接在後面（`python tools\run_tests.py tests\test_tab.py`）。
+- 不要自己寫迴圈一個一個跑：沒有逾時的 librime 卡住時會一直跑下去（曾經跑了 63 小時、寫滿 C 槽）。同一個資料夾一次只跑一個 librime 行程。
+- 評估工具不在執行器裡，自己跑時一樣要有逾時：
+
+```
 python tools\eval_ime.py --note "說明這次改了什麼"
 python tools\eval_learn.py --note "說明這次改了什麼"
+python tools\eval_flicker.py --variants asus stock
 ```
+
 評估表格的括號裡是**同一版評估集**上一次的數字，可以直接前後對照。階段 10 起，句子的正確率看的是按 Enter 送出後的文字（之前看的是送出前行內顯示的文字），因為句尾的數字鍵要到送出時才決定是不是數字。
 
 ### 不會卡死的兩道保險
@@ -634,18 +627,19 @@ python tools\eval_learn.py --note "說明這次改了什麼"
 - **測試工具**：任何一個按鍵超過 30 秒沒回應（環境變數 `RIME_KEY_TIMEOUT` 可調），測試程序就自己結束（結束碼 124），只印出按鍵的形狀（字母→a、數字→0），不會印出保留測試集的內容。日誌只記警告以上。評估跑完如果保險被觸發過，會印出 `rime_harness: the segmentation guard tripped`，代表有 bug 要修。
 
 ## 回到上一版
-- **設定回到某個 commit**：`git log` 找到版本 → `git checkout <commit> -- rime/` → 重新部署。
-- **完全回到改動前的小狼毫**：
-  1. 匯入 `backups\` 裡安裝前匯出的 `*-HKCU-Rime.reg`，把使用者目錄改回原本的位置。
-  2. 重新啟動小狼毫服務。
-  3. 重新部署。
+`rime/` 是正在使用的資料夾，而且裡面有不進 git 的東西（學習資料 `*.userdb`、`shortcuts.txt`、`emails.txt`、產生的詞表和語言模型），所以不要用 `git checkout <commit> -- rime/` 整個蓋掉：它會一起蓋掉還沒提交的改動，而且退不回產生的檔案。
+
+- **退掉某一個改動**：先 `git status` 確認沒有別的未提交改動 → `git revert <commit>`（只退那一個 commit）→ 如果它改過 `tools/build_lexicon.py` 或 `tools/build_lang_data.py`，重新跑那支產生詞表 → 重新部署。
+- **學習資料回到某一天**：用備份還原，見下面「學習資料備份」（`python tools\backup_learn.py --restore <備份> --yes`）。git 不管學習資料。
+- **島輝程式回到前一版**：從 [daohui-weasel 的 Releases](https://github.com/TimLin-1231/daohui-weasel/releases) 下載前一版的 `daohui-<版本>-installer.exe` 直接安裝；學習資料和設定會留著。
+- **改回小狼毫**：在「設定 › 應用程式」解除安裝島輝輸入法，在語言設定選小狼毫，再從開始功能表啟動小狼毫算法服務。小狼毫的使用者目錄本來就指向同一個 `rime/`。安裝島輝時拿掉了小狼毫的開機自動啟動，要自己加回去。兩個輸入法不要同時開著。
 - **改回華碩輸入法**：在 Windows 的語言設定切換輸入法就好，這個專案不會改到華碩的任何東西。
 
 ## 學習資料備份
 學到的東西（`rime/*.userdb`、`emails.txt`、`shortcuts.txt`、`*.custom.yaml`、`lexicon/*_words.txt`）每天自動備份一份到 `backups/learn/<日期-時間>/`，只在本機、不進 git。
 
 - **排程**：Windows 工作排程器的 `RimeLearnBackup`（只屬於你的帳號）。每 2 小時檢查一次，當天還沒備份、而且鍵盤滑鼠已經 2 分鐘沒動，才會備份；當天已有備份就什麼都不做。
-- **為什麼要等閒置**：小狼毫執行時會把資料庫最新的部分鎖住，別的程式讀不到，所以備份時要把小狼毫服務停掉約 1–3 秒再啟動，那幾秒打不出中文。
+- **為什麼要等閒置**：輸入法伺服器（`DaoHuiServer`）執行時會把資料庫最新的部分鎖住，別的程式讀不到，所以備份時要把它停掉約 1–3 秒再啟動，那幾秒打不出中文。舊的小狼毫伺服器如果也在跑，它一樣會鎖住，備份就會失敗（見「開發說明」）。
 - **會驗證**：每份備份都會實際打開讀一次、數裡面有幾筆（改字、下一個詞、英文詞、email…），結果寫在 `backup.json`；打不開的備份標成 BAD，不會被拿來還原。筆數比上一份少一半以上時不刪任何舊備份。
 - **保留**：最近 14 個有備份的日子各留最新一份，再加最近 12 個月每月最新一份。
 - 指令（都在專案資料夾執行）：
@@ -658,19 +652,20 @@ python tools\backup_learn.py --restore latest --yes   真的還原；現有資�
 python tools\backup_learn.py --uninstall  取消每日排程（--install 重新註冊）
 ```
 - 排程每次執行的結果記在 `backups/learn/backup.log`。
-- **還原是全有或全無**：先核對備份的每個檔案和備份當時的雜湊值一致，在現有檔案旁邊準備好完整的一份並再核對一次，才停掉小狼毫、把現有資料移到一旁、換上新的；任何一步失敗就把已經做的步驟全部倒回去。
+- **還原是全有或全無**：先核對備份的每個檔案和備份當時的雜湊值一致，在現有檔案旁邊準備好完整的一份並再核對一次，才停掉輸入法伺服器、把現有資料移到一旁、換上新的；任何一步失敗就把已經做的步驟全部倒回去。
 
 ## 切換視窗時保留沒送出的字
-原版小狼毫在切換視窗時會把還沒送出的字刪掉。`patches/weasel/` 是對小狼毫本身（C++ 的 `WeaselTSF`）的修補，讓行內已經顯示的字留在文件裡。
-- 這是唯一不在 `rime/` 裡的改動：換的是 `C:\Windows\System32\weasel.dll` 和 `C:\Windows\SysWOW64\weasel.dll`（原檔備份在旁邊），重新部署不會影響它，小狼毫更新後要重裝。
+原版小狼毫在切換視窗時會把還沒送出的字刪掉。島輝的 Windows 前端（daohui-weasel）已經內含修正，讓行內已經顯示的字留在文件裡。`patches/weasel/` 是當初直接修補小狼毫（C++ 的 `WeaselTSF`）的版本，只在還用小狼毫時才需要：
+- 換的是 `C:\Windows\System32\weasel.dll` 和 `C:\Windows\SysWOW64\weasel.dll`（原檔備份在旁邊），重新部署不會影響它，小狼毫更新後要重裝。
 - 實機測試：`python tools\tsf_test.py` 會開記事本自動打字、切視窗、讀回文字（約 1 分鐘，期間不要碰鍵盤滑鼠）。目前 6 項全過；Word、瀏覽器、VS Code 要手動試。
 - 安裝、還原、重新編譯的方法，以及第一版為什麼沒生效，寫在 `patches/weasel/README.md`。
 
 ## 隱私
-- 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，而且只存在本機。
+- 學習資料（`*.userdb`，包括 `asus_learn.userdb` 記下的「詞→下一個詞」）、建置檔、同步目錄、個人詞彙匯出檔都列在 `.gitignore`，不會進 git。
 - 停頓後續寫：小幫手開著時，英文模式打的英文會經由本機的具名管道交給本機模型（只在記憶體，不存檔、不連網）；見「停頓後續寫」。
-- 英文模式還原過的自動修正只記在記憶體裡（小狼毫重新啟動就忘記），不寫進磁碟。
+- 英文模式還原過的自動修正只記在記憶體裡（輸入法重新啟動就忘記），不寫進磁碟。
 - 英文詞的學習只從中文模式送出的文字學。英文模式雖然會組字，但只記長得像 email 地址的字（name@host.com），其他打的字一律不記，所以就算某個程式的密碼欄位沒有關掉輸入法，密碼也不會被存下來（除非它長得像 email）。終端機是直接輸出，完全不經過組字。
 - 記住的 email 存在 `rime/asus_learn.userdb`（只在本機），`rime/emails.txt` 不進 git。
 - 寫作小幫手（`assist/`）的模型和文法檢查都在本機執行，只在你按快捷鍵時讀取選取的文字，不存檔、不連網。
-- 沒有設定任何雲端同步目錄。舊設定裡的 Google Drive 同步路徑沒有沿用。
+- **多台電腦同步預設是關的**。在島輝設定的「同步」頁打開後，學習資料、個人詞、email、快捷文字和功能開關會以文字檔寫進你選的雲端資料夾（例如 Google Drive 在電腦上的資料夾），再由那個雲端服務上傳；島輝自己不連網。見「自我學習」的「多台電腦同步」和 `app/daohui-settings/SYNC.md`。開發用的這台電腦有打開同步。
+- 學習資料備份（`backups/learn/`）只在本機，不進 git；但如果整個專案資料夾放在雲端硬碟的備份範圍裡，備份也會跟著上傳。

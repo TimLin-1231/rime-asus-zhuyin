@@ -1,8 +1,11 @@
-"""Offline experiment for 組字中一鍵修正 (Ctrl+R, not built yet): a language
-model is given what the IME shows for a sentence typed in Zhuyin, with the
-Zhuyin that was typed, and writes the sentence the user meant, changing as
-little as possible: wrong homophones, characters spoiled by a wrong, missing,
-extra or swapped key, 的/得/地 and 在/再. English words and numbers stay.
+"""Offline evaluation of 組字中一鍵修正 (Ctrl+R). The feature itself shipped on
+2026-10-30 (rime/lua/asus_fix.lua plus the Windows and Mac front ends); this
+tool measures prompts, the guard and models against the evaluation sets: a
+language model is given what the IME shows for a sentence typed in Zhuyin,
+with the Zhuyin that was typed, and writes the sentence the user meant,
+changing as little as possible: wrong homophones, characters spoiled by a
+wrong, missing, extra or swapped key, 的/得/地 and 在/再. English words and
+numbers stay.
 
 Any OpenAI-compatible chat endpoint: llama.cpp's server for the local models
 (started here), or a cloud model (--endpoint, --api-model, --key-file; the

@@ -149,10 +149,17 @@ flowchart LR
     SENT["tests/eval/sentences.txt<br/>評估用的句子"] --> MAKE["tools/make_eval_set.py<br/>轉成注音按鍵"]
     MAKE --> EVAL["tools/eval_ime.py<br/>tools/eval_learn.py"]
     H["tools/rime_harness.py<br/>驅動 rime.dll"] --> EVAL
-    H --> TEST["tests/test_stage*.py<br/>行為測試"]
+    H --> TEST["tests/test_*.py<br/>行為測試"]
+    RUN["tools/run_tests.py<br/>唯一的測試指令"] --> TEST
+    RUN --> RES[".harness/test_runs/<br/>每次的結果檔"]
     EVAL --> REP["reports/eval_history.jsonl<br/>整句正確率、延遲…"]
     REAL["tools/tsf_test.py 等<br/>在真的記事本裡打字"] -.-> TEST
 ```
+
+- **跑測試只用 `tools/run_tests.py`**：清單是 `git ls-files tests/test_*.py`，一次跑一個檔，每個檔有逾時（逾時連子行程一起結束），結果寫進 `.harness/test_runs/`；加 `--both` 再用先顯示按鍵模式跑一輪。「全部通過」要附上那個結果檔，不是對話裡的一句話。
+- **`tests/test_infra.py`** 檢查整套設定有沒有完整載入：librime 紀錄裡不能有任何 ERROR／FATAL 行（不只 Lua 的錯，詞典、YAML、OpenCC、語言模型的錯都算），而且需要台灣用詞資料和語言模型的句子要打得出來。其他測試只看行為，資料檔少了一個時常常照樣通過，所以這一個不能省。
+- **`tests/test_control_bytes.py`** 檢查追蹤中的 `.bat`、`.ps1`、`.yaml`、`.lua`、`.py` 沒有控制字元（`start_assist.bat` 曾經因為 heredoc 把 `\a` 變成響鈴字元而壞了一個月）。
+- 測試替身只驅動 `rime.dll`：Windows 前端、行程間通訊、安裝程式、Mac 都不在它看得到的範圍。使用者看得到的行為，要在真的程式裡試過才算完成。
 
 ## 三個 repo
 

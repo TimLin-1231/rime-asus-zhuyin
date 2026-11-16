@@ -1,5 +1,7 @@
 # 島輝 DaoHui for macOS：計畫
 
+> 這是 2026-10-25 開工前寫的計畫。方案 A 已經做成 daohui-squirrel，當時的問題怎麼決定的見[第 11 節](#11-當初要決定的事都已決定)。
+
 目標：同一套 `rime/`（方案、Lua、詞庫、語言模型）在 Windows（小狼毫 fork）和 macOS 上都能用，行為一樣。
 
 ## 先看結論
@@ -175,16 +177,18 @@ sudo installer -pkg package/DaoHui.pkg -target /
 - **給別人下載、不簽章**：下載的 `.pkg`／`.app` 會被標記隔離，Gatekeeper 擋下。macOS 15 起不能再用「按住 Control 點開」略過，要先打開一次被擋、再到「系統設定 › 隱私權與安全性」按「強制打開」並輸入密碼（或在終端機 `xattr -dr com.apple.quarantine`）。鼠鬚管的 nightly、BlendKey 都是這樣發佈的。Sparkle 的更新用 EdDSA 簽章驗證，跟 Apple 簽章無關；未簽章 App 透過 Sparkle 裝 `.pkg` 的流程要在 Mac 上實測。
 - **Developer ID 簽章＋公證**：需要 Apple Developer Program，**每年 US$99**（非營利／教育機構可申請減免）。拿到「Developer ID Application」（簽 App）和「Developer ID Installer」（簽 pkg）兩張憑證後，`notarytool` 公證免費、通常幾分鐘。好處：使用者雙擊就能裝、沒有警告；Sparkle 更新更順。可以在 GitHub Actions 裡做（憑證 `.p12` 和 App Store Connect API 金鑰放 Secrets）。
 
-## 11. 待決問題
+## 11. 當初要決定的事（都已決定）
 
-1. **方案**：同意用 A（fork 鼠鬚管）嗎？還是要先做 B 的小原型比較候選窗？
-2. **bundle id／輸入法 id**：例如 `io.github.timlin1231.daohui`（不需要擁有網域，但要獨一無二）。顯示名稱只用「島輝」，還是「島輝 DaoHui」？
-3. **使用者資料夾**：`~/Library/DaoHui`（建議，可以和鼠鬚管並存）還是 `~/Library/Rime`？Windows 版要不要對應地用 `%APPDATA%\DaoHui`？
-4. **語言模型 410 MB**：放進安裝檔，還是第一次啟動時下載？
-5. **個人詞與學習資料**：Mac 上要不要跟 Windows 同步？以前決定「只存本機」——搬一次就好，還是要定期同步（Rime 的 sync 資料夾放在哪）？
-6. **發佈**：只給自己用（不用付費）、還是要給別人下載？要的話付 US$99/年簽章公證嗎？
-7. **repo**：新開 `daohui-mac`（GPLv3，原始碼要公開）可以嗎？本 repo 是公開還是私人（影響 CI 的 macOS 分鐘數費用）？
-8. **更新頻道**：Sparkle appcast 放 GitHub Pages 可以嗎？要不要「測試版」頻道？
-9. **寫作小幫手**（停頓後續寫、Ctrl+Alt+W）：macOS 版要做嗎？要做的話 Swift 端要加一條通道（Unix socket）取代具名管道和 F24，且需要「輔助使用」權限。
-10. **Ctrl+Space**：在 Mac 上要改成別的組合，還是請使用者關掉系統的輸入法切換快速鍵？
-11. **Mac 的硬體與系統版本**：Apple Silicon 還是 Intel？macOS 幾版？（鼠鬚管 1.1.x 需要 macOS 13 以上；Xcode 26.5 需要較新的 macOS，若太舊就改在 CI 上建置、Mac 只負責安裝測試。）
+這一節原本是 2026-10-25 寫的 11 個問題，2026-10-27 到 11-02 之間都決定了。下面是決定的結果；之後的現況和還沒完成的事在 `docs/dev/STATE.md`、`docs/dev/OPEN.md`。
+
+1. **方案**：用 A，fork 鼠鬚管。程式在 [daohui-squirrel](https://github.com/TimLin-1231/daohui-squirrel)（鼠鬚管 1.1.2 的分支，預設分支 `daohui`）。
+2. **bundle id／輸入法 id**：`io.github.timlin-1231.inputmethod.DaoHui`，輸入模式 `io.github.timlin-1231.inputmethod.DaoHui.Hant`；顯示名稱「島輝」。
+3. **使用者資料夾**：Mac 是 `~/Library/DaoHui`（可以和鼠鬚管並存）。Windows 的預設是 `%APPDATA%\DaoHui`；開發用的這台電腦另外指向這個 repo 的 `rime/`。
+4. **語言模型 410 MB**：不放進安裝檔，第一次安裝時下載（Mac 由 `install/mac.sh`，Windows 由島輝設定），來源是這個 repo 的 Release `model-wanxiang-lts-20261006`，下載後比對 SHA-256。
+5. **個人詞與學習資料**：要同步，用 Google Drive 自動同步（`rime/lua/asus_sync.lua` 加上島輝設定的「同步」頁，說明在 `app/daohui-settings/SYNC.md`）。兩台裝置之間實際同步還沒有驗證過。
+6. **發佈**：給別人下載，走免費的路：不付 Apple 的年費，App 用 ad-hoc 簽章。安裝改成在終端機貼一行指令（README「安裝」）。
+7. **repo**：三個 repo（這裡、daohui-weasel、daohui-squirrel）都是公開的，授權 GPL-3.0-or-later。本機的資料夾是 `D:\src\daohui-mac`。
+8. **更新頻道**：appcast 放在這個 repo 的 `update/`（從 raw.githubusercontent.com 讀），不用 GitHub Pages，也沒有測試版頻道。Mac 的 App 讀 `update/appcast-macos-app.xml`（zip，背景自動更新）；`update/appcast-macos.xml`（pkg）留給 1.1.2.20 以前的版本和島輝設定。
+9. **寫作小幫手**：Mac 版沒有做，也沒有排進計畫；Lua 端的續寫通道在 macOS 上自動關閉。
+10. **Ctrl+Space**：不改組合鍵。macOS 會先拿走 Ctrl+Space，所以請使用者在「系統設定 › 鍵盤 › 鍵盤快速鍵 › 輸入方式」關掉它，或改用連按兩下 Shift（`D:\src\daohui-mac\DAOHUI.md` 的對照表）。
+11. **Mac 的硬體與系統版本**：試用的 Mac 是 Apple 晶片。程式在 GitHub Actions 的 macOS 15 上編譯，Mac 只負責安裝和實際試用；支援 macOS 13 以上，Apple 晶片和 Intel 都可以。

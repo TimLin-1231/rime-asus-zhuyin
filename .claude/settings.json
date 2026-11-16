@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:/Users/User/anaconda3/python.exe\" -I \"${CLAUDE_PROJECT_DIR}/tools/hooks/pretooluse.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
