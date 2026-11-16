@@ -146,6 +146,39 @@ def main() -> int:
           "20261009-090000" in keep and "20260901-090000" not in keep)
     check("nothing is kept twice or invented", keep <= {n for n, _ in items})
 
+    # A process started from a background task (as the server is after a
+    # backup) inherits low priorities; set_normal() undoes all three.
+    probe = r'''
+import subprocess, sys
+sys.path.insert(0, sys.argv[1])
+import procprio as pp
+import ctypes as C
+k, nt = C.WinDLL("kernel32"), C.WinDLL("ntdll")
+k.GetCurrentProcess.restype = C.c_void_p
+k.SetPriorityClass.argtypes = [C.c_void_p, C.c_ulong]
+nt.NtSetInformationProcess.argtypes = [C.c_void_p, C.c_int, C.c_void_p, C.c_ulong]
+h = k.GetCurrentProcess()
+k.SetPriorityClass(h, 0x4000)  # what Task Scheduler priority 7 gives
+for cls, v in ((33, 1), (39, 2)):
+    nt.NtSetInformationProcess(h, cls, C.byref(C.c_ulong(v)), 4)
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+try:
+    before = pp.state(child.pid)
+    failed = pp.set_normal(child.pid)
+    print(before, failed, pp.state(child.pid), sep="|")
+finally:
+    child.kill()
+'''
+    p = subprocess.run([sys.executable, "-c", probe, str(ROOT / "tools")], capture_output=True, text=True, timeout=60)
+    parts = p.stdout.strip().split("|")
+    check("a child of a background task starts with low priorities",
+          len(parts) == 3 and "BELOW_NORMAL" in parts[0] and "'Low'" in parts[0], p.stdout + p.stderr)
+    check("set_normal() gives it normal CPU, I/O and memory priority",
+          len(parts) == 3 and parts[1] == "[]" and parts[2] == "{'cpu': 'NORMAL', 'io': 'Normal', 'page': 5}",
+          p.stdout + p.stderr)
+    check("the scheduled task runs at a normal (interactive) priority",
+          "<Priority>4</Priority>" in bl.TASK_XML)
+
     width = max(len(n) for n, _, _ in RESULTS)
     failed = 0
     for name, ok_, detail in RESULTS:

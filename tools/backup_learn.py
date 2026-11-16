@@ -43,6 +43,9 @@ import tempfile
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import procprio  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 TASK_NAME = "RimeLearnBackup"
 NAME_RE = re.compile(r"^(\d{8})-(\d{6})$")
@@ -250,8 +253,15 @@ def stop_server(exe: Path) -> bool:
 
 def start_server(exe: Path) -> bool:
     for _ in range(3):  # without the server there is no input method at all
-        subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=NO_WINDOW)
+        proc = subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=NO_WINDOW)
         if wait_for(lambda: _running(exe.name), 10):
+            # Started from a background task, the server would inherit its
+            # below-normal CPU, low I/O and memory priority and starve under
+            # load (keys then reach the application as plain letters).
+            try:
+                procprio.set_normal(proc.pid)
+            except OSError:
+                pass  # it may have handed over to another instance already
             return True
     return False
 
@@ -520,6 +530,7 @@ TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
     <StartWhenAvailable>true</StartWhenAvailable>
     <ExecutionTimeLimit>PT40M</ExecutionTimeLimit>
     <Enabled>true</Enabled>
+    <Priority>4</Priority>
   </Settings>
   <Actions Context="Author">
     <Exec>
