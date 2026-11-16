@@ -9,11 +9,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from rime_harness import CONTROL_MASK, SHIFT_MASK, open_rime  # noqa: E402
+from rime_harness import CONTROL_MASK, SHIFT_MASK, XK, open_rime  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
+XK.setdefault("ISO_Left_Tab", 0xFE20)  # Shift+Tab as X11 front ends send it
 
-SHORTCUTS = "ㄉㄓ\t測試地址一號\nㄒㄏ\t此致\\n敬禮\n# comment\tignored\n"
+# ㄨㄛˇ is a common syllable (我): the shortcut must still come first.
+SHORTCUTS = "ㄉㄓ\t測試地址一號\nㄒㄏ\t此致\\n敬禮\nㄨㄛˇ\t我的快捷文字\n# comment\tignored\n"
+# The test brings its own personal vocabulary (the real one is private and not
+# in git): made-up words that the IME writes differently without it
+# (倒灰測驗, 經緯燈塔).
+PERSONAL = ('# Rime dictionary\n# encoding: utf-8\n---\nname: terra_pinyin.personal\nversion: "1"\n'
+            'sort: by_weight\nuse_preset_vocabulary: false\n...\n'
+            '島輝測驗\tdao3 hui1 ce4 yan4\t20000\n鯨尾燈塔\tjing1 wei3 deng1 ta3\t20000\n')
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
@@ -22,7 +30,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("stage2", extra={"shortcuts.txt": SHORTCUTS})
+    r = open_rime("stage2", extra={"shortcuts.txt": SHORTCUTS, "terra_pinyin.personal.dict.yaml": PERSONAL})
 
     # Symbol keyboard ------------------------------------------------------
     r.clear(); r.key("`"); s = r.snapshot()
@@ -50,6 +58,16 @@ def main() -> int:
 
     r.clear(); r.key("`"); r.key("Tab"); r.key("Tab"); r.key("Tab"); r.key("q"); s = r.snapshot()
     check("Tab wraps around to 一般", s.committed == "《", f"committed={s.committed!r}")
+
+    r.clear(); r.key("`"); r.key("Tab", SHIFT_MASK); r.key("d"); s = r.snapshot()
+    check("Shift+Tab goes back: from 一般 to 特殊, d -> →", s.committed == "→", f"committed={s.committed!r}")
+
+    # Without the Shift flag, so that only the ISO_Left_Tab key code decides.
+    r.clear(); r.key("`"); r.key("ISO_Left_Tab"); r.key("d"); s = r.snapshot()
+    check("ISO_Left_Tab goes back as well: 特殊, d -> →", s.committed == "→", f"committed={s.committed!r}")
+
+    r.clear(); r.key("`"); r.key("Tab"); r.key("Tab", SHIFT_MASK); r.key("q"); s = r.snapshot()
+    check("Tab, then Shift+Tab: back on 一般, q -> 《", s.committed == "《", f"committed={s.committed!r}")
 
     r.clear(); r.key("`"); r.key("Down"); r.key("space"); s = r.snapshot()
     check("Down + Space commits the highlighted symbol",
@@ -129,6 +147,10 @@ def main() -> int:
     r.clear(); r.type("vc"); s = r.snapshot()
     check("\\n in an expansion becomes a line break", s.top == "此致\n敬禮", f"top={s.top!r}")
 
+    r.clear(); r.type("ji3"); s = r.snapshot()
+    check("shortcut on a common syllable (ㄨㄛˇ): the expansion comes before 我",
+          s.top == "我的快捷文字" and s.preview == "我的快捷文字", f"top={s.top!r} preview={s.preview!r}")
+
     r.clear(); r.type("25"); r.key("Down"); s = r.snapshot()
     check("normal conversion stays available below the shortcut",
           len(s.candidates) > 1, f"n={len(s.candidates)}")
@@ -142,6 +164,13 @@ def main() -> int:
     ]:
         r.clear(); r.type(keys); s = r.snapshot()
         check(f"lexicon: {label}", s.top == want, f"top={s.top!r}")
+
+    # The personal vocabulary (terra_pinyin.personal, imported by
+    # terra_pinyin.asus) is part of the dictionary.
+    for word, k in (("島輝測驗", "2l3cjo hk4u04"), ("鯨尾燈塔", "ru/ jo32/ w83")):
+        r.clear(); r.type(k); s = r.snapshot()
+        check(f"personal vocabulary: {word} converts", s.top == word and s.preview == word,
+              f"top={s.top!r} preview={s.preview!r}")
 
     r.close()
     lua_errors = [line for f in r.log_dir.glob("*.log*")

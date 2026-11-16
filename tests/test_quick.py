@@ -4,10 +4,14 @@
 
 The clock is fixed at 2026-12-31 09:00 (a Thursday) through the schema
 option asus_quick/now, so the end of the year and the morning are covered.
+Noon (12:30) runs in a child process (--noon), since librime loads its
+config once per process.
 """
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -24,6 +28,27 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def keys(text: str) -> str:
     return "".join(reading_keys(text)[0])
+
+
+NOON = "NOON "
+NOON_ERR = "NOONERR "
+
+
+def noon_child() -> int:
+    """--noon: the clock at 2026-12-31 12:30; prints the list of 現在 + Down."""
+    sys.stdout.reconfigure(encoding="utf-8")
+    r = open_rime("quick_noon", extra={"asus_zhuyin.custom.yaml": (
+        "patch:\n  translator/enable_user_dict: false\n"
+        '  asus_quick/now: "2026-12-31 12:30"\n')})
+    r.set_option("prediction", False)
+    r.clear(); r.type(keys("現在")); r.key("Down")
+    print(NOON + json.dumps([c for c, _ in r.snapshot().candidates], ensure_ascii=False), flush=True)
+    r.close()
+    for f in r.log_dir.glob("*.log*"):
+        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line[:1] in ("E", "F") and line[1:9].isdigit():
+                print(NOON_ERR + line[:200], flush=True)
+    return 0
 
 
 def main() -> int:
@@ -102,6 +127,23 @@ def main() -> int:
                   if line.startswith("E") and "lua" in line.lower()]
     check("no Lua runtime errors in librime log", not lua_errors, lua_errors[0] if lua_errors else "")
 
+    # Noon: 12:xx is 下午 (12-hour clock), in its own librime process.
+    try:
+        p = subprocess.run([sys.executable, __file__, "--noon"], capture_output=True, timeout=240)
+        out, rc = p.stdout.decode("utf-8", errors="replace"), p.returncode
+    except subprocess.TimeoutExpired:
+        out, rc = "", "timeout"
+    line = next((ln[len(NOON):] for ln in out.splitlines() if ln.startswith(NOON)), "")
+    try:
+        got = json.loads(line) if line else []
+    except ValueError:
+        got = []
+    check("現在 at 12:30: 下午12:30 (noon is 下午)",
+          got[:4] == ["現在", "12:30", "下午12:30", "2026-12-31 12:30"], f"rc={rc} {got[:4]} raw={line[:80]!r}")
+    errors = [ln[len(NOON_ERR):] for ln in out.splitlines() if ln.startswith(NOON_ERR)]
+    check("the noon process ends cleanly and logs no error", rc == 0 and not errors,
+          f"rc={rc} {errors[:3]}")
+
     width = max(len(n) for n, _, _ in RESULTS)
     failed = 0
     for name, ok, detail in RESULTS:
@@ -112,4 +154,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(noon_child() if "--noon" in sys.argv[1:] else main())

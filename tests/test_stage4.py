@@ -59,10 +59,14 @@ def main() -> int:
           s.committed == "機器" and len(preds) >= 2 and all(t == "" for t, _ in s.candidates),
           f"committed={s.committed!r} cands={s.candidates}")
     check("prediction leaves the inline preview empty", s.preview == "", f"{s.preview!r}")
+    # The bubble offers three next words (asus_predict.lua SHOW); which ones
+    # is the language model's call.
+    check("after committing 機器, exactly three next words are offered", len(preds) == 3,
+          f"{len(preds)} predictions: {preds}")
 
     r.key("Tab"); s = r.snapshot()
-    check("Tab accepts the first prediction", s.committed == "機器" + preds[0],
-          f"committed={s.committed!r}")
+    check("Tab accepts the first prediction", len(preds) >= 1 and s.committed == "機器" + preds[0],
+          f"committed={s.committed!r} preds={preds}")
     check("predictions chain after an accepted word", s.composing and s.candidates,
           f"composing={s.composing} cands={s.candidates[:2]}")
 

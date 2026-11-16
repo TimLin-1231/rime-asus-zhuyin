@@ -48,12 +48,13 @@ def main() -> int:
           len(s.candidates) == 9 and s.labels == [str(i) for i in range(1, 10)]
           and r.get_option("_asus_expanded"), f"n={len(s.candidates)} labels={s.labels}")
     expanded = [c for c, _ in s.candidates]
+    third = expanded[2] if len(expanded) > 2 else None
 
     r.key("3"); s = r.snapshot()
     # After the commit a next-word prediction may show; the input itself is empty.
     check("expanded: digit picks and commits a completing candidate (no Enter)",
-          s.committed == expanded[2] and s.input == "" and not r.get_option("_asus_expanded"),
-          f"committed={s.committed!r} want={expanded[2]} input={s.input!r}")
+          third is not None and s.committed == third and s.input == "" and not r.get_option("_asus_expanded"),
+          f"committed={s.committed!r} want={third} input={s.input!r}")
 
     # Re-read the page: the commit above was learned and may reorder candidates.
     r.clear(); r.type("ru04"); r.key("Down"); r.key("Down"); s = r.snapshot()

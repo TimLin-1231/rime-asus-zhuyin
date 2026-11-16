@@ -78,6 +78,23 @@ def main() -> int:
     handled_kp = bool(r.api.process_key(r.session, 0xFFB2, 0))  # KP_2
     check("numeric keypad digits go straight to the app", not handled_kp, f"handled={handled_kp}")
 
+    # Numeric keypad keys while composing.
+    r.clear(); r.type("ji3"); r.key("KP_Subtract"); s = r.snapshot()
+    check("ji3 + KP_Subtract commits 我- (numpad minus is -)", s.committed == "我-" and s.input == "",
+          f"committed={s.committed!r} input={s.input!r}")
+    r.clear(); r.type("ji3"); r.key("KP_Enter"); s = r.snapshot()
+    check("ji3 + KP_Enter commits 我 like Return", s.committed == "我" and s.input == "" and not s.composing,
+          f"committed={s.committed!r} input={s.input!r} composing={s.composing}")
+    # Left reopens the last syllable for editing (its keys are shown again).
+    r.clear(); r.type(keys("我想吃飯")); s0 = r.snapshot(); r.key("Left"); s1 = r.snapshot()
+    r.key("KP_Enter"); s = r.snapshot()
+    check("KP_Enter after Left (last syllable reopened) commits the whole text",
+          len(s0.preview) == 4 and s1.preedit != s0.preedit and s.committed == s0.preview
+          and s.input == "" and not s.composing,
+          f"preview={s0.preview!r} preedit after Left={s1.preedit!r} committed={s.committed!r} "
+          f"input={s.input!r} composing={s.composing}")
+    r.clear()
+
     r.close()
     lua_errors = [line for f in r.log_dir.glob("*.log*")
                   for line in f.read_text(encoding="utf-8", errors="replace").splitlines()

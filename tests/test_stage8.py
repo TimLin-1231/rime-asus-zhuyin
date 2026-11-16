@@ -136,6 +136,13 @@ def main() -> int:
     check("an English-looking start lists the address as a guess", "tim.lin@example.com" in c, f"{c}")
     r.clear(); type_text("ab"); s = r.snapshot(); r.clear()
     check("two keys are not enough", not any("@" in x + y for x, y in s.candidates), f"{s.candidates[:2]}")
+    # The hint starts at the 3rd key of an address (asus_email.lua MIN_PREFIX).
+    r.clear(); type_text("t2"); s = r.snapshot(); r.clear()
+    check("t2 (2 keys of t201abc@test.org): no address hint yet",
+          not any("@" in x + y for x, y in s.candidates), f"{s.candidates[:2]}")
+    r.clear(); type_text("t20"); s = r.snapshot(); r.clear()
+    check("t20 (3 keys of t201abc@test.org): the address hint is shown",
+          len(s.candidates) >= 1 and "⇥t201abc@test.org" in s.candidates[0][1], f"{s.candidates[:2]}")
     # An address typed once is remembered.
     chinese("new.friend@mail.tw")
     r.clear(); type_text("new."); s = r.snapshot(); r.clear()
@@ -151,6 +158,19 @@ def main() -> int:
     r.clear(); type_text("new.f"); s = r.snapshot(); r.clear()
     check("Shift+Delete forgets an address",
           not any("new.friend@mail.tw" in x + y for x, y in s.candidates), f"{s.candidates[:3]}")
+    # Each Tab use counts: zed.two (committed once, then typed 3 times with Tab:
+    # weight 4) outranks zed.one (committed 3 times: weight 3). If Tab uses did
+    # not count, zed.two would have 1 and zed.one would win.
+    chinese("zed.two@mail.tw")
+    tabbed = []
+    for _ in range(3):
+        r.clear(); type_text("zed.t"); press("Tab"); tabbed.append("".join(r.committed)); r.clear()
+    check("zed.t + Tab types zed.two@mail.tw each time", tabbed == ["zed.two@mail.tw"] * 3, f"{tabbed}")
+    for _ in range(3):
+        chinese("zed.one@mail.tw")
+    r.clear(); type_text("zed"); press("Tab"); out = "".join(r.committed); r.clear()
+    check("each Tab use counts: zed.two (1 Enter + 3 Tab) ranks above zed.one (3 Enter)",
+          out == "zed.two@mail.tw", f"zed + Tab -> {out!r}")
 
     # -- English mode -----------------------------------------------------------
     for seq, want, name in (
@@ -179,6 +199,14 @@ def main() -> int:
     check("double Shift commits the English word, then Chinese mode",
           "".join(r.committed) == "hello" and not s.ascii_mode, f"{r.committed} ascii={s.ascii_mode}")
     r.clear(); r.set_option("ascii_mode", False)
+    # Next words after a word and a space (asus_english.lua NEXT_SHOW): three
+    # of them; which ones is the word list's call.
+    r.set_option("prediction", True)
+    r.clear(); r.set_option("ascii_mode", True); type_text("thank "); s = r.snapshot()
+    nexts = [c for x, c in s.candidates if x == ""]
+    r.clear(); r.set_option("ascii_mode", False); r.set_option("prediction", False)
+    check("English mode: thank + space offers exactly three next words", len(nexts) == 3,
+          f"{len(nexts)} next words: {nexts} (candidates {s.candidates[:4]})")
 
     r.close()
     # A Lua runtime error makes a processor a silent no-op, so any fails the run.

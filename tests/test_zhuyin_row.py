@@ -9,10 +9,16 @@ last row of its first page (rime/lua/asus_compact.lua): in the ordinary list
 for the whole input, in the list at the editing cursor (Down at the end of a
 sentence lists its last word) for the rest of the input; picking it gives
 the Zhuyin and teaches nothing.
+
+The Taiwan spellings (rime/lua/asus_tw.lua, opencc/asus_tw.json) rewrite
+words of up to 4 characters (一目瞭然 -> 一目了然, 傑西卡 -> 潔西卡), and
+the language model's own form stays second in the list (座標, then 坐標).
+No session may log an error (any E or F line in the librime log).
 """
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -23,10 +29,28 @@ from zhuyin import reading_keys  # noqa: E402
 RESULTS: list[tuple[str, bool, str]] = []
 ZHUYIN = set(chr(c) for c in range(0x3105, 0x3130)) | set("ˊˇˋ˙")
 NO_LEARN = "  asus_learn/enabled: false\n  translator/enable_user_dict: false\n"
+# A glog line of severity ERROR or FATAL: the letter, then the date (E20261116 ...).
+LOG_ERROR = re.compile(r"[EF]\d{8} ")
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     RESULTS.append((name, bool(ok), detail))
+
+
+def log_errors(dirs: list[Path]) -> list[str]:
+    """The ERROR and FATAL lines in the librime logs of closed sessions, each
+    once (the INFO, WARNING and ERROR files all hold them)."""
+    lines = [line for d in dict.fromkeys(dirs) for f in sorted(d.glob("*.log*"))
+             for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
+             if LOG_ERROR.match(line)]
+    return list(dict.fromkeys(lines))
+
+
+def check_log(dirs: list[Path], label: str) -> None:
+    errors = log_errors(dirs)
+    shown = "\n      ".join(errors[:10]) + (f"\n      ...and {len(errors) - 10} more" if len(errors) > 10 else "")
+    check(f"{label}: no error lines in the librime log", not errors,
+          f"{len(errors)} line(s):\n      {shown}")
 
 
 def keys(text: str) -> str:
@@ -98,6 +122,20 @@ def preference(s: Session, mode: str) -> None:
     got = s.fix_first_word(keys(city), "城市")
     check(f"{mode}: and 城市 is one pick away at the cursor", got == city, got)
 
+    # Taiwan spellings: the rewrite shown first, the language model's own
+    # form (坐標) second in the list.
+    s.typed(keys("座標"), "Down")
+    check(f"{mode}: 座標, the list: 座標, then the language model's 坐標", s.rows()[:2] == ["座標", "坐標"],
+          f"{s.rows()}")
+    # Words of 3 and 4 characters are rewritten too (asus_tw.lua MAX_LEN): the
+    # Taiwan form first, the language model's own form second.
+    for text, lm in (("一目了然", "一目瞭然"), ("潔西卡", "傑西卡")):
+        s.typed(keys(text), "Down")
+        check(f"{mode}: Taiwan spelling of {len(text)} characters: {text}, then {lm}",
+              s.rows()[:2] == [text, lm], f"{s.rows()}")
+        got = s.enter(keys(text))
+        check(f"{mode}: ...and Enter commits {text}", got == text, got)
+
 
 def zhuyin_rows(s: Session, mode: str) -> None:
     r = s.r
@@ -167,14 +205,19 @@ def zhuyin_rows(s: Session, mode: str) -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
+    # glog is set up once per process, so the later sessions log into the first
+    # session's folder (their own stay empty): read all of them.
+    log_dirs: list[Path] = []
     for raw in ("true", "false"):
         mode = f"raw_keys {raw}"
         s = Session(f"zhuyin_row_{raw}", NO_LEARN + f"  asus_lang/raw_keys: {raw}\n")
+        log_dirs.append(s.r.log_dir)
         preference(s, mode)
         zhuyin_rows(s, mode)
         s.r.close()
 
     s = Session("zhuyin_row_off", NO_LEARN + "  asus_tw/prefer: false\n")
+    log_dirs.append(s.r.log_dir)
     got = s.enter(keys("這個程式很好用"))
     check("asus_tw/prefer: false: the language model's 城市 again", got == "這個城市很好用", got)
     got = s.enter(keys("這個坐標"))
@@ -183,6 +226,7 @@ def main() -> int:
 
     # Learning on -----------------------------------------------------------------
     s = Session("zhuyin_row_learn", "  asus_lang/raw_keys: true\n")
+    log_dirs.append(s.r.log_dir)
     # (The same text committed before each: the last commit is the language
     # model's left context.)
     s.enter("su3cl3")
@@ -209,6 +253,7 @@ def main() -> int:
     got = s.enter(keys("城市很熱鬧"))
     check("...and 城市 where it was picked", got == "城市很熱鬧", got)
     s.r.close()
+    check_log(log_dirs, "all four sessions")
 
     failed = [x for x in RESULTS if not x[1]]
     for name, ok, detail in RESULTS:

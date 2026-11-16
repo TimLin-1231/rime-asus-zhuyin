@@ -6,11 +6,16 @@
     with KEY_TIMEOUT_EXIT instead of running (and logging) for days
 
     python tests/test_stage9.py
+
+No error lines in the librime log (any E or F line): the session with the
+bug put back logs the guard's own line on purpose ("... did not settle ...",
+GUARD_LINE below) and nothing else; the shipped code logs none at all.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -36,6 +41,30 @@ def keys(text: str) -> str:
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     RESULTS.append((name, bool(ok), detail))
+
+
+# A glog line of severity ERROR or FATAL: the letter, then the date (E20261116 ...).
+LOG_ERROR = re.compile(r"[EF]\d{8} ")
+# The one error line allowed where the bug is put back: the guard reporting itself
+# (asus_lang.lua guard_tripped).
+GUARD_LINE = re.compile(r"E\d{8} [^\]]*\] asus_lang\.lua: segmentation of \d+ keys "
+                        r"did not settle after \d+ rewinds \(\d+ for this key\); "
+                        r"using the stock segmentation for this input$")
+LOG_MARK = "librime log error: "
+
+
+def log_errors(r) -> list[str]:
+    """The ERROR and FATAL lines of a closed session's librime log, each once
+    (the INFO, WARNING and ERROR files all hold them)."""
+    lines = [line for f in sorted(r.log_dir.glob("*.log*"))
+             for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
+             if LOG_ERROR.match(line)]
+    return list(dict.fromkeys(lines))
+
+
+def shown(lines: list[str]) -> str:
+    return f"{len(lines)} line(s):\n      " + "\n      ".join(lines[:10]) + (
+        f"\n      ...and {len(lines) - 10} more" if len(lines) > 10 else "")
 
 
 # ...and nothing translated the text to lock before the cursor.
@@ -88,11 +117,17 @@ def main() -> int:
     r.close()
     log = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in r.log_dir.glob("*.log*"))
     check("the guard reports itself in the log", "did not settle" in log)
+    other = [line for line in log_errors(r) if not GUARD_LINE.match(line)]
+    check("the bug's session logs no error line but the guard's", not other, shown(other))
 
     # The current code must not need the guard for the inputs that used to loop.
     proc = subprocess.run([sys.executable, __file__, "--clean"], capture_output=True, timeout=300)
     check("the real asus_lang.lua never trips the guard on those inputs", proc.returncode == 0,
           proc.stdout.decode("utf-8", "replace")[-300:] + proc.stderr.decode("utf-8", "replace")[-300:])
+    out = proc.stdout.decode("utf-8", "replace").splitlines()
+    errors = [line[len(LOG_MARK):] for line in out if line.startswith(LOG_MARK)]
+    check("the real code logs no error lines at all on those inputs",
+          "log read" in out and not errors, shown(errors) if errors else f"no log read: {out[-3:]}")
 
     t0 = time.perf_counter()
     proc = subprocess.run([sys.executable, __file__, "--child"], capture_output=True, timeout=120,
@@ -144,6 +179,11 @@ def clean() -> int:
         r.key("space" if ch == " " else ch, SHIFT_MASK if ch.isupper() else 0)
     r.close()
     log = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in r.log_dir.glob("*.log*"))
+    # Every error line for main() (LOG_MARK), then the marker that the log was read.
+    sys.stdout.reconfigure(encoding="utf-8")
+    for line in log_errors(r):
+        print(LOG_MARK + line)
+    print("log read")
     return 1 if "did not settle" in log else 0
 
 

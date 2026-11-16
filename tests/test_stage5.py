@@ -143,8 +143,17 @@ def main() -> int:
     # Next words ----------------------------------------------------------------
     r.set_option("prediction", True)
     meeting = "下午開會"
-    for text in ("我們下午開會討論專案進度", "明天早上開會討論預算"):
-        t.enter(keys(text), text)
+    # Seen once is not enough (asus_learn.lua NEXT_SHOW): the predictions after
+    # 下午開會 are the same as before.
+    t.enter(keys(meeting), meeting, keep=True); base = [c for _, c in r.snapshot().candidates]; r.clear()
+    once = "我們下午開會討論專案進度"
+    t.enter(keys(once), once)
+    t.enter(keys(meeting), meeting, keep=True); s = r.snapshot(); r.clear()
+    preds = [c for _, c in s.candidates]
+    check("a next word seen once does not change the predictions yet",
+          len(base) >= 1 and preds == base, f"{base} -> {preds}")
+    twice = "明天早上開會討論預算"
+    t.enter(keys(twice), twice)
     t.enter(keys(meeting), meeting, keep=True); s = r.snapshot()
     preds = [c for _, c in s.candidates]
     check("a next word seen twice is predicted first", preds[:1] == ["討論"], f"{preds}")
@@ -154,6 +163,17 @@ def main() -> int:
     check("Shift+Delete on a prediction stops predicting it", handled and "討論" not in preds,
           f"handled={handled} {preds}")
     r.set_option("prediction", False)
+
+    # A learned correction outranks the grammar rules (asus_learn's filter runs
+    # after asus_grammar's): 在 + 家 -> 在 is a rule, 我再家 taught once wins.
+    home, taught = "我在家", "我再家"
+    # (The 在 + 家 rule itself is tested in test_stage4.py.)
+    check("precondition: 我在家 converts as 我在家",
+          t.preview(keys(home)) == home, t.preview(keys(home)))
+    got, _ = t.enter(keys(home), taught)
+    check("teaching: 我再家 is committed", got == taught, f"got={got!r}")
+    check("a correction taught once beats the 在/再 grammar rule",
+          t.preview(keys(home)) == taught, t.preview(keys(home)))
 
     # Persistence: a new session sees what an earlier one learned.
     r.api.destroy_session(r.session)

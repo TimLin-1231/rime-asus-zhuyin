@@ -73,7 +73,7 @@ def main() -> int:
         ok = (req["messages"][0]["role"] == "system" and len(req["messages"]) == 12
               and last.startswith("注音：ㄑㄧㄥˇ ㄔㄨㄥˊ") and last.endswith("輸入法：" + shown))
         check("the body is a chat request with the Zhuyin and the IME's text", ok, last)
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, IndexError) as e:
         check("the body is a chat request with the Zhuyin and the IME's text", False, f"{e}: {body[:200]}")
     s = r.snapshot()
     check("the bubble says AI 修正中…", s.candidates and "AI 修正中" in s.candidates[0][1], f"{s.candidates[:1]}")
@@ -172,17 +172,18 @@ def main() -> int:
               req["messages"][0]["content"].endswith("請依整句的意思選字。") and len(req["messages"]) == 14
               and req["messages"][1]["content"].endswith("輸入法：我們一起去公遠散步"), req["messages"][1]["content"])
         check("and a grammar: each character or another of its syllable in any tone",
-              rules[0] == "root ::= " + " ".join(f"s{i}" for i in range(len(tone_want)))
+              bool(rules) and rules[0] == "root ::= " + " ".join(f"s{i}" for i in range(len(tone_want)))
               and s6.startswith('s6 ::= "血" | ') and '"些"' in s6 and '"寫"' in s6 and '"謝"' in s6
               and '"範"' not in s6, s6[:80])
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, IndexError) as e:
         check("the second request: the tone hint and its example", False, f"{e}: {body2[:200]}")
+        check("and a grammar: each character or another of its syllable in any tone", False, "no request")
     s = r.snapshot()
     check("the bubble still says AI 修正中…", s.candidates and "AI 修正中" in s.candidates[0][1], f"{s.candidates[:1]}")
     s = answer(rid, tone_want)
     check("an answer to the first request now is dropped", s.preview == shown, repr(s.preview))
     s = answer(rid2, tone_want)
-    check("the second answer is shown", s.preview == tone_want and "血→些" in s.candidates[0][1],
+    check("the second answer is shown", s.preview == tone_want and s.candidates and "血→些" in s.candidates[0][1],
           f"{s.preview!r} {s.candidates[:1]}")
     r.key("Return")
     check("and Enter commits it", "".join(r.committed) == tone_want, repr(r.committed))
@@ -193,7 +194,7 @@ def main() -> int:
     rid = r.get_property("asus_fix_request").partition("\t")[0]
     s, second = answer_both(rid, shown, shown)
     check("a second answer changing nothing: 沒有要改的, and no third request",
-          second and s.preview == shown and "沒有要改的" in s.candidates[0][1]
+          second and s.preview == shown and s.candidates and "沒有要改的" in s.candidates[0][1]
           and r.get_property("asus_fix_request") == "", f"{second} {s.candidates[:1]}")
     _, rid, _, shown = start(want)
     s = answer(rid, want)
@@ -202,7 +203,7 @@ def main() -> int:
 
     _, rid, _, shown = start(want)
     s = answer(rid, "!需要先下載 AI 模型")
-    check("a front-end message is shown", s.preview == shown and "需要先下載" in s.candidates[0][1]
+    check("a front-end message is shown", s.preview == shown and s.candidates and "需要先下載" in s.candidates[0][1]
           and r.get_property("asus_fix_request") == "", f"{s.candidates[:1]}")
     r.type("u")
     s = r.snapshot()

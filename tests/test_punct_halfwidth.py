@@ -59,6 +59,12 @@ def main() -> int:
         (("C", "<Return>", "#"), "C#", "C, Enter, #"),
         (("US", "<Return>", "$"), "US$", "US, Enter, $ (not ￥)"),
         (("file", "<Return>", "="), "file=", "file, Enter, ="),
+        (("file", "<Return>", "^"), "file^", "file, Enter, ^ (not ……)"),
+        # A commit that ends in digit + . keeps the number going (5 is not ㄓ):
+        # asus_keys' number context. 10: is also held by asus_symbols' rule
+        # for a committed digit, so it does not test the number context alone.
+        (("3.", "<Return>", "5", "<Return>"), "3.5", "3. Enter, 5 Enter (number continued)"),
+        (("10:", "<Return>", "30", "<Return>"), "10:30", "10: Enter, 30 Enter (number continued)"),
     ]
     for steps, want, label in after_commit:
         reset(); typ(*steps); s = r.snapshot()

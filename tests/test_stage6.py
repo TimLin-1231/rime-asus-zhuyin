@@ -260,6 +260,25 @@ def main() -> int:
     out, _ = insert("很好", ["Home"], "我覺得這個")
     check("Home, five syllables in front", out == "我覺得這個很好", out)
 
+    # BackSpace with the cursor at the very start: there is nothing before it.
+    # (glog writes ERROR lines at once, so the log can be read mid-run.)
+    def log_errors() -> list[str]:
+        return [line for f in r.log_dir.glob("*.log*")
+                for line in f.read_text(encoding="utf-8", errors="replace").splitlines() if line.startswith("E")]
+
+    meal = "我想吃飯"
+    shown = start(keys(meal))
+    check("precondition: 我想吃飯 converts", shown == meal, shown)
+    errors_before = log_errors()
+    r.key("Home"); r.key("BackSpace"); s = r.snapshot()
+    check("Home, BackSpace: nothing before the cursor, the text and the input stay",
+          s.preview == meal and s.input == keys(meal) and s.composing, f"{s.input!r} {s.preview!r}")
+    new_errors = [line for line in log_errors() if line not in errors_before]
+    check("...and BackSpace there logs no error", not new_errors, new_errors[0][:200] if new_errors else "")
+    r.key("Return")
+    out = "".join(r.committed); r.clear()
+    check("...Enter then commits the whole sentence", out == meal, out)
+
     # Ordinary typing is unaffected.
     for text in ("我今天晚上要去吃飯", "謝謝你的幫忙"):
         check(f"no cursor: {text} as before", start(keys(text)) == text, start(keys(text)))
