@@ -10,6 +10,14 @@ DaoHui repository for the file-by-file inventory and licences.
     python tools/package_daohui_data.py --smoke    # deploy a Rime staged only from the output
     python tools/package_daohui_data.py --smoke --no-gram
 
+--check fails (exit 1) on private or non-redistributable data anywhere in the
+output, on an e-mail address that is not on the allow list, when one of the
+developer's private lists (PRIVATE_LISTS) is missing (無法檢查), and when a
+Lua component of the schema has no non-empty lua/<module>.lua. --smoke types
+the basic sentences and one input per DaoHui feature (typo, 的得地, mixed
+English, Taiwan wording, numbers), and fails on any librime error line other
+than the missing language model of --no-gram.
+
 What is built (all paths relative to --out):
   asus_zhuyin.schema.yaml        rime/ copy; asus_lang/raw_keys is ON (product default)
   terra_pinyin.asus.dict.yaml    rime/ copy (imports the five tables below)
@@ -82,6 +90,17 @@ FORBIDDEN_NAME = re.compile(
 OPENCC_DICT = ROOT / "third_party" / "opencc-build" / "src" / "tools" / "Release" / "opencc_dict.exe"
 HAN = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+# E-mail-shaped strings the package may contain: placeholders in Lua comments
+# and help texts. Any other address is a problem, unless the same file of the
+# fork's stock data (--fork-data) has it (colour-scheme authors in weasel.yaml).
+ALLOWED_EMAILS = {"name@host.com", "a@b.com"}
+# The developer's private lists. --check needs every one of them: without them
+# a personal word cannot be told from an ordinary one, and "ok" would mean
+# nothing (as on a fresh clone or another machine).
+PRIVATE_LISTS = ["lexicon/personal_words.txt", "lexicon/english_words.txt", "UserDictionary.txt",
+                 "tests/eval/private/asus_words.tsv", "rime/shortcuts.txt"]
+LUA_COMPONENT = re.compile(r"^lua_(processor|segmentor|translator|filter)@(\*?)([^@*\s]+)")
+LUA_REQUIRE = re.compile(r"""\brequire\s*\(?\s*["']([A-Za-z0-9_.]+)["']""")
 
 
 # ----------------------------------------------------------------- helpers
@@ -425,7 +444,57 @@ def private_strings(extra_file: Path | None = None) -> dict[str, set[str]]:
     # Local parts that could identify someone: 4+ characters with a letter.
     local = {m.split("@")[0] for m in mail
              if len(m.split("@")[0]) >= 4 and re.search(r"[a-z]", m.split("@")[0])}
-    return {"zh": zh, "en": en, "mail": mail, "mail_local": local}
+    missing = [rel for rel in PRIVATE_LISTS if not (ROOT / rel).is_file() or not (ROOT / rel).stat().st_size]
+    return {"zh": zh, "en": en, "mail": mail, "mail_local": local, "missing": missing}
+
+
+def lua_problems(out: Path, texts: dict[Path, str]) -> list[str]:
+    """Every lua_*@*module of the schema's engine, and every module a shipped
+    Lua file requires, must be a non-empty lua/<module>.lua of the package
+    (librime-lua only logs a missing or empty module, and the IME then types
+    raw letters)."""
+    import yaml
+    problems: list[str] = []
+    schema = out / "asus_zhuyin.schema.yaml"
+    try:
+        doc = yaml.safe_load(texts.get(schema) or schema.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as e:
+        return [f"asus_zhuyin.schema.yaml does not parse: {str(e).splitlines()[0]}"]
+    engine = doc.get("engine") if isinstance(doc, dict) else None
+    if not isinstance(engine, dict) or not all(isinstance(engine.get(k), list) for k in
+                                               ("processors", "segmentors", "translators", "filters")):
+        return ["asus_zhuyin.schema.yaml has no engine processors/segmentors/translators/filters lists"]
+    modules: dict[str, str] = {}
+    for kind in ("processors", "segmentors", "translators", "filters"):
+        for item in engine[kind]:
+            m = LUA_COMPONENT.match(str(item))
+            if m:
+                # @*name: lua/name.lua (dots are folders); @name: a global of rime.lua
+                modules.setdefault(m.group(3) if m.group(2) else "rime", f"schema {item}")
+    for p, text in texts.items():
+        if p.suffix == ".lua":
+            for name in LUA_REQUIRE.findall(text):
+                modules.setdefault(name, f"require in {p.relative_to(out).as_posix()}")
+    for name, why in sorted(modules.items()):
+        f = out / "lua" / Path(*name.split("."))
+        f = f.with_name(f.name + ".lua")
+        if not f.is_file():
+            problems.append(f"lua/{f.relative_to(out / 'lua').as_posix()} is missing ({why})")
+        elif not f.read_bytes().strip():
+            problems.append(f"lua/{f.relative_to(out / 'lua').as_posix()} is empty ({why})")
+    return problems
+
+
+def stock_emails(fork_data: Path | None, name: str) -> set[str] | None:
+    """Addresses in the fork's stock copy of a shipped file (None: no such file)."""
+    if not fork_data or not (fork_data / name).is_file():
+        return None
+    return {m.lower() for m in EMAIL.findall((fork_data / name).read_text(encoding="utf-8", errors="replace"))}
+
+
+def masked(addr: str) -> str:
+    local, _, domain = addr.partition("@")
+    return f"{local[:1]}***@{domain}"
 
 
 @lru_cache(maxsize=1)
@@ -514,12 +583,14 @@ def is_generated(rel: Path) -> bool:
     return rel.parts[0] == "opencc" or rel.name in FROM_BUILD or rel.name == GENERATED_LUA
 
 
-def check(out: Path, scratch: Path, extra_file: Path | None = None) -> int:
+def check(out: Path, scratch: Path, extra_file: Path | None = None, fork_data: Path | None = None) -> int:
     """Fails on: forbidden files, non-empty stubs, MOE-only entries, private
-    e-mail addresses anywhere, personal words in generated data. Personal
-    words inside text taken from git-tracked sources (Lua comments, the
-    schema) are warnings: they are in the repository too and must be fixed
-    there, and listing them here would put them in this script."""
+    e-mail addresses anywhere, any other e-mail address not on the allow list
+    (ALLOWED_EMAILS, or in the fork's stock copy of the same file), personal
+    words anywhere (generated data and text taken from git-tracked sources:
+    Lua comments and tables, the schema, a new file), a missing private list
+    (then nothing can be checked), and a lua_*@*module of the schema, or a
+    required module, without a non-empty lua/<module>.lua."""
     print(f"checking {out} for private or non-redistributable data")
     problems: list[str] = []
     warnings: list[str] = []
@@ -545,8 +616,16 @@ def check(out: Path, scratch: Path, extra_file: Path | None = None) -> int:
         p = out / stub
         if not p.exists() or entry_words(p, texts[p]):
             problems.append(f"{stub} must exist and have no entries")
+    for name in FROM_BUILD:  # the generated dictionaries that are not stubs must have entries
+        p = out / name
+        if name not in STUBS and (not p.exists() or not entry_words(p, texts.get(p, ""))):
+            problems.append(f"{name} must exist and have entries (the build made an empty dictionary)")
+    problems += lua_problems(out, texts)
 
     priv = private_strings(extra_file)
+    if priv["missing"]:
+        print(f"  無法檢查：找不到私人清單 {', '.join(priv['missing'])}（個人字詞無從比對）")
+        problems.append(f"cannot check for personal words: private lists missing: {', '.join(priv['missing'])}")
     corpus, en_public = public_corpus()
     zh = {w for w in priv["zh"] if w not in corpus}
     en = {w for w in priv["en"] if w not in en_public}
@@ -571,10 +650,15 @@ def check(out: Path, scratch: Path, extra_file: Path | None = None) -> int:
                 problems.append(f"{rel}: private e-mail address")
         if local_re and local_re.search(low):
             problems.append(f"{rel}: local part of a private e-mail address")
-        for m in set(EMAIL.findall(text)):
+        stock = stock_emails(fork_data, rel.as_posix()) if len(rel.parts) == 1 else None
+        for m in sorted(set(EMAIL.findall(text))):
             loc = m.split("@")[0].lower()
             if len(loc) >= 4 and any(x.startswith(loc[:4]) for x in priv["mail_local"]):
                 warnings.append(f"{rel}: e-mail-shaped example {m!r} begins like a private address")
+            if m.lower() not in ALLOWED_EMAILS and m.lower() not in (stock or ()) and m.lower() not in priv["mail"]:
+                problems.append(f"{rel}: e-mail address {masked(m.lower())} is not on the allow list"
+                                + ("" if stock is not None or len(rel.parts) > 1 else
+                                   f" (and the fork's stock {rel} was not found: --fork-data)"))
     moe = moe_only_words()
     if moe:
         # Whole-word entries only (dictionaries, Taiwan spellings, the word
@@ -590,11 +674,14 @@ def check(out: Path, scratch: Path, extra_file: Path | None = None) -> int:
         warnings.append("MOE dictionaries not found: MOE-only entry check skipped")
     for w in warnings:
         print(f"  warning: {w}")
-    for s in source_hits:
-        print(f"  warning (source text, also in the git repository; reword it there): {s}")
+    # A personal word in text that is not generated data (Lua, the schema, a
+    # file someone added) is usually in the git repository too: it must be
+    # reworded at its source, and the package rebuilt.
+    problems += [f"{s} (not generated data: reword it at its source, e.g. in the repository, and rebuild)"
+                 for s in source_hits]
     for pr in problems:
         print(f"  PROBLEM: {pr}")
-    print("check: " + ("FAILED" if problems else "ok (no private strings found)"))
+    print("check: " + (f"FAILED ({len(problems)} problem(s))" if problems else "ok (no private strings found)"))
     return 1 if problems else 0
 
 
@@ -639,13 +726,44 @@ def open_product(root: Path, user: Path, log_name: str):
     """rime_harness.Rime on DaoHui's layout: shared = root/data, user = user."""
     import rime_harness as rh
     rh.weasel_root = lambda: root  # Rime() takes rime.dll and data/ from here
-    rime = rh.Rime(user, log_name=log_name)
+    # The product's own data/ always, wherever the scratch folder is (inside
+    # .harness Rime() would strip the DaoHui layer and test stock Rime).
+    rime = rh.Rime(user, log_name=log_name, shared_data=root / "data")
     if not rime.select_schema("asus_zhuyin"):
         die(f"schema asus_zhuyin not available; logs in {rime.log_dir}")
     return rime
 
 
 SMOKE = [("su3cl3", "你好"), ("ji3g4", "我是"), ("5j4up ", "注音"), ("rup wu0 wu0 fu4cp3cl3", "今天天氣很好")]
+# One input per DaoHui feature that stock Rime gets wrong: the sentences above
+# pass even with every DaoHui Lua component removed from the schema.
+SMOKE_FEATURES = [
+    ("錯字", "su3au/6wu0 u.3fj/4a87", "你明天有空嗎"),  # ㄎ typed one key off as ㄑ
+    ("的得地", "w8 ql32k7cp3dj94", "他跑得很快"),
+    ("中英混打", "ji3m/4pythonql3g6u04", "我用python跑實驗"),
+    ("台灣用語", "5k4ek7t/6g4cp3cl3m/4", "這個程式很好用"),
+    ("數字", "ji3ap732u03ru04", "我們3點見"),
+]
+# The only librime error lines --smoke --no-gram expects: the language model is missing.
+NO_GRAM_LINES = re.compile(r"(mapped_file\.cc:\d+\] attempt to open non-existent file .*\.gram'"
+                           r"|gram_db\.cc:\d+\] error opening gram db .*\.gram'"
+                           r"|octagram\.cc:\d+\] failed to load grammar database: )")
+
+
+def complete_error_lines() -> list[str]:
+    """rime_harness.error_lines() without the half lines: inside the process
+    glog's INFO file is still buffered, so it can end in the first part of an
+    error line that the (flushed) ERROR file holds in full."""
+    import rime_harness as rh
+    lines = rh.error_lines()
+    srt = sorted(set(lines))
+    partial = {a for a, b in zip(srt, srt[1:]) if b.startswith(a)}
+    return [line for line in lines if line not in partial]
+
+
+def unexpected_errors(lines: list[str], gram: bool) -> list[str]:
+    """librime ERROR/FATAL lines that are not explained by a missing LM."""
+    return [line for line in lines if gram or not NO_GRAM_LINES.search(line)]
 
 # A user's own custom files on top of the product defaults (--smoke runs this
 # in a second process): each must win where it says something, and must not
@@ -687,9 +805,11 @@ def smoke_custom(out: Path, scratch: Path, fork_data: Path, rime_dll: Path) -> i
     rime = open_product(root, user, "daohui-smoke-custom")
     rime.api.deploy_config_file(b"weasel.yaml", b"config_version")
     rime.close()
+    errors = unexpected_errors(complete_error_lines(), gram=False)  # this user dir has no LM
     bad = config_problems(deployed(user), custom=True)
-    print(f"  user custom files on top: {'ok' if not bad else 'WRONG ' + ', '.join(bad)}")
-    return 1 if bad else 0
+    print(f"  user custom files on top: {'ok' if not bad else 'WRONG ' + ', '.join(bad)}"
+          + (f"; {len(errors)} unexpected error log line(s), first: {errors[0]}" if errors else ""))
+    return 1 if bad or errors else 0
 
 
 def smoke(out: Path, scratch: Path, fork_data: Path, rime_dll: Path, gram_src: Path | None) -> int:
@@ -705,30 +825,35 @@ def smoke(out: Path, scratch: Path, fork_data: Path, rime_dll: Path, gram_src: P
                            "default.yaml", "weasel.yaml") if f not in built]
     bad_cfg = config_problems(deployed(user), custom=False)
     ok = not missing and not bad_cfg
+    from rime_harness import SHIFT_MASK
     fails = 0
-    for keys, want in SMOKE:
+    cases = [("", k, w) for k, w in SMOKE] + list(SMOKE_FEATURES)
+    for feature, keys, want in cases:
+        rime.clear()
+        rime.key(">", SHIFT_MASK)  # sentence start, as the evals do
         rime.clear()
         rime.type(keys)
         preview = rime.snapshot().preview
         rime.key("Return")
         got = "".join(rime.committed)
-        print(f"  {keys!r}: preview {preview!r}, Enter commits {got!r}" + ("" if got == want else f"  (want {want!r})"))
+        print(f"  {feature + ' ' if feature else ''}{keys!r}: preview {preview!r}, Enter commits {got!r}"
+              + ("" if got == want else f"  (want {want!r})"))
         fails += got != want
     rime.close()
-    errors = [f.read_text(encoding="utf-8", errors="replace") for f in rime.log_dir.glob("*ERROR*")]
-    err_lines = [l for e in errors for l in e.splitlines() if re.match(r"^[EF]\d{4,8} ", l)]
-    for l in err_lines[:20]:
+    err_lines = complete_error_lines()
+    unexpected = unexpected_errors(err_lines, bool(gram))
+    for l in unexpected[:20]:
         print(f"  log: {l}")
     print(f"smoke ({'with' if gram else 'without'} {GRAM}): deploy+open {deploy_s:.1f} s, "
           f"build files {'ok' if not missing else 'MISSING ' + str(missing)}, "
           f"deployed config {'ok' if not bad_cfg else 'WRONG ' + ', '.join(bad_cfg)}, "
-          f"{len(SMOKE) - fails}/{len(SMOKE)} typed right, "
-          f"{len(err_lines)} error log lines (logs: {rime.log_dir})")
+          f"{len(cases) - fails}/{len(cases)} typed right, "
+          f"{len(err_lines)} error log lines, {len(unexpected)} unexpected (logs: {rime.log_dir})")
     proc = subprocess.run([sys.executable, __file__, "--smoke-custom", "--out", str(out), "--scratch", str(scratch),
                            "--fork-data", str(fork_data), "--rime-dll", str(rime_dll)], capture_output=True)
     text = proc.stdout.decode("utf-8", "replace")
     print("\n".join(l for l in text.splitlines() if l.startswith("  user custom")) or text)
-    return 0 if ok and not fails and not proc.returncode else 1
+    return 0 if ok and not fails and not unexpected and not proc.returncode else 1
 
 
 # ----------------------------------------------------------------- main
@@ -758,7 +883,7 @@ def main() -> int:
         return smoke(out, scratch, args.fork_data, args.rime_dll, None if args.no_gram else args.gram)
     if not args.check:
         build(out, scratch, args.fork_data)
-    return check(out, scratch, args.private_file or scratch / "extra_private.txt")
+    return check(out, scratch, args.private_file or scratch / "extra_private.txt", args.fork_data)
 
 
 if __name__ == "__main__":

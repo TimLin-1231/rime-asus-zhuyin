@@ -1,8 +1,17 @@
-"""Drive librime (Weasel's rime.dll) from Python for automated tests.
+"""Drive librime (the installed DaoHui's, else Weasel's, rime.dll) from Python
+for automated tests.
 
 The harness deploys a *copy* of the config into a private staging directory
 (.harness/<name>/user), so the live IME and its learned data are never touched.
 librime can only be initialised once per process; run one config per process.
+
+librime errors: every log dir this process opened is in LOG_DIRS, and
+error_lines() returns their glog ERROR/FATAL lines. Rime.close() prints how
+many there were; a log dir with errors nobody read with error_lines() is kept
+(not deleted by the next run of the same name).
+
+RIME_TEST_RAW_KEYS=1 (tools/run_tests.py --both) stages every project config
+with asus_lang/raw_keys: true, unless the test sets raw_keys itself.
 
 Example:
     python tools/rime_harness.py --keys "su3cl3"
@@ -13,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes as C
+import hashlib
 import json
 import os
 import shutil
@@ -28,6 +38,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RIME_SRC = ROOT / "rime"
 HARNESS_DIR = ROOT / ".harness"
+# Short id of this checkout: log dirs under %TEMP% are per checkout, so two
+# checkouts (worktrees, audit copies) never delete each other's logs.
+ROOT_TAG = hashlib.sha256(str(ROOT).lower().encode("utf-8")).hexdigest()[:8]
 
 # Files in rime/ that are runtime state, not configuration.
 # asus_zhuyin.custom.yaml holds the live IME's personal settings (raw_keys):
@@ -52,6 +65,21 @@ SYNCED_STUB = ("terra_pinyin.synced.dict.yaml",
 # session loads the dictionaries and the language model, well under this.
 KEY_TIMEOUT = float(os.environ.get("RIME_KEY_TIMEOUT", "30"))
 KEY_TIMEOUT_EXIT = 124
+
+# Every librime log dir opened in this process, in order. glog writes all
+# sessions of a process into the FIRST session's dir, so error_lines() has to
+# read all of them.
+LOG_DIRS: list[Path] = []
+ERROR_LINE = re.compile(r"^[EF]\d{8} ")
+# Written into a log dir whose error lines nobody has read with error_lines();
+# the next run of the same name then logs to <name>~2 (up to KEEP_UNREAD dirs).
+UNREAD_MARK = "UNREAD_ERRORS.txt"
+KEEP_UNREAD = 5
+_READ: set[str] = set()      # error lines handed out by error_lines()
+_REPORTED: set[str] = set()  # error lines a close() already printed
+
+RAW_KEYS_ENV = "RIME_TEST_RAW_KEYS"
+CUSTOM = "asus_zhuyin.custom.yaml"
 
 # X11 keysyms / masks used by librime.
 XK = {
@@ -215,9 +243,203 @@ class RimeApi(C.Structure):
     _fields_ = _API_FIELDS
 
 
+# Installs that register a WeaselRoot (the folder with rime.dll and data/),
+# tried in this order: DaoHui first, so that the tests keep working once the
+# old Weasel is uninstalled. Both ship the same librime build.
+INSTALL_KEYS = (r"SOFTWARE\WOW6432Node\DaoHui", r"SOFTWARE\WOW6432Node\Rime\Weasel")
+
+
 def weasel_root() -> Path:
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Rime\Weasel") as k:
-        return Path(winreg.QueryValueEx(k, "WeaselRoot")[0])
+    """The installed IME folder holding rime.dll and data/ (DaoHui, else Weasel)."""
+    tried = []
+    for sub in INSTALL_KEYS:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, sub) as k:
+                root = Path(winreg.QueryValueEx(k, "WeaselRoot")[0])
+        except OSError:
+            tried.append(f"HKLM\\{sub} has no WeaselRoot")
+            continue
+        if (root / "rime.dll").is_file():
+            return root
+        tried.append(f"HKLM\\{sub} WeaselRoot {root} has no rime.dll")
+    raise RuntimeError("rime_harness: no installed rime.dll found; install DaoHui (or Weasel). "
+                       + "; ".join(tried))
+
+
+# DaoHui's installer puts this project's own files on top of the stock Rime
+# data (tools/package_daohui_data.py). A user dir staged by this harness must
+# not see them: a file that a test leaves out (exclude=, e.g. grammar.yaml for
+# an ablation) or that is missing from rime/ would silently come from the
+# installed release instead, and config "stock" would no longer be stock Rime.
+PRODUCT_FILE = re.compile(
+    r"^(asus_[^/]*|grammar\.yaml|shortcuts\.example\.txt|DAOHUI_DATA_LICENSES\.txt|FILES\.txt"
+    r"|terra_pinyin\.(asus|mcb|tw|personal|synced)\.dict\.yaml|lua/.*|opencc/asus_[^/]*|preview/.*)$")
+# default.yaml / weasel.yaml: the product's root __patch is appended after this.
+PRODUCT_PATCH = re.compile(r"\r?\n# -{10,}\r?\n# 島輝 DaoHui product defaults")
+STOCK_RULES = 1  # bump when PRODUCT_FILE / PRODUCT_PATCH change
+
+
+def stock_data_dir(root: Path | None = None) -> Path:
+    """The installed shared data without DaoHui's product layer, cached as
+    .harness/_stock/<id>; rebuilt when the install changes."""
+    root = root or weasel_root()
+    src = root / "data"
+    files = sorted((p.relative_to(src).as_posix(), p) for p in src.rglob("*") if p.is_file())
+    stamp = json.dumps({"rules": STOCK_RULES, "src": str(src),
+                        "files": [(rel, p.stat().st_size, p.stat().st_mtime_ns) for rel, p in files]})
+    tag = hashlib.sha256(str(src).lower().encode("utf-8")).hexdigest()[:8]
+    # Resolved: .harness may be a junction, and an ASCII path is safest for librime.
+    out = (HARNESS_DIR / "_stock").resolve() / tag
+    stamp_file = out / ".stamp.json"
+    if stamp_file.exists() and stamp_file.read_text(encoding="utf-8") == stamp:
+        return out
+    tmp = out.parent / f"{tag}.tmp-{os.getpid()}"
+    for stale in out.parent.glob(f"{tag}.tmp-*"):  # earlier processes' leftovers
+        if stale != tmp:
+            shutil.rmtree(stale, ignore_errors=True)
+    shutil.rmtree(tmp, ignore_errors=True)
+    for rel, p in files:
+        if PRODUCT_FILE.match(rel):
+            continue
+        dst = tmp / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if "/" not in rel and rel.endswith(".yaml"):
+            text = p.read_bytes().decode("utf-8")
+            m = PRODUCT_PATCH.search(text)
+            if m:
+                dst.write_bytes((text[:m.start()].rstrip() + "\n").encode("utf-8"))
+                continue
+        shutil.copy2(p, dst)
+    (tmp / ".stamp.json").write_text(stamp, encoding="utf-8")
+    # Never delete the old copy in place: another librime process (a test's
+    # child, another checkout's suite) may be reading it. Move it aside, put the
+    # new one in, then try to delete the old one; leftovers are retried later.
+    for old in out.parent.glob(f"{tag}.old-*"):
+        shutil.rmtree(old, ignore_errors=True)
+    aside = out.parent / f"{tag}.old-{os.getpid()}"
+    try:
+        if out.exists():
+            out.rename(aside)
+        tmp.rename(out)
+    except OSError:  # held open, or another process swapped it meanwhile
+        if out.exists() and (out / ".stamp.json").exists() \
+                and (out / ".stamp.json").read_text(encoding="utf-8") == stamp:
+            shutil.rmtree(tmp, ignore_errors=True)
+            return out
+        return tmp  # complete and private to this process; removed by the next rebuild
+    shutil.rmtree(aside, ignore_errors=True)
+    return out
+
+
+def _under_harness(path: Path) -> bool:
+    for p, base in ((path, HARNESS_DIR), (path.resolve(), HARNESS_DIR.resolve())):
+        try:
+            p.relative_to(base)
+            return True
+        except ValueError:
+            pass
+    return False
+
+
+# -- librime's logs ------------------------------------------------------------
+def _log_base() -> Path:
+    # glog cannot open non-ASCII paths on Windows, so log under %TEMP%.
+    return Path(os.environ["TEMP"]) / "rime.harness" / ROOT_TAG
+
+
+def _fresh_log_dir(name: str) -> Path:
+    """An empty log dir for a run called name, registered in LOG_DIRS.
+
+    A dir of an earlier run that still holds unread error lines (UNREAD_MARK)
+    is kept; this run then takes the next free <name>~<n>. A dir this process
+    already opened is reused as is (glog may still be writing into it)."""
+    base = _log_base()
+    slots = [base / (name if i == 1 else f"{name}~{i}") for i in range(1, KEEP_UNREAD + 1)]
+    chosen = None
+    for d in slots:
+        if d in LOG_DIRS:
+            chosen = d
+            break
+        if not (d / UNREAD_MARK).exists():
+            shutil.rmtree(d, ignore_errors=True)
+            chosen = d
+            break
+    if chosen is None:  # every slot holds unread errors: give up the oldest
+        chosen = min(slots, key=lambda d: (d / UNREAD_MARK).stat().st_mtime)
+        sys.stderr.write(f"rime_harness: {KEEP_UNREAD} log dirs of {name!r} hold unread errors; "
+                         f"deleting the oldest, {chosen}\n")
+        shutil.rmtree(chosen, ignore_errors=True)
+    chosen.mkdir(parents=True, exist_ok=True)
+    if chosen not in LOG_DIRS:
+        LOG_DIRS.append(chosen)
+    return chosen
+
+
+def _scan_errors(dirs) -> list[tuple[Path, str]]:
+    """(dir, line) for each distinct glog ERROR/FATAL line, oldest first."""
+    seen: set[str] = set()
+    found: list[tuple[Path, str]] = []
+    for d in dirs:
+        d = Path(d)
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if not f.is_file() or f.name == UNREAD_MARK:
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for line in text.splitlines():
+                if ERROR_LINE.match(line) and line not in seen:
+                    seen.add(line)
+                    found.append((d, line))
+    found.sort(key=lambda dl: dl[1][1:25])  # yyyymmdd hh:mm:ss.uuuuuu
+    return found
+
+
+def error_lines(dirs=None) -> list[str]:
+    """The distinct glog ERROR/FATAL lines of dirs (default: every log dir this
+    process opened, LOG_DIRS), oldest first. Reading them marks those dirs as
+    read: the next run of the same name may delete them again."""
+    dirs = list(LOG_DIRS) if dirs is None else [Path(d) for d in dirs]
+    lines = [line for _, line in _scan_errors(dirs)]
+    _READ.update(lines)
+    for d in dirs:
+        try:
+            (d / UNREAD_MARK).unlink()
+        except OSError:
+            pass
+    return lines
+
+
+def _report_errors() -> None:
+    """After a session: say on stderr how many new error lines librime logged,
+    and mark the dirs holding unread ones so that they are kept."""
+    found = _scan_errors(LOG_DIRS)
+    new = [line for _, line in found if line not in _REPORTED]
+    _REPORTED.update(new)
+    if new:
+        dirs = sorted({str(d) for d, line in found if line in new})
+        sys.stderr.write(f"rime_harness: {len(new)} error log line(s), first: {new[0]}\n"
+                         f"rime_harness: logs kept in {', '.join(dirs)}\n")
+        # The segmentor's safety net (asus_lang.lua) hides an endless loop
+        # behind a poor conversion; say so wherever it happened.
+        trips = sum("did not settle" in line for line in new)
+        if trips:
+            sys.stderr.write(f"rime_harness: the segmentation guard tripped {trips} time(s); "
+                             f"see {', '.join(dirs)}\n")
+    unread: dict[Path, list[str]] = {}
+    for d, line in found:
+        if line not in _READ:
+            unread.setdefault(d, []).append(line)
+    for d, lines in unread.items():
+        try:
+            (d / UNREAD_MARK).write_text(
+                f"{len(lines)} librime error line(s) not read with rime_harness.error_lines(); "
+                f"this folder is kept until then.\nfirst: {lines[0]}\n", encoding="utf-8")
+        except OSError:
+            pass
 
 
 def _link_or_copy(src: Path, dst: Path) -> None:
@@ -242,6 +464,40 @@ def _link_or_copy(src: Path, dst: Path) -> None:
         os.link(cached, dst)
     except OSError:
         shutil.copy2(cached, dst)
+
+
+def _patch_map(text: str | None):
+    """The patch: mapping of a custom file's text, or None."""
+    import yaml  # only needed in raw-keys mode
+    try:
+        doc = yaml.safe_load(text) if text else None
+    except yaml.YAMLError:
+        return None
+    patch = doc.get("patch") if isinstance(doc, dict) else None
+    return patch if isinstance(patch, dict) else None
+
+
+def _sets_raw_keys(text: str | None) -> bool:
+    patch = _patch_map(text)
+    return patch is not None and ("asus_lang/raw_keys" in patch or isinstance(patch.get("asus_lang"), dict))
+
+
+def _with_raw_keys(text: str | None) -> str | None:
+    """A custom file's text with asus_lang/raw_keys: true added (a new file if
+    text is None); None when the test sets raw_keys itself or the file is not
+    a plain block-style patch map (an empty or malformed file a test checks)."""
+    if text is None:
+        return "patch:\n  asus_lang/raw_keys: true\n"
+    patch = _patch_map(text)
+    if patch is None or _sets_raw_keys(text):
+        return None
+    m = re.search(r"^patch:[ \t]*(#.*)?\r?\n", text, re.M)
+    if not m:
+        return None
+    rest = text[m.end():]
+    ind = re.search(r"^([ \t]+)[^\s#]", rest, re.M)
+    new = text[:m.end()] + f"{ind.group(1) if ind else '  '}asus_lang/raw_keys: true\n" + rest
+    return new if _patch_map(new) == {"asus_lang/raw_keys": True, **patch} else None
 
 
 def stage_user_dir(name: str, config: str, with_userdb: bool = False,
@@ -291,6 +547,15 @@ def stage_user_dir(name: str, config: str, with_userdb: bool = False,
                     raise RuntimeError(f"robocopy {db} failed with code {rc}")
     elif config != "stock":
         raise ValueError(f"unknown config {config!r}")
+    if config == "project" and os.environ.get(RAW_KEYS_ENV) == "1" and CUSTOM not in exclude:
+        extra = dict(extra or {})
+        text = extra.get(CUSTOM)
+        new = _with_raw_keys(text)
+        if new is not None:
+            extra[CUSTOM] = new
+        elif not _sets_raw_keys(text):
+            sys.stderr.write(f"rime_harness: {RAW_KEYS_ENV}=1: {name}: {CUSTOM} is not a plain patch "
+                             f"map; left as the test wrote it (raw_keys not added)\n")
     for rel, text in (extra or {}).items():
         (user / rel).parent.mkdir(parents=True, exist_ok=True)
         (user / rel).write_text(text, encoding="utf-8")
@@ -316,19 +581,20 @@ class Snapshot:
 
 
 class Rime:
-    def __init__(self, user_dir: Path, log_name: str = "harness"):
+    def __init__(self, user_dir: Path, log_name: str = "harness", shared_data: Path | None = None):
+        """shared_data: default the install's data/; for a user dir staged by
+        this harness, that data without DaoHui's product layer (stock_data_dir)."""
         root = weasel_root()
+        if shared_data is None:
+            shared_data = stock_data_dir(root) if _under_harness(Path(user_dir)) else root / "data"
+        self.shared_data = shared_data
         self.dll = C.CDLL(str(root / "rime.dll"))
         self.dll.rime_get_api.restype = _P(RimeApi)
         self.api = self.dll.rime_get_api().contents
-        # glog cannot open non-ASCII paths on Windows, so log under %TEMP%.
-        log_dir = Path(os.environ["TEMP"]) / "rime.harness" / log_name
-        if log_dir.exists():
-            shutil.rmtree(log_dir, ignore_errors=True)
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = _fresh_log_dir(log_name)
         self.log_dir = log_dir
         # Keep references alive for the lifetime of librime.
-        self._strings = [str(root / "data").encode(), str(user_dir).encode(),
+        self._strings = [str(shared_data).encode(), str(user_dir).encode(),
                          str(log_dir).encode()]
         t = RimeTraits()
         t.data_size = C.sizeof(RimeTraits) - C.sizeof(C.c_int)
@@ -462,13 +728,7 @@ class Rime:
     def close(self) -> None:
         self.api.destroy_session(self.session)
         self.api.finalize()
-        # The segmentor's safety net (asus_lang.lua) hides an endless loop
-        # behind a poor conversion; say so wherever it happened.
-        trips = sum(f.read_text(encoding="utf-8", errors="replace").count("did not settle")
-                    for f in self.log_dir.glob("*ERROR*"))
-        if trips:
-            sys.stderr.write(f"rime_harness: the segmentation guard tripped {trips} time(s); "
-                             f"see {self.log_dir}\n")
+        _report_errors()
 
 
 def sync_user_data(user_dir: Path, log_name: str = "harness-sync") -> tuple[bool, Path]:
@@ -478,13 +738,12 @@ def sync_user_data(user_dir: Path, log_name: str = "harness-sync") -> tuple[bool
     every <sync_dir>/*/<dict>.userdb.txt. Once per process, like Rime().
     Returns (started, log dir)."""
     root = weasel_root()
+    shared = stock_data_dir(root) if _under_harness(Path(user_dir)) else root / "data"
     dll = C.CDLL(str(root / "rime.dll"))
     dll.rime_get_api.restype = _P(RimeApi)
     api = dll.rime_get_api().contents
-    log_dir = Path(os.environ["TEMP"]) / "rime.harness" / log_name
-    shutil.rmtree(log_dir, ignore_errors=True)
-    log_dir.mkdir(parents=True, exist_ok=True)
-    strings = [str(root / "data").encode(), str(user_dir).encode(), str(log_dir).encode()]
+    log_dir = _fresh_log_dir(log_name)
+    strings = [str(shared).encode(), str(user_dir).encode(), str(log_dir).encode()]
     t = RimeTraits()
     t.data_size = C.sizeof(RimeTraits) - C.sizeof(C.c_int)
     t.shared_data_dir, t.user_data_dir, t.log_dir = strings
@@ -498,6 +757,7 @@ def sync_user_data(user_dir: Path, log_name: str = "harness-sync") -> tuple[bool
     ok = bool(api.sync_user_data())
     api.join_maintenance_thread()
     api.finalize()
+    _report_errors()
     return ok, log_dir
 
 

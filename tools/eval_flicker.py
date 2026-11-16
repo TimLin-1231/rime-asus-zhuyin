@@ -15,6 +15,10 @@ compared before and after each key:
 The final text is not scored here (tools/eval_ime.py does that). Dev sets
 may list examples (--show N); held-out sets only ever give totals.
 
+If librime logged ERROR/FATAL lines or the language model failed to load,
+the count and the first lines go to stderr and the exit code is 3 (the
+numbers were measured on a broken IME; see tools/eval_ime.py).
+
     python tools/eval_flicker.py [--variants asus stock] [--show 10]
 """
 
@@ -73,6 +77,7 @@ def worker(variant: str) -> None:
                          "keys": len(keys), "mid_keys": sum(ch not in TONE_KEYS for ch in keys)})
         out[name] = rows
     rime.close()
+    eval_ime.report_health()
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
 
@@ -89,10 +94,14 @@ def main() -> None:
         return
     print("| variant | set | n | Rewrite | Sent | Far /100 keys | Mid | ms/key |")
     print("|---|---|---:|---:|---:|---:|---:|---:|")
+    healths = []
     for variant in args.variants:
         proc = subprocess.run([sys.executable, __file__, "--worker", variant], capture_output=True)
+        err = proc.stderr.decode("utf-8", "replace")
         if proc.returncode:
-            raise SystemExit(f"{variant} failed:\n{proc.stderr.decode('utf-8', 'replace')}")
+            raise SystemExit(f"{variant} failed:\n{err}")
+        eval_ime.forward_harness_lines(err)
+        healths.append(eval_ime.read_health(variant, err))
         res = json.loads(proc.stdout.decode("utf-8"))
         for name, rows in res.items():
             keys = sum(r["keys"] for r in rows)
@@ -111,6 +120,8 @@ def main() -> None:
                         if shown < args.show:
                             print(f"    {r['text']}: {a!r} -> {b!r} (key {ch!r})")
                             shown += 1
+    if eval_ime.health_problems(healths, "eval_flicker"):
+        raise SystemExit(eval_ime.EXIT_LIBRIME_ERRORS)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,12 @@ Metrics (over the lines whose conversion was wrong)
   Fixed     the committed text is the wanted text
   Keys      keys pressed to fix (arrows, Down, Page_Down, digits), mean
   Wrong     share of lines converted wrongly in the first place
+
+If librime logged ERROR/FATAL lines or the language model failed to load,
+the count and the first lines go to stderr, nothing is appended to
+reports/edit_history.jsonl and the exit code is 3 (--allow-errors: save
+anyway, still exit 3). Each record holds the content hash of the staged
+config ("content") and the error count ("errors").
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import eval_ime  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 EVAL = ROOT / "tests" / "eval"
@@ -149,11 +156,11 @@ class User:
 
 
 def worker(set_name: str) -> None:
-    from rime_harness import SHIFT_MASK, open_rime
+    from rime_harness import SHIFT_MASK
     rows = load(set_name)
     extra = {"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/enabled: false\n"
                                         "  translator/enable_user_dict: false\n"}
-    r = open_rime("edit-eval", "project", extra=extra)
+    r, content = eval_ime.open_measured("edit-eval", "project", extra=extra)
     r.set_option("prediction", False)
     u = User(r, SHIFT_MASK)
     out = []
@@ -169,6 +176,7 @@ def worker(set_name: str) -> None:
             u.finish()
         out.append(res)
     r.close()
+    eval_ime.report_health(content)
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
 
@@ -179,17 +187,19 @@ def main() -> None:
     ap.add_argument("--note", default="")
     ap.add_argument("--worker", help=argparse.SUPPRESS)
     ap.add_argument("--no-save", action="store_true")
+    ap.add_argument("--allow-errors", action="store_true",
+                    help="save to the history even if librime logged errors (exit code stays 3)")
     args = ap.parse_args()
     if args.worker:
         worker(args.worker)
         return
     rows = load(args.set)
     proc = subprocess.run([sys.executable, __file__, "--worker", args.set], capture_output=True)
+    err = proc.stderr.decode("utf-8", "replace")
     if proc.returncode:
-        raise SystemExit(proc.stderr.decode("utf-8", "replace"))
-    for line in proc.stderr.decode("utf-8", "replace").splitlines():
-        if line.startswith("rime_harness:"):  # e.g. the segmentation guard tripped
-            print(line, file=sys.stderr)
+        raise SystemExit(err)
+    eval_ime.forward_harness_lines(err)
+    health = eval_ime.read_health(args.set, err)
     res = json.loads(proc.stdout.decode("utf-8"))
     wrong = [(row, r) for row, r in zip(rows, res) if "down" in r]
     m = {"n": len(rows), "Wrong": len(wrong) / len(rows)}
@@ -210,11 +220,19 @@ def main() -> None:
             print(f"  {text}: first={r['first']} "
                   f"down={r['down']['got']}({r['down']['keys']}) "
                   f"cursor={r['cursor']['got']}({r['cursor']['keys']})")
+    bad = eval_ime.health_problems([health], "eval_edit")
+    if bad and not args.allow_errors:
+        if not args.no_save:
+            eval_ime.refuse_to_save("eval_edit", HISTORY.relative_to(ROOT).as_posix())
+        raise SystemExit(eval_ime.EXIT_LIBRIME_ERRORS)
     if not args.no_save:
         REPORTS.mkdir(exist_ok=True)
         with HISTORY.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"time": stamp, "rev": rev, "note": args.note, "set": args.set,
-                                "metrics": m}, ensure_ascii=False) + "\n")
+                                "metrics": m, "content": health.get("content", ""),
+                                "errors": health["errors"] + health["grammar"]}, ensure_ascii=False) + "\n")
+    if bad:  # --allow-errors: saved, but the run still failed
+        raise SystemExit(eval_ime.EXIT_LIBRIME_ERRORS)
 
 
 if __name__ == "__main__":

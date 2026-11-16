@@ -35,6 +35,12 @@ Variants
   noctx     asus without it (committed_context: false, the rule before)
   rime      Rime's own learning only (asus_learn disabled)
   nolearn   no learning at all (enable_user_dict off, asus_learn disabled)
+
+If librime logged ERROR/FATAL lines or the language model failed to load in
+any run (the baseline included), the count and the first lines go to stderr,
+nothing is appended to reports/learn_history.jsonl and the exit code is 3
+(--allow-errors: save anyway, still exit 3). Each record holds the content
+hash of the staged config ("content") and the error count ("errors").
 """
 
 from __future__ import annotations
@@ -48,6 +54,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import eval_ime  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 EVAL = ROOT / "tests" / "eval"
@@ -208,10 +215,10 @@ class Typist:
 
 
 def worker(variant: str, mode: str, set_name: str) -> None:
-    from rime_harness import CONTROL_MASK, SHIFT_MASK, open_rime
+    from rime_harness import CONTROL_MASK, SHIFT_MASK
     lines, sents = load(set_name)
     extra = {f"{SCHEMA}.custom.yaml": "patch:\n" + VARIANTS[variant]}
-    rime = open_rime(f"learn-{variant}-{mode}", "project", SCHEMA, extra=extra)
+    rime, content = eval_ime.open_measured(f"learn-{variant}-{mode}", "project", SCHEMA, extra=extra)
     t = Typist(rime, SHIFT_MASK, CONTROL_MASK)
     out: dict = {"lines": [None] * len(lines), "end": [None] * len(lines), "general": []}
 
@@ -262,6 +269,7 @@ def worker(variant: str, mode: str, set_name: str) -> None:
     out["general"] = [t.preview(keys) for keys, _ in sents]
     out["ms_per_key"] = sum(t.key_ms) / max(len(t.key_ms), 1)
     rime.close()
+    eval_ime.report_health(content)
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
 
@@ -308,14 +316,17 @@ def score(lines, sents, base, learned) -> dict:
     return m
 
 
+HEALTHS: list[dict] = []  # one librime health report per run(), in order
+
+
 def run(variant: str, mode: str, set_name: str) -> dict:
     proc = subprocess.run([sys.executable, __file__, "--worker", variant, mode, set_name],
                           capture_output=True)
+    err = proc.stderr.decode("utf-8", "replace")
     if proc.returncode:
-        raise SystemExit(f"{variant}/{mode} failed:\n{proc.stderr.decode('utf-8', 'replace')}")
-    for line in proc.stderr.decode("utf-8", "replace").splitlines():
-        if line.startswith("rime_harness:"):  # e.g. the segmentation guard tripped
-            print(line, file=sys.stderr)
+        raise SystemExit(f"{variant}/{mode} failed:\n{err}")
+    eval_ime.forward_harness_lines(err)
+    HEALTHS.append(eval_ime.read_health(f"{variant}/{mode}", err))
     return json.loads(proc.stdout.decode("utf-8"))
 
 
@@ -342,6 +353,8 @@ def main() -> None:
     ap.add_argument("--note", default="")
     ap.add_argument("--worker", nargs=3, help=argparse.SUPPRESS)
     ap.add_argument("--no-save", action="store_true")
+    ap.add_argument("--allow-errors", action="store_true",
+                    help="save to the history even if librime logged errors (exit code stays 3)")
     args = ap.parse_args()
     if args.worker:
         worker(*args.worker)
@@ -349,15 +362,19 @@ def main() -> None:
 
     lines, sents = load(args.set)
     base = run("nolearn", "baseline", args.set)  # nothing is taught in a baseline
+    base_health = HEALTHS[-1]
     stamp = dt.datetime.now().isoformat(timespec="seconds")
     rev = git_rev()
     report = [f"## Learning eval {stamp} @ {rev} set={args.set} {args.note}".rstrip(), ""]
     records, failures = [], []
     for variant in args.variants:
         learned = run(variant, "learned", args.set)
+        health = HEALTHS[-1]
         m = score(lines, sents, base, learned)
         records.append({"time": stamp, "rev": rev, "note": args.note, "set": args.set,
-                        "variant": variant, "metrics": m})
+                        "variant": variant, "metrics": m, "content": health.get("content", ""),
+                        "base_content": base_health.get("content", ""),
+                        "errors": sum(h["errors"] + h["grammar"] for h in (base_health, health))})
         report.append(f"### {variant}")
         report.append("| metric | n | base | now | end |")
         report.append("|---|---:|---:|---:|---:|")
@@ -381,6 +398,11 @@ def main() -> None:
                 if g != text:
                     failures.append((variant, "general", "S", text, g, ""))
     print("\n".join(report))
+    bad = eval_ime.health_problems(HEALTHS, "eval_learn")
+    if bad and not args.allow_errors:
+        if not args.no_save:
+            eval_ime.refuse_to_save("eval_learn", HISTORY.relative_to(ROOT).as_posix())
+        raise SystemExit(eval_ime.EXIT_LIBRIME_ERRORS)
     if not args.no_save:
         REPORTS.mkdir(exist_ok=True)
         with HISTORY.open("a", encoding="utf-8") as f:
@@ -391,6 +413,8 @@ def main() -> None:
             detail.write_text("variant\tgroup\tkind\texpected\tgot\tend\n" + "\n".join(
                 "\t".join(map(str, x)) for x in failures) + "\n", encoding="utf-8")
             print(f"(dev failures in {detail.relative_to(ROOT)})")
+    if bad:  # --allow-errors: saved, but the run still failed
+        raise SystemExit(eval_ime.EXIT_LIBRIME_ERRORS)
 
 
 if __name__ == "__main__":

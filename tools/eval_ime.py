@@ -5,9 +5,30 @@ against a staged copy of the config, with no learned user data, so runs are
 reproducible. Results are appended to reports/eval_history.jsonl and printed
 as a Markdown table, side by side with the previous run of each variant.
 
-    python tools/eval_ime.py                       # all variants, all sets
-    python tools/eval_ime.py --variants asus stock
+    python tools/eval_ime.py                       # default variants, set dev only
+    python tools/eval_ime.py --sets dev-all        # every development set
+    python tools/eval_ime.py --variants asus stock --sets dev mixed
     python tools/eval_ime.py --note "after stage 1"
+    python tools/eval_ime.py --sets test --heldout --note "why this look is needed"
+
+Every figure is printed with its numerator and denominator (97.0% [97/100]).
+Against the previous run of the same variant on the same sets, and against
+the first variant of this run, it prints how many cases were fixed and how
+many broken (paired, case by case); a net change under 6 cases cannot be told
+apart from noise.
+
+Held-out sets (name contains "test", and moe_words) are only run with
+--heldout and a --note saying why; every such run is logged to
+reports/heldout_log.jsonl (also with --no-save) and the run says how many
+times each held-out set was evaluated before. A set looked at dozens of times
+is no longer held out.
+
+librime errors: each worker reports the ERROR/FATAL lines librime logged and
+whether the language model failed to load. If there were any, the tool prints
+how many and the first ones on stderr, does not append to the history, and
+exits 3 (--allow-errors: save anyway, with the error count in the record).
+A broken Lua module does not crash librime; it only turns every set into
+raw letters or, after the last candidate, changes nothing visible at all.
 
 Metrics
   SentAcc   whole input converts exactly to the expected text (top candidate,
@@ -81,6 +102,10 @@ ROOT = Path(__file__).resolve().parents[1]
 EVAL = ROOT / "tests" / "eval"
 REPORTS = ROOT / "reports"
 HISTORY = REPORTS / "eval_history.jsonl"
+HELDOUT_LOG = REPORTS / "heldout_log.jsonl"
+DEFAULT_SETS = ["dev"]
+NOISE_CASES = 6  # a net change smaller than this many cases is not a measurable difference
+EXIT_LIBRIME_ERRORS = 3
 
 WITH_CORRECTION = "patch:\n  translator/enable_correction: true\n"
 
@@ -135,7 +160,9 @@ VARIANTS = {
     "asus": ("project", "asus_zhuyin", (), {}),                # current project config
     "asus-raw": ("project", "asus_zhuyin", (), {"asus_zhuyin.custom.yaml": "patch:\n  asus_lang/raw_keys: true\n"}),
 }
-DEFAULT_VARIANTS = ["stock", "stage3", "asus-rules", "asus"]
+# asus-raw: the product default (DaoHui ships raw_keys on, and so does the
+# developer's own IME); the repository schema keeps it off.
+DEFAULT_VARIANTS = ["stock", "stage3", "asus-rules", "asus", "asus-raw"]
 
 # QWERTY neighbours for typo injection (letters/digits/punct used by Dachen).
 ROWS = ["1234567890-", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./"]
@@ -275,9 +302,145 @@ def build_sets() -> dict[str, list[tuple[str, str]]]:
     return sets
 
 
+def is_heldout(name: str) -> bool:
+    """Held-out sets: never tuned against, only aggregates are shown."""
+    return "test" in name or name == "moe_words"
+
+
+# -- librime health and what was measured (shared by the eval_*.py tools) -----
+HEALTH_TAG = "eval_health: "
+# A language model that does not load leaves these lines (W/E level); the
+# conversion then silently runs without it.
+GRAMMAR_FAIL = re.compile(r"^[WEF]\d{8} .*(failed to load grammar|error opening gram db)", re.I)
+_BIG = 16 << 20
+
+
+def content_hash(user: Path) -> str:
+    """sha256 over the relative paths and contents of a staged user dir: the
+    configuration and data that were measured, including the git-ignored
+    generated files a commit id cannot identify. Hashes of files over 16 MB
+    (the language models) are cached by name, size and mtime."""
+    cache_file = user.parents[1] / "_cache" / "content_hash.json"
+    try:
+        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    h = hashlib.sha256()
+    changed = False
+    for p in sorted((q for q in user.rglob("*") if q.is_file()), key=lambda q: q.relative_to(user).as_posix()):
+        st = p.stat()
+        key = f"{p.name}|{st.st_size}|{st.st_mtime_ns}"
+        digest = cache.get(key) if st.st_size > _BIG else None
+        if digest is None:
+            fh = hashlib.sha256()
+            with p.open("rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    fh.update(chunk)
+            digest = fh.hexdigest()
+            if st.st_size > _BIG:
+                cache[key] = digest
+                changed = True
+        h.update(f"{p.relative_to(user).as_posix()}\0{digest}\n".encode("utf-8"))
+    if changed:
+        try:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(json.dumps(cache), encoding="utf-8")
+        except OSError:
+            pass
+    return h.hexdigest()[:16]
+
+
+def open_measured(name: str, config: str = "project", schema: str = "asus_zhuyin",
+                  exclude: tuple[str, ...] = (), extra: dict[str, str] | None = None):
+    """rime_harness.open_rime, plus the content hash of the staged user dir
+    (taken before librime writes its build/ into it). Returns (rime, hash)."""
+    from rime_harness import Rime, stage_user_dir
+    user = stage_user_dir(name, config, False, exclude, extra)
+    content = content_hash(user)
+    rime = Rime(user, log_name=name)
+    if not rime.select_schema(schema) or rime.current_schema() != schema:
+        raise RuntimeError(f"schema {schema!r} not available (got {rime.current_schema()!r}); "
+                           f"see {rime.log_dir}")
+    return rime, content
+
+
+def complete_error_lines() -> list[str]:
+    """rime_harness.error_lines() without the half lines: inside the process
+    glog's INFO file is still buffered, so it can end in the first part of an
+    error line that the (flushed) ERROR file holds in full."""
+    import rime_harness as rh
+    lines = rh.error_lines()
+    srt = sorted(set(lines))
+    partial = {a for a, b in zip(srt, srt[1:]) if b.startswith(a)}
+    return [line for line in lines if line not in partial]
+
+
+def report_health(content: str = "") -> None:
+    """In a worker, after rime.close(): one tagged stderr line with the
+    librime ERROR/FATAL lines of this process (rime_harness.error_lines()),
+    the lines saying the language model did not load, and the content hash."""
+    import rime_harness as rh
+    errors = complete_error_lines()
+    grammar: list[str] = []
+    for d in rh.LOG_DIRS:
+        for f in sorted(Path(d).glob("*")) if Path(d).is_dir() else []:
+            if not f.is_file() or f.name == rh.UNREAD_MARK:
+                continue
+            for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                if GRAMMAR_FAIL.match(line) and line not in grammar:
+                    grammar.append(line)
+    sys.stderr.write(HEALTH_TAG + json.dumps(
+        {"errors": len(errors), "first": errors[:5], "grammar": len(grammar), "grammar_first": grammar[:3],
+         "logs": [str(d) for d in rh.LOG_DIRS], "content": content}, ensure_ascii=False) + "\n")
+    sys.stderr.flush()
+
+
+def read_health(label: str, stderr_text: str) -> dict:
+    """The worker's health report; a worker that gave none counts as broken."""
+    for line in stderr_text.splitlines():
+        if line.startswith(HEALTH_TAG):
+            h = json.loads(line[len(HEALTH_TAG):])
+            h["label"] = label
+            return h
+    return {"label": label, "errors": 1, "grammar": 0, "logs": [], "content": "",
+            "first": [f"{label}: the worker printed no librime health report"], "grammar_first": []}
+
+
+def forward_harness_lines(stderr_text: str) -> None:
+    for line in stderr_text.splitlines():
+        if line.startswith("rime_harness:"):  # e.g. the segmentation guard tripped
+            print(line, file=sys.stderr)
+
+
+def health_problems(healths: list[dict], tool: str) -> int:
+    """Print the librime errors of all workers to stderr; the number of
+    workers with errors or a language model that did not load."""
+    bad = 0
+    for h in healths:
+        if not h["errors"] and not h["grammar"]:
+            continue
+        bad += 1
+        if h["errors"]:
+            print(f"{tool}: {h['label']}: librime logged {h['errors']} error line(s); first:", file=sys.stderr)
+            for line in h["first"][:3]:
+                print(f"    {line[:300]}", file=sys.stderr)
+        if h["grammar"]:
+            print(f"{tool}: {h['label']}: the language model failed to load:", file=sys.stderr)
+            for line in h["grammar_first"][:2]:
+                print(f"    {line[:300]}", file=sys.stderr)
+        if h["logs"]:
+            print(f"{tool}: {h['label']}: logs in {', '.join(h['logs'])}", file=sys.stderr)
+    return bad
+
+
+def refuse_to_save(tool: str, what: str) -> None:
+    print(f"{tool}: the numbers above were measured on a broken IME: not saved to {what}; "
+          f"exit {EXIT_LIBRIME_ERRORS} (--allow-errors saves them anyway)", file=sys.stderr)
+
+
 # -- worker (runs inside a subprocess) -------------------------------------
 def worker(variant: str, sets_json: str) -> None:
-    from rime_harness import SHIFT_MASK, open_rime
+    from rime_harness import SHIFT_MASK
     config, schema, exclude, extra = VARIANTS[variant]
     # No learning during evaluation: a commit (e.g. Space after an English
     # word) would otherwise change the ranking for every later case, making
@@ -292,7 +455,7 @@ def worker(variant: str, sets_json: str) -> None:
     for item in filter(None, os.environ.get("EVAL_PATCH", "").split(";")):
         key, _, value = item.partition("=")
         extra[custom] += f'  {key}: "{value}"\n'
-    rime = open_rime(f"eval-{variant}", config, schema, exclude=exclude, extra=extra)
+    rime, content = open_measured(f"eval-{variant}", config, schema, exclude=exclude, extra=extra)
     sets = json.loads(sets_json)
     out: dict[str, list] = {}
     for name, cases in sets.items():
@@ -335,6 +498,7 @@ def worker(variant: str, sets_json: str) -> None:
             res.append({"preview": preview, "final": final, "page": page, "ms_per_key": dt_ms})
         out[name] = res
     rime.close()
+    report_health(content)
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
 
@@ -349,13 +513,17 @@ def levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
-def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
+def score(name: str, cases: list[tuple[str, str]], res: list[dict], counts: dict | None = None) -> dict:
+    """The metrics of one set. counts, if given, receives {metric: [numerator,
+    denominator]} for every fraction (CharAcc: characters right / characters)."""
+    c: dict[str, list[int]] = {}
     n = len(cases)
     exact = sum(r["final"] == t for (_, t), r in zip(cases, res))
     errs = sum(levenshtein(r["final"], t) for (_, t), r in zip(cases, res))
     total = sum(len(t) for _, t in cases)
     m = {"n": n, "SentAcc": exact / n, "CharAcc": 1 - errs / max(total, 1),
          "ms/key": statistics.mean(r["ms_per_key"] for r in res)}
+    c.update(SentAcc=[exact, n], CharAcc=[total - errs, total])
     if name.startswith("particles"):
         # PartAcc: share of 的/得/地/在/再 positions that come out right
         # (a sentence whose length differs counts all its targets wrong).
@@ -366,6 +534,7 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
                     tot += 1
                     hit += len(r["final"]) == len(t) and r["final"][i] == ch
         m["PartAcc"] = hit / tot if tot else 0.0
+        c["PartAcc"] = [hit, tot]
     if name.startswith("en_case"):
         # Lower: words typed in lowercase that come out as typed; Caps:
         # acronyms typed in lowercase that come out in capitals.
@@ -374,15 +543,19 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
         m = {"n": n, "Lower": sum(o for o, c in zip(ok, caps) if not c) / max(caps.count(False), 1),
              "Caps": sum(o for o, c in zip(ok, caps) if c) / max(caps.count(True), 1),
              "ms/key": m["ms/key"]}
+        c = {"Lower": [sum(o for o, k in zip(ok, caps) if not k), caps.count(False)],
+             "Caps": [sum(o for o, k in zip(ok, caps) if k), caps.count(True)]}
     if name == "dev_toneless":
         # ASCII = share of outputs with Latin letters (English hallucinated
         # into toneless Chinese); lower is better.
-        m = {"n": n, "ASCII": sum(bool(re.search(r"[A-Za-z]", r["preview"])) for r in res) / n,
-             "ms/key": m["ms/key"]}
+        ascii_n = sum(bool(re.search(r"[A-Za-z]", r["preview"])) for r in res)
+        m = {"n": n, "ASCII": ascii_n / n, "ms/key": m["ms/key"]}
+        c = {"ASCII": [ascii_n, n]}
     if name == "dev_partial":
         # Digits = share of partial inputs showing a digit; lower is better.
-        m = {"n": n, "Digits": sum(bool(re.search(r"[0-9]", r["preview"])) for r in res) / n,
-             "ms/key": m["ms/key"]}
+        digits_n = sum(bool(re.search(r"[0-9]", r["preview"])) for r in res)
+        m = {"n": n, "Digits": digits_n / n, "ms/key": m["ms/key"]}
+        c = {"Digits": [digits_n, n]}
     if name.startswith("autofix"):
         fix = wrong = nt = false = nk = 0
         for (k, t), r in zip(cases, res):
@@ -395,10 +568,13 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
                 wrong += r["final"] not in (t, k)
         m = {"n": n, "Fix": fix / max(nt, 1), "Wrong": wrong / max(nt, 1),
              "FalseFix": false / max(nk, 1), "ms/key": m["ms/key"]}
+        c = {"Fix": [fix, nt], "Wrong": [wrong, nt], "FalseFix": [false, nk]}
     elif name.startswith("english_next"):
         pages = [[w.lower() for w in r["page"]] for r in res]
-        m = {"n": n, "Next1": sum(p[:1] == [t] for (_, t), p in zip(cases, pages)) / n,
-             "Next3": sum(t in p[:3] for (_, t), p in zip(cases, pages)) / n, "ms/key": m["ms/key"]}
+        n1 = sum(p[:1] == [t] for (_, t), p in zip(cases, pages))
+        n3 = sum(t in p[:3] for (_, t), p in zip(cases, pages))
+        m = {"n": n, "Next1": n1 / n, "Next3": n3 / n, "ms/key": m["ms/key"]}
+        c = {"Next1": [n1, n], "Next3": [n3, n]}
     elif name.startswith("english"):
         # Guesses = English candidates other than the typed letters, in menu
         # order. Guess1/Guess3: expected word first / in the first three (for
@@ -418,11 +594,56 @@ def score(name: str, cases: list[tuple[str, str]], res: list[dict]) -> dict:
             g3 += t in guesses[:3]
         m = {"n": n, "Guess1": g1 / max(ng, 1), "Guess3": g3 / max(ng, 1),
              "Keep": keep / max(nk, 1), "ms/key": m["ms/key"]}
+        c = {"Guess1": [g1, ng], "Guess3": [g3, ng], "Keep": [keep, nk]}
     if name in ("words", "moe_words"):
-        m = {"n": n, "Top1": exact / n,
-             "Top9": sum(t in r["page"] for (_, t), r in zip(cases, res)) / n,
-             "ms/key": m["ms/key"]}
+        top9 = sum(t in r["page"] for (_, t), r in zip(cases, res))
+        m = {"n": n, "Top1": exact / n, "Top9": top9 / n, "ms/key": m["ms/key"]}
+        c = {"Top1": [exact, n], "Top9": [top9, n]}
+    if counts is not None:
+        counts.update({k: [int(a), int(b)] for k, (a, b) in c.items()})
     return m
+
+
+def case_flags(name: str, cases: list[tuple[str, str]], res: list[dict]) -> str:
+    """One character per case, "1" when the case is right by the set's first
+    metric (SentAcc, Fix, Next1, Guess1/Keep, Top1; no ASCII / no digit for
+    the guard sets): two runs can then be compared case by case."""
+    out = []
+    for (k, t), r in zip(cases, res):
+        if name == "dev_toneless":
+            ok = not re.search(r"[A-Za-z]", r["preview"])
+        elif name == "dev_partial":
+            ok = not re.search(r"[0-9]", r["preview"])
+        elif name.startswith("english_next"):
+            ok = [w.lower() for w in r["page"]][:1] == [t]
+        elif name.startswith("english") and not name.startswith("english_next"):
+            k = k.split(" ")[-1]
+            if k == t:
+                ok = r["preview"] == t
+            else:
+                guesses = [g for g in r["page"] if g != k and g.isascii() and g.strip()]
+                if name.startswith("english_ctx"):
+                    guesses = [g.lower() for g in guesses]
+                ok = guesses[:1] == [t]
+        else:
+            ok = r["final"] == t
+        out.append("1" if ok else "0")
+    return "".join(out)
+
+
+def paired(old: str | None, new: str) -> tuple[int, int] | None:
+    """(fixed, broken) between two case_flags strings of the same set."""
+    if not old or len(old) != len(new):
+        return None
+    return (sum(a == "0" and b == "1" for a, b in zip(old, new)),
+            sum(a == "1" and b == "0" for a, b in zip(old, new)))
+
+
+def paired_text(fb: tuple[int, int]) -> str:
+    fixed, broken = fb
+    net = fixed - broken
+    noise = "；淨變化少於 6 句，量不出差異" if abs(net) < NOISE_CASES else ""
+    return f"修好 {fixed} 句、弄壞 {broken} 句（淨 {net:+d}{noise}）"
 
 
 def git_rev() -> str:
@@ -456,42 +677,96 @@ def fmt(v: float, key: str) -> str:
     return f"{v:.2f}" if key == "ms/key" else f"{v * 100:.1f}%"
 
 
+def heldout_history() -> dict[str, set[str]]:
+    """Per held-out set, the start times of every earlier run that evaluated
+    it: records of the history and of the held-out log (--no-save runs)."""
+    seen: dict[str, set[str]] = {}
+    for path, field in ((HISTORY, "metrics"), (HELDOUT_LOG, "sets")):
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            for name in rec.get(field) or ():
+                if is_heldout(name):
+                    seen.setdefault(name, set()).add(rec.get("time", ""))
+    return seen
+
+
+def select_sets(all_sets: dict, wanted: list[str]) -> dict:
+    """--sets: set names, 'dev-all' (every development set) or 'all'."""
+    names: list[str] = []
+    for w in wanted:
+        if w == "all":
+            names += list(all_sets)
+        elif w == "dev-all":
+            names += [n for n in all_sets if not is_heldout(n)]
+        elif w in all_sets:
+            names.append(w)
+        else:
+            raise SystemExit(f"eval_ime: unknown set {w!r}; sets: {', '.join(all_sets)}, dev-all, all")
+    return {n: all_sets[n] for n in all_sets if n in names}  # build_sets() order
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--variants", nargs="+", default=DEFAULT_VARIANTS, choices=list(VARIANTS))
-    ap.add_argument("--sets", nargs="+", default=None,
-                    help="subset of eval sets (default: all); use 'dev' while tuning")
+    ap.add_argument("--sets", nargs="+", default=DEFAULT_SETS,
+                    help="eval sets (default: dev); 'dev-all' = every development set, 'all' = every set")
+    ap.add_argument("--heldout", action="store_true",
+                    help="allow held-out sets (needs --note); logged to reports/heldout_log.jsonl")
     ap.add_argument("--note", default="")
     ap.add_argument("--worker", help=argparse.SUPPRESS)
     ap.add_argument("--no-save", action="store_true")
+    ap.add_argument("--allow-errors", action="store_true",
+                    help="save to the history even if librime logged errors (exit code stays 3)")
     args = ap.parse_args()
 
-    sets = build_sets()
-    if args.sets:
-        sets = {k: v for k, v in sets.items() if k in args.sets}
-    if args.worker:
+    if args.worker:  # the parent sends exactly the sets to run
         worker(args.worker, sys.stdin.read())
         return
+    sets = select_sets(build_sets(), args.sets)
+    heldout = [n for n in sets if is_heldout(n)]
+    if heldout and not args.heldout:
+        raise SystemExit(f"eval_ime: {', '.join(heldout)} held out: add --heldout and a --note saying why "
+                         f"(every look is logged to {HELDOUT_LOG.relative_to(ROOT)})")
+    if args.heldout and not args.note.strip():
+        raise SystemExit("eval_ime: --heldout needs --note: why this held-out run is needed")
 
     set_hash = sets_hash(sets)
     prev = previous_runs(set_hash)
     stamp = dt.datetime.now().isoformat(timespec="seconds")
     rev = git_rev()
-    records, failures = [], []
+    earlier = heldout_history()
+    for name in heldout:
+        n = len(earlier.get(name, set()) - {stamp})
+        print(f"held-out set {name}: 這是第 {n + 1} 次評這一組（之前 {n} 次）")
+    records, failures, healths, flags = [], [], [], {}
     for variant in args.variants:
         proc = subprocess.run([sys.executable, __file__, "--worker", variant],
                               input=json.dumps(sets, ensure_ascii=False).encode("utf-8"),
                               capture_output=True)
+        err = proc.stderr.decode("utf-8", "replace")
         if proc.returncode:
-            raise SystemExit(f"{variant} failed:\n{proc.stderr.decode('utf-8', 'replace')}")
-        for line in proc.stderr.decode("utf-8", "replace").splitlines():
-            if line.startswith("rime_harness:"):  # e.g. the segmentation guard tripped
-                print(line, file=sys.stderr)
+            raise SystemExit(f"{variant} failed:\n{err}")
+        forward_harness_lines(err)
+        health = read_health(variant, err)
+        healths.append(health)
         res = json.loads(proc.stdout.decode("utf-8"))
-        metrics = {name: score(name, sets[name], res[name]) for name in sets}
+        counts: dict[str, dict] = {}
+        metrics = {name: score(name, sets[name], res[name], counts.setdefault(name, {})) for name in sets}
+        flags[variant] = {name: case_flags(name, sets[name], res[name]) for name in sets}
         records.append({"time": stamp, "rev": rev, "note": args.note, "sets": set_hash,
-                        "variant": variant, "metrics": metrics})
+                        "variant": variant, "metrics": metrics, "counts": counts,
+                        # Per-case flags only for development sets: the history is
+                        # public, and with the held-out sentences next to it the
+                        # flags would show exactly which held-out cases fail.
+                        "cases": {n: f for n, f in flags[variant].items() if not is_heldout(n)},
+                        "content": health.get("content", ""),
+                        "errors": health["errors"] + health["grammar"]})
         # Failures are reported for dev sets only; test sets stay blind.
         for name in sets:
             if "test" in name or name in ("words", "moe_words", "dev_toneless", "dev_partial"):
@@ -506,23 +781,51 @@ def main() -> None:
 
     # Markdown report: one table per set, previous run in parentheses.
     lines = [f"## Eval {stamp} @ {rev} sets={set_hash} {args.note}".rstrip(),
-             "(previous run on the same eval sets in parentheses)", ""]
+             "(numerator/denominator in brackets; previous run on the same eval sets in parentheses)",
+             "content: " + ", ".join(f"{r['variant']}={r['content'] or '?'}" for r in records), ""]
+    base = records[0]["variant"]
     for name in sets:
         keys = list(records[0]["metrics"][name].keys() - {"n"})
         keys.sort(key=["SentAcc", "CharAcc", "PartAcc", "Lower", "Caps", "ASCII", "Digits", "Guess1", "Guess3", "Keep", "Fix", "Wrong", "FalseFix", "Next1", "Next3", "Top1", "Top9", "ms/key"].index)
         lines.append(f"### {name} (n={records[0]['metrics'][name]['n']})")
         lines.append("| variant | " + " | ".join(keys) + " |")
         lines.append("|---|" + "---:|" * len(keys))
+        notes = []
         for rec in records:
             cells = []
             for k in keys:
                 cur = rec["metrics"][name][k]
                 old = prev.get(rec["variant"], {}).get("metrics", {}).get(name, {}).get(k)
-                cells.append(fmt(cur, k) + (f" ({fmt(old, k)})" if old is not None else ""))
+                frac = rec["counts"][name].get(k)
+                cells.append(fmt(cur, k) + (f" [{frac[0]}/{frac[1]}]" if frac else "")
+                             + (f" ({fmt(old, k)})" if old is not None else ""))
             lines.append(f"| {rec['variant']} | " + " | ".join(cells) + " |")
+            old_flags = (prev.get(rec["variant"], {}).get("cases") or {}).get(name)
+            fb = paired(old_flags, flags[rec["variant"]][name])
+            if fb:
+                notes.append(f"- {rec['variant']} vs its previous run: {paired_text(fb)}")
+            if rec["variant"] != base:
+                fb = paired(flags[base][name], flags[rec["variant"]][name])
+                notes.append(f"- {rec['variant']} vs {base} (this run): {paired_text(fb)}")
+        lines += notes
         lines.append("")
     report = "\n".join(lines)
     print(report)
+
+    bad = health_problems(healths, "eval_ime")
+    if heldout:
+        HELDOUT_LOG.parent.mkdir(exist_ok=True)
+        with HELDOUT_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"time": stamp, "rev": rev, "note": args.note, "sets": heldout,
+                                "variants": args.variants,
+                                "earlier": {n: len(earlier.get(n, set()) - {stamp}) for n in heldout},
+                                "saved": not args.no_save and not os.environ.get("EVAL_PATCH")
+                                and (not bad or args.allow_errors),
+                                "errors": sum(r["errors"] for r in records)}, ensure_ascii=False) + "\n")
+    if bad and not args.allow_errors:
+        if not args.no_save and not os.environ.get("EVAL_PATCH"):
+            refuse_to_save("eval_ime", HISTORY.relative_to(ROOT).as_posix())
+        raise SystemExit(EXIT_LIBRIME_ERRORS)
 
     if not args.no_save and not os.environ.get("EVAL_PATCH"):
         REPORTS.mkdir(exist_ok=True)
@@ -534,6 +837,8 @@ def main() -> None:
             "\t".join(x) for x in failures) + "\n", encoding="utf-8")
         print(f"(saved to {HISTORY.relative_to(ROOT)}; dev-set failures in "
               f"{detail.relative_to(ROOT)}; test-set failures are never shown)")
+    if bad:  # --allow-errors: saved, but the run still failed
+        raise SystemExit(EXIT_LIBRIME_ERRORS)
 
 
 if __name__ == "__main__":
