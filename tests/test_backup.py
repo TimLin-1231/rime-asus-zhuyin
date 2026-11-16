@@ -1,13 +1,16 @@
 """Tests for tools/backup_learn.py in a sandbox folder (the live input method
-and its data are not touched): copying, the manifest, restoring, and which
-old backups are kept.
+and its data are not touched): copying, the manifest, restoring, which old
+backups are kept, read-only folders, every server stopped, and what a failed
+backup leaves behind. (The servers are stand-ins: nothing real is stopped.)
 
     python tests/test_backup.py
 """
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import io
 import json
 import subprocess
 import sys
@@ -28,7 +31,196 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def run(root: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, TOOL, "--root", str(root), "--no-service", *args],
-                          capture_output=True, text=True, encoding="utf-8")
+                          capture_output=True, text=True, encoding="utf-8", timeout=300)
+
+
+# Holds a file open with no sharing, as a running server holds its database.
+HOLD = r'''
+import ctypes, sys, time
+k = ctypes.WinDLL("kernel32")
+k.CreateFileW.restype = ctypes.c_void_p
+h = k.CreateFileW(sys.argv[1], 0x80000000, 0, None, 3, 0x80, None)
+print("held" if h and h != ctypes.c_void_p(-1).value else "failed", flush=True)
+time.sleep(120)
+'''
+
+
+class Held:
+    def __init__(self, path: Path) -> None:
+        self.proc = subprocess.Popen([sys.executable, "-c", HOLD, str(path)], stdout=subprocess.PIPE, text=True)
+        self.ok = self.proc.stdout.readline().strip() == "held"
+        self.pid = self.proc.pid
+
+    def release(self) -> None:
+        self.proc.kill()
+        self.proc.wait()
+
+
+def make_live(root: Path) -> None:
+    for name in ("asus_learn", "terra_pinyin"):
+        db = root / "rime" / f"{name}.userdb"
+        db.mkdir(parents=True)
+        (db / "000005.ldb").write_bytes(name.encode() * 50)
+        (db / "000003.log").write_bytes(b"log " + name.encode())
+        (db / "MANIFEST-000004").write_bytes(b"manifest")
+        (db / "CURRENT").write_text("MANIFEST-000004\n")
+    (root / "rime" / "emails.txt").write_text("a@b.co\n", encoding="utf-8")
+
+
+def read_only(top: Path, on: bool = True) -> None:
+    """Folders under D:\\Document carry the read-only attribute (the Drive client sets it)."""
+    for d in [top] + [x for x in top.rglob("*") if x.is_dir()]:
+        subprocess.run(["attrib", "+R" if on else "-R", str(d)], check=True, capture_output=True)
+
+
+def tree_state(root: Path) -> dict[str, bytes]:
+    return {f.relative_to(root).as_posix(): f.read_bytes() for f in (root / "rime").rglob("*") if f.is_file()}
+
+
+def readonly_tests(base: Path) -> None:
+    """prune() and restore() on read-only folders; restore() without checksums."""
+    root = base / "ro"
+    make_live(root)
+    dest = root / "backups" / "learn"
+    p = run(root, "--no-verify")
+    name = bl.backups(dest)[-1][0]
+    read_only(dest)
+    read_only(root / "rime")
+    before = tree_state(root)
+    p = run(root, "--restore", "latest", "--yes", "--no-verify", "--fail-after", "1")
+    left = [x.name for x in (root / "rime").iterdir() if ".restore-" in x.name]
+    check("read-only backup: a failed restore leaves no staged copies behind",
+          p.returncode == 1 and tree_state(root) == before and not left
+          and not [x for x in dest.iterdir() if x.name.startswith("_before-restore-")], f"{left} {p.stdout}")
+
+    # A manifest without checksums (older format, or edited by hand) and a cut table.
+    manifest_path = dest / name / "backup.json"
+    m = json.loads(manifest_path.read_text(encoding="utf-8"))
+    m.pop("sha256")
+    manifest_path.write_text(json.dumps(m), encoding="utf-8")
+    table = dest / name / "rime" / "asus_learn.userdb" / "000005.ldb"
+    table.write_bytes(table.read_bytes()[:10])
+    p = run(root, "--restore", "latest", "--yes", "--no-verify")
+    check("a backup whose manifest has no sha256 is not restored",
+          p.returncode == 1 and tree_state(root) == before and "no checksums" in p.stdout, p.stdout + p.stderr)
+
+    # Old backups to prune, all read-only: two full ones, a shell of empty
+    # folders (what earlier prunes left), and one with a file held open.
+    src = dest / name
+    olds = ["20250101-100000", "20250101-110000", "20250101-120000"]
+    for old in olds:
+        subprocess.run(["robocopy", str(src), str(dest / old), "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
+                       capture_output=True)
+    shell = dest / "20250102-090000" / "rime" / "asus_learn.userdb"
+    shell.mkdir(parents=True)
+    read_only(dest)
+    held = Held(dest / "20250101-110000" / "rime" / "emails.txt")
+    try:
+        removed, stuck = bl.prune(dest, dt.date.today())
+        gone = [n for n in ("20250101-100000", "20250102-090000") if not (dest / n).exists()]
+        check("prune() removes read-only folders, empty shells too",
+              held.ok and len(gone) == 2 and set(gone) <= set(removed), f"removed={removed} gone={gone}")
+        check("prune() counts only folders that are really gone",
+              "20250101-110000" in stuck and "20250101-110000" not in removed
+              and (dest / "20250101-110000").exists(), f"removed={removed} stuck={stuck}")
+    finally:
+        held.release()
+    read_only(root, False)
+
+
+def server_tests(base: Path) -> None:
+    """Every running server is stopped; after a failure the scheduled run does
+    not stop them again the same day; the failure leaves a marker."""
+    root = base / "srv"
+    make_live(root)
+    dest = root / "backups" / "learn"
+    calls: list[tuple[str, str]] = []
+    # Stand-ins below the server functions: both servers "run" (tasklist and
+    # the registry are not asked), stopping and starting is only recorded.
+    fake_bin = base / "bin"
+    fake_bin.mkdir()
+    for name, _ in bl.SERVERS:
+        (fake_bin / name).write_bytes(b"")
+    running = {"yes": True}
+    stuck: set[str] = set()
+    saved = {k: getattr(bl, k) for k in ("_pids", "_root", "stop_server", "start_server", "idle_seconds", "copy_db")}
+    real_copy = bl.copy_db
+
+    def copy_db(src: Path, dst: Path) -> None:
+        calls.append(("copy", src.name))
+        real_copy(src, dst)
+
+    def stop_server(exe: Path) -> bool:
+        calls.append(("stop", exe.name))
+        return exe.name not in stuck
+
+    bl._pids = lambda name: [4242] if running["yes"] else []
+    bl._root = lambda key: fake_bin
+    bl.stop_server = stop_server
+    bl.start_server = lambda exe: calls.append(("start", exe.name)) or True
+    bl.idle_seconds = lambda: 1e9
+    bl.copy_db = copy_db
+    stops = lambda: sum(1 for c in calls if c[0] == "stop")  # noqa: E731
+    day1, day2 = dt.datetime(2026, 12, 1, 0, 30), dt.datetime(2026, 12, 2, 0, 30)
+    held = Held(root / "rime" / "terra_pinyin.userdb" / "000003.log")
+    try:
+        rc = bl.scheduled(root, dest, check=False, now=day1)
+        first_copy = next((i for i, c in enumerate(calls) if c[0] == "copy"), len(calls))
+        last_copy = max((i for i, c in enumerate(calls) if c[0] == "copy"), default=0)
+        check("every running server is stopped before the copy and started after it",
+              calls[:first_copy] == [("stop", "DaoHuiServer.exe"), ("stop", "WeaselServer.exe")]
+              and calls[last_copy + 1:] == [("start", "DaoHuiServer.exe"), ("start", "WeaselServer.exe")],
+              f"{calls}")
+        m = bl.backups(dest)[-1][1]
+        check("a database that cannot be copied names the process holding it",
+              rc == 1 and held.ok and any(f"held open by python.exe (pid {held.pid})" in e for e in m["errors"]),
+              f"rc={rc} {m.get('errors')}")
+        marker = dest / bl.MARKER
+        text = marker.read_text(encoding="utf-8") if marker.exists() else ""
+        check("a failed backup leaves LAST_BACKUP_FAILED.txt saying what, when and what to do",
+              "terra_pinyin.userdb" in text and "2026-12-01 00:30:00" in text and "怎麼辦" in text
+              and bl.marker_day(dest) == day1.date(), text[:300])
+        p = run(root, "--list")
+        check("--list points at the failure marker", bl.MARKER in p.stdout, p.stdout)
+
+        n = stops()
+        rc = bl.scheduled(root, dest, check=False, now=day1.replace(hour=2))
+        log_text = (dest / "backup.log").read_text(encoding="utf-8")
+        check("after a failure the scheduled run does not stop the servers again that day",
+              rc == 0 and stops() == n and "skipped: today's backup failed" in log_text, f"{calls[n:]}")
+
+        rc = bl.scheduled(root, dest, check=False, now=day2)
+        check("...but it does again the next day", rc == 1 and stops() == n + 2, f"{calls}")
+
+        held.release()
+        running["yes"] = False
+        n = stops()
+        rc = bl.scheduled(root, dest, check=False, now=day2.replace(hour=2))
+        check("with no server running it retries the same day, without stopping anything",
+              rc == 0 and stops() == n and bl.backups(dest)[-1][1].get("ok"), f"rc={rc} {calls[n:]}")
+        check("a good backup removes the failure marker", not marker.exists())
+
+        # restore(): every server stopped and started again; if one will
+        # not quit, nothing is changed and the others are started again.
+        running["yes"] = True
+        del calls[:]
+        rc = bl.restore(root, dest, "latest", True, check=False)
+        check("restore stops every running server and starts them again",
+              rc == 0 and [c for c in calls if c[0] != "copy"] == [
+                  ("stop", "DaoHuiServer.exe"), ("stop", "WeaselServer.exe"),
+                  ("start", "DaoHuiServer.exe"), ("start", "WeaselServer.exe")], f"rc={rc} {calls}")
+        stuck.add("WeaselServer.exe")
+        del calls[:]
+        before = tree_state(root)
+        rc = bl.restore(root, dest, "latest", True, check=False)
+        check("restore changes nothing if one server will not quit, and starts the others again",
+              rc == 1 and tree_state(root) == before
+              and calls == [("stop", "DaoHuiServer.exe"), ("stop", "WeaselServer.exe"), ("start", "DaoHuiServer.exe")],
+              f"rc={rc} {calls}")
+    finally:
+        held.release()
+        for k, v in saved.items():
+            setattr(bl, k, v)
 
 
 def main() -> int:
@@ -120,6 +312,11 @@ def main() -> int:
         check("latest skips a backup that failed its check", name in p.stdout and "20990101" not in p.stdout, p.stdout)
         p = run(root, "--restore", "20990101-000000", "--yes", "--no-verify")
         check("a failed backup cannot be restored by name", p.returncode == 1, p.stdout)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        readonly_tests(Path(tmp))
+        with contextlib.redirect_stdout(io.StringIO()):  # restore() and log() print
+            server_tests(Path(tmp))
 
     # Which backups are kept: the newest of each of the last 14 days that
     # have one, and the newest of each of the last 12 months.

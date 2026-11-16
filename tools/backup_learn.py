@@ -20,11 +20,17 @@ of the last 12 months, are kept. backups/ is never versioned.
 
 WeaselServer keeps the newest part of each database (LevelDB's log and
 MANIFEST) locked against all reading, so a faithful copy needs the server
-stopped: it is asked to quit, the files are copied (well under a second) and
-it is started again, about 2-3 seconds without the input method in all. The
+stopped: every running server in SERVERS (島輝 and 小狼毫 share the folder) is
+asked to quit, the files are copied (well under a second) and they are
+started again, about 2-3 seconds without the input method in all. The
 scheduled run (--scheduled) therefore waits until nobody has touched the
 keyboard or mouse for IDLE_SECONDS, tries again every two hours until a
 backup of the day exists, and does nothing once it does.
+
+A failed backup leaves backups/learn/LAST_BACKUP_FAILED.txt (what failed,
+when, what to do; removed by the next good backup). While it is from today,
+the scheduled run does not stop the input method again: it retries only if
+no server is running, else it waits for the next day.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -58,6 +65,8 @@ IDLE_WAIT = 25 * 60     # ...and how long to wait for that before giving up
 SERVERS = [("DaoHuiServer.exe", r"SOFTWARE\WOW6432Node\DaoHui"),
            ("WeaselServer.exe", r"SOFTWARE\WOW6432Node\Rime\Weasel")]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# Left in backups/learn/ after a failed backup (tools/doctor.py reads it).
+MARKER = "LAST_BACKUP_FAILED.txt"
 
 # Staged librime reads the copied asus_learn.userdb back and counts its
 # entries by kind (the first character of the key).
@@ -125,16 +134,107 @@ def db_state(db: Path) -> list[tuple[str, int]]:
     return out
 
 
+def _writable_again(func, path, _exc) -> None:
+    """rmtree error handler: clear the read-only attribute and try once more.
+    Folders under D:\\Document carry it (the Drive client sets it), and
+    Windows will not remove a read-only folder."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
+def remove_tree(path: Path) -> bool:
+    """Delete a folder even if parts of it are read-only. True only if it is gone."""
+    try:
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=_writable_again)
+        else:
+            shutil.rmtree(path, onerror=_writable_again)
+    except OSError:
+        pass  # e.g. a file held open by another process: reported by the caller
+    return not path.exists()
+
+
+class _RmUniqueProcess(ctypes.Structure):
+    # FILETIME is two DWORDs (4-byte aligned), not one 8-byte integer.
+    _fields_ = [("dwProcessId", ctypes.c_ulong), ("StartLow", ctypes.c_ulong), ("StartHigh", ctypes.c_ulong)]
+
+
+class _RmProcessInfo(ctypes.Structure):
+    _fields_ = [("Process", _RmUniqueProcess), ("strAppName", ctypes.c_wchar * 256),
+                ("strServiceShortName", ctypes.c_wchar * 64), ("ApplicationType", ctypes.c_int),
+                ("AppStatus", ctypes.c_ulong), ("TSSessionId", ctypes.c_ulong), ("bRestartable", ctypes.c_int)]
+
+
+def _image_path(pid: int) -> Path | None:
+    """The executable of a process, by asking for query rights only."""
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    k32.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_wchar_p,
+                                               ctypes.POINTER(ctypes.c_ulong)]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return None
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = ctypes.c_ulong(len(buf))
+        return Path(buf.value) if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) else None
+    finally:
+        k32.CloseHandle(h)
+
+
+def holders(paths: list[Path]) -> list[str]:
+    """Which processes have any of these files open, as "Name.exe (pid N)".
+    Asks the Restart Manager, which only reads: nothing is closed or stopped."""
+    paths = [p for p in paths if p.exists()]
+    if not paths or os.name != "nt":
+        return []
+    try:
+        rm = ctypes.WinDLL("rstrtmgr")
+    except OSError:
+        return []
+    session = ctypes.c_ulong()
+    key = ctypes.create_unicode_buffer(64)  # CCH_RM_SESSION_KEY + 1 is 33
+    if rm.RmStartSession(ctypes.byref(session), 0, key):
+        return []
+    try:
+        names = (ctypes.c_wchar_p * len(paths))(*[str(p) for p in paths])
+        if rm.RmRegisterResources(session, len(paths), names, 0, None, 0, None):
+            return []
+        needed, count, reasons = ctypes.c_uint(), ctypes.c_uint(0), ctypes.c_ulong()
+        infos = (_RmProcessInfo * 1)()
+        rc = rm.RmGetList(session, ctypes.byref(needed), ctypes.byref(count), None, ctypes.byref(reasons))
+        for _ in range(3):  # ERROR_MORE_DATA: retry with room for them (more may open meanwhile)
+            if rc != 234 or not needed.value:
+                break
+            infos = (_RmProcessInfo * needed.value)()
+            count.value = needed.value
+            rc = rm.RmGetList(session, ctypes.byref(needed), ctypes.byref(count), infos, ctypes.byref(reasons))
+        if rc:
+            return []
+        out = []
+        for info in infos[:count.value]:
+            pid = info.Process.dwProcessId
+            image = _image_path(pid)
+            out.append(f"{image.name if image else info.strAppName or '?'} (pid {pid})")
+        return sorted(set(out))
+    finally:
+        rm.RmEndSession(session)
+
+
 def copy_db(src: Path, dst: Path) -> None:
     for attempt in range(4):
         before = db_state(src)
-        if dst.exists():
-            shutil.rmtree(dst)
+        if dst.exists() and not remove_tree(dst):
+            raise RuntimeError(f"could not clear {dst} for a second copy")
         rc = subprocess.run(["robocopy", str(src), str(dst), "/E", "/R:2", "/W:1", "/XF", "LOCK",
                              "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
                             capture_output=True, creationflags=NO_WINDOW).returncode
         if rc >= 8:  # robocopy: < 8 is success
-            raise RuntimeError(f"robocopy {src.name} failed with code {rc}")
+            held = holders([f for f in src.iterdir() if f.is_file()])
+            raise RuntimeError(f"robocopy {src.name} failed with code {rc}"
+                               + (f"; held open by {', '.join(held)}" if held else ""))
         if db_state(src) == before:
             return
         time.sleep(0.5 * (attempt + 1))  # LevelDB was compacting: copy again
@@ -206,10 +306,19 @@ def verify_worker(backup: Path) -> int:
 
 
 # -- the input method's server ------------------------------------------------
-def _running(name: str) -> bool:
+def _pids(name: str) -> list[int]:
     out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {name}", "/NH", "/FO", "CSV"],
-                         capture_output=True, creationflags=NO_WINDOW).stdout
-    return name.lower().encode() in out.lower()
+                         capture_output=True, creationflags=NO_WINDOW).stdout.decode("mbcs", "replace")
+    pids = []
+    for line in out.splitlines():
+        cols = [c.strip('"') for c in line.split('","')]
+        if len(cols) > 1 and cols[0].lower() == name.lower() and cols[1].isdigit():
+            pids.append(int(cols[1]))
+    return pids
+
+
+def _running(name: str) -> bool:
+    return bool(_pids(name))
 
 
 def _root(key: str) -> Path | None:
@@ -221,20 +330,39 @@ def _root(key: str) -> Path | None:
         return None
 
 
-def weasel_server() -> Path:
-    """The running server (島輝 first), else an installed one."""
+def running_servers() -> list[Path]:
+    """Every server in SERVERS that is running (島輝 first). Both lock the
+    shared databases, so all of them must be stopped for a copy."""
+    out = []
     for name, key in SERVERS:
-        if _running(name) and _root(key):
-            return _root(key) / name
-    for name, key in SERVERS:
+        pids = _pids(name)
+        if not pids:
+            continue
         root = _root(key)
-        if root and (root / name).exists():
-            return root / name
-    raise FileNotFoundError("no DaoHui or Weasel server is installed")
+        exe = root / name if root and (root / name).exists() else _image_path(pids[0])
+        out.append(exe or Path(name))  # a bare name: stop_server() will report it
+    return out
 
 
 def server_running() -> bool:
     return any(_running(name) for name, _ in SERVERS)
+
+
+def stop_servers(servers: list[Path]) -> tuple[list[Path], list[str]]:
+    """Ask each to quit: (the ones that did, an error for each one that did not)."""
+    stopped, errors = [], []
+    for exe in servers:
+        if stop_server(exe):
+            stopped.append(exe)
+        else:
+            errors.append(f"{exe.name} did not quit; its databases are locked")
+    return stopped, errors
+
+
+def start_servers(servers: list[Path]) -> list[str]:
+    """Start again what stop_servers() stopped: an error for each that does not come back."""
+    return [f"{exe.name} did not start again: start it from the Start menu (島輝 / 小狼毫算法服務)"
+            for exe in servers if not start_server(exe)]
 
 
 def wait_for(cond, seconds: float, step: float = 0.2) -> bool:
@@ -247,7 +375,10 @@ def wait_for(cond, seconds: float, step: float = 0.2) -> bool:
 
 
 def stop_server(exe: Path) -> bool:
-    subprocess.run([str(exe), "/q"], cwd=str(exe.parent), creationflags=NO_WINDOW)
+    try:
+        subprocess.run([str(exe), "/q"], cwd=str(exe.parent), creationflags=NO_WINDOW)
+    except OSError:
+        return False  # its folder is unknown: it cannot be asked to quit
     return wait_for(lambda: not _running(exe.name), 15)
 
 
@@ -309,15 +440,16 @@ def to_keep(items: list[tuple[str, dict]], today: dt.date) -> set[str]:
     return keep
 
 
-def prune(dest: Path, today: dt.date) -> list[str]:
+def prune(dest: Path, today: dt.date) -> tuple[list[str], list[str]]:
+    """Remove the backups to_keep() does not keep: (removed, could not be removed).
+    Only folders that are really gone count as removed."""
     items = backups(dest)
     keep = to_keep(items, today)
-    removed = []
+    removed, stuck = [], []
     for name, _ in items:
         if name not in keep:
-            shutil.rmtree(dest / name, ignore_errors=True)
-            removed.append(name)
-    return removed
+            (removed if remove_tree(dest / name) else stuck).append(name)
+    return removed, stuck
 
 
 def total(manifest: dict) -> int:
@@ -332,12 +464,15 @@ def backup(root: Path, dest: Path, check: bool = True, now: dt.datetime | None =
     target.mkdir(parents=True)
     dbs, files = sources(root)
     manifest: dict = {"time": now.isoformat(timespec="seconds"), "ok": True, "errors": [], "files": {}}
-    exe = weasel_server() if service and dbs and server_running() else None
+    servers = running_servers() if service and dbs else []
+    stopped: list[Path] = []
     t0 = time.monotonic()
     try:
-        if exe and not stop_server(exe):
+        stopped, errors = stop_servers(servers)
+        if errors:
             manifest["ok"] = False
-            manifest["errors"].append(f"{exe.name} did not quit; its databases are locked")
+            manifest["errors"] += errors
+        manifest["servers_stopped"] = [exe.name for exe in stopped]
         for db in dbs:
             rel = db.relative_to(root)
             try:
@@ -347,11 +482,11 @@ def backup(root: Path, dest: Path, check: bool = True, now: dt.datetime | None =
                 manifest["ok"] = False
                 manifest["errors"].append(str(e))
     finally:
-        if exe:
-            if not start_server(exe):
+        if servers:
+            errors = start_servers(stopped)
+            if errors:
                 manifest["ok"] = False
-                manifest["errors"].append(f"{exe.name} did not start again: start it from the Start menu "
-                                          "(島輝 / 小狼毫算法服務)")
+                manifest["errors"] += errors
             manifest["server_down_seconds"] = round(time.monotonic() - t0, 1)
     for f in files:
         rel = f.relative_to(root)
@@ -422,8 +557,13 @@ def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True, 
         print(f"The backup is incomplete (missing {missing}); nothing was changed.")
         return 1
     want = manifest.get("sha256")
+    if not isinstance(want, dict):
+        # Without checksums a damaged table cannot be told from a good one.
+        print(f"{name} has no checksums (sha256) in its backup.json, so it cannot be checked; "
+              "nothing was changed.")
+        return 1
     have = hashes(src, rels)
-    if want is not None and have != want:
+    if have != want:
         bad = sorted(k for k in set(want) | set(have) if want.get(k) != have.get(k))
         print(f"The backup has changed since it was made ({bad[:3]}...); nothing was changed.")
         return 1
@@ -439,7 +579,7 @@ def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True, 
     staged = {rel: (root / rel).with_name((root / rel).name + f".restore-{stamp}") for rel in rels}
     aside = dest / f"_before-restore-{stamp}"
     done: list[tuple[str, str]] = []  # ("aside" | "in", rel), in the order made
-    server = None
+    stopped: list[Path] = []
     try:
         try:
             for rel in rels:
@@ -460,11 +600,10 @@ def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True, 
             return 1
 
         # 3. Swap, with the server stopped; undo everything if a step fails.
-        server = weasel_server() if service and server_running() else None
-        if server and not stop_server(server):
-            print(f"{server.name} did not quit; nothing was changed.")
-            server = None
-            return 1
+        stopped, errors = stop_servers(running_servers() if service else [])
+        if errors:
+            print(f"{'; '.join(errors)}; nothing was changed.")
+            return 1  # the finally below starts again the ones that did quit
         try:
             for n, rel in enumerate(rels):
                 if fail_after is not None and n >= fail_after:
@@ -486,15 +625,26 @@ def restore(root: Path, dest: Path, name: str, yes: bool, service: bool = True, 
             print(f"The restore failed ({e}); everything was put back as it was.")
             return 1
     finally:
+        left = []
         for path in staged.values():  # whatever was not moved in
             if path.is_dir():
-                shutil.rmtree(path, ignore_errors=True)
-            elif path.exists():
-                path.unlink()
-        if aside.is_dir() and not any(f.is_file() for f in aside.rglob("*")):
-            shutil.rmtree(aside, ignore_errors=True)
-        if server and not start_server(server):
-            print(f"{server.name} did not start again: start it from the Start menu (島輝 / 小狼毫算法服務).")
+                gone = remove_tree(path)  # copytree carried the read-only attribute over
+            else:
+                try:
+                    if path.exists():
+                        os.chmod(path, stat.S_IWRITE)
+                        path.unlink()
+                except OSError:
+                    pass
+                gone = not path.exists()
+            if not gone:
+                left.append(str(path))
+        if aside.is_dir() and not any(f.is_file() for f in aside.rglob("*")) and not remove_tree(aside):
+            left.append(str(aside))
+        if left:
+            print(f"Could not remove {left}: delete them by hand.")
+        for error in start_servers(stopped):
+            print(error + ".")
     print("Restored." + (f" The previous files are in {aside}." if aside.is_dir() else ""))
     return 0
 
@@ -572,6 +722,100 @@ def uninstall() -> int:
     return proc.returncode
 
 
+# -- one run, and what the daily task does --------------------------------------
+def write_marker(dest: Path, now: dt.datetime, what: str, errors: list[str]) -> None:
+    """A failure nobody sees is a failure that repeats: leave a file in plain sight."""
+    lines = ["島輝學習資料備份失敗", "",
+             f"時間：{now:%Y-%m-%d %H:%M:%S}",
+             f"備份：{what}",
+             "原因："] + [f"  - {e}" for e in errors] + [
+             "",
+             "怎麼辦：",
+             "  - 原因寫「held open by WeaselServer.exe」或「did not quit」：小狼毫的伺服器還開著，"
+             "它和島輝共用詞庫。從語言設定移除小狼毫，或先結束它，再手動備份一次。",
+             "  - 手動備份：python tools/backup_learn.py（輸入法會停 2-3 秒）",
+             "  - 詳細紀錄：backups/learn/backup.log",
+             "",
+             "今天的排程不會再停止輸入法重試（只在伺服器沒有執行時才重試），明天起照常。",
+             "下一次備份成功後，這個檔案會自動刪除。",
+             "",
+             f"failed_at={now.isoformat(timespec='seconds')}", ""]
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / MARKER).write_text("\n".join(lines), encoding="utf-8")
+
+
+def clear_marker(dest: Path) -> None:
+    try:
+        (dest / MARKER).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def marker_day(dest: Path) -> dt.date | None:
+    """The day of the last failure, if its marker is there."""
+    path = dest / MARKER
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"^failed_at=(\d{4}-\d\d-\d\d)", text, re.M)
+    if m:
+        try:
+            return dt.date.fromisoformat(m.group(1))
+        except ValueError:  # a date like 2026-13-40 edited in by hand
+            pass
+    return dt.date.fromtimestamp(path.stat().st_mtime)  # edited by hand: its date will do
+
+
+def run_once(root: Path, dest: Path, check: bool = True, service: bool = True,
+             now: dt.datetime | None = None) -> int:
+    """Back up, prune, log, and keep the failure marker up to date."""
+    now = now or dt.datetime.now()
+    try:
+        target, manifest = backup(root, dest, check=check, now=now, service=service)
+    except Exception as e:  # the scheduled task has no console: leave a trace
+        log(f"FAILED {type(e).__name__}: {e}", dest)
+        write_marker(dest, now, "（沒有完成）", [f"{type(e).__name__}: {e}"])
+        return 1
+    if manifest["ok"] and not manifest.get("shrunk"):
+        removed, stuck = prune(dest, now.date())
+        clear_marker(dest)
+        log(f"ok {target.name}: {describe(manifest)}" + (f"; removed {len(removed)} old" if removed else "")
+            + (f"; could not remove {len(stuck)} old: {stuck[:3]}" if stuck else ""), dest)
+        return 0
+    if manifest["ok"]:
+        clear_marker(dest)
+        log(f"WARNING {target.name}: far fewer entries than the previous backup ({describe(manifest)}); "
+            f"nothing old was removed", dest)
+        return 0
+    write_marker(dest, now, target.name, manifest["errors"])
+    log(f"BAD {target.name}: {manifest['errors']}", dest)
+    return 1
+
+
+def scheduled(root: Path, dest: Path, check: bool = True, now: dt.datetime | None = None,
+              service: bool = True) -> int:
+    """What the task runs every two hours: one good backup a day, the input
+    method stopped at most once a day."""
+    now = now or dt.datetime.now()
+    today = now.strftime("%Y%m%d")
+    if any(n.startswith(today) and m.get("ok") for n, m in backups(dest)):
+        return 0  # today's backup exists
+    if marker_day(dest) == now.date():
+        # It failed today with the server stopped once already: do not take
+        # the input method away again. Without a server there is nothing to
+        # stop, so trying again costs nothing.
+        if server_running():
+            log(f"skipped: today's backup failed (see {MARKER}); the input method is not stopped "
+                "again until tomorrow", dest)
+            return 0
+        return run_once(root, dest, check=check, service=False, now=now)
+    if not wait_for(lambda: idle_seconds() >= IDLE_SECONDS, IDLE_WAIT, step=5):
+        log("skipped: the PC was in use; trying again in two hours", dest)
+        return 0
+    return run_once(root, dest, check=check, service=service, now=now)
+
+
 def main() -> int:
     if sys.stdout:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -600,34 +844,17 @@ def main() -> int:
         for name, m in backups(dest):
             state = "ok " if m.get("ok") else "BAD"
             print(f"{name}  {state} {describe(m)}" + (f"  {m.get('errors')}" if not m.get("ok") else ""))
+        if (dest / MARKER).exists():
+            print(f"{MARKER}: the last backup failed on {marker_day(dest)}; see {dest / MARKER}")
         return 0
     if args.restore:
         return restore(args.root, dest, args.restore, args.yes, service=not args.no_service,
                        check=not args.no_verify, fail_after=args.fail_after)
     if args.scheduled:
-        today = dt.date.today().strftime("%Y%m%d")
-        if any(n.startswith(today) and m.get("ok") for n, m in backups(dest)):
-            return 0  # today's backup exists
-        if not wait_for(lambda: idle_seconds() >= IDLE_SECONDS, IDLE_WAIT, step=5):
-            log("skipped: the PC was in use; trying again in two hours", dest)
-            return 0
-    elif not args.no_service and server_running() and sys.stdout:
+        return scheduled(args.root, dest, check=not args.no_verify, service=not args.no_service)
+    if not args.no_service and server_running() and sys.stdout:
         print("The input method stops for 2-3 seconds while its databases are copied...")
-    try:
-        target, manifest = backup(args.root, dest, check=not args.no_verify, service=not args.no_service)
-    except Exception as e:  # the scheduled task has no console: leave a trace
-        log(f"FAILED {type(e).__name__}: {e}", dest)
-        return 1
-    if manifest["ok"] and not manifest.get("shrunk"):
-        removed = prune(dest, dt.date.today())
-        log(f"ok {target.name}: {describe(manifest)}" + (f"; removed {len(removed)} old" if removed else ""), dest)
-        return 0
-    if manifest["ok"]:
-        log(f"WARNING {target.name}: far fewer entries than the previous backup ({describe(manifest)}); "
-            f"nothing old was removed", dest)
-        return 0
-    log(f"BAD {target.name}: {manifest['errors']}", dest)
-    return 1
+    return run_once(args.root, dest, check=not args.no_verify, service=not args.no_service)
 
 
 if __name__ == "__main__":
