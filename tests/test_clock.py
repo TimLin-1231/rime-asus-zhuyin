@@ -8,8 +8,12 @@ Linux branches are exercised with stand-ins: a probe processor, appended to
 the schema for this test only, swaps package.config (which says the Lua
 build is not Windows), io.popen (canned output of date / zsh, nothing is
 spawned) and rime_api, loads asus_clock.lua afresh, writes what it saw to
-<user dir>/clock_probe.txt and puts everything back. The double-tap timing
-itself is covered by test_stage11.py (Shift) and test_tab.py (Tab).
+<user dir>/clock_probe.txt and puts everything back. The same probe swaps
+os.clock / os.time for stand-ins to play the Windows clock running out
+(the MS CRT clock() returns -1 for good after 2^31 ms, 24.86 days of server
+uptime) and jumping back, and drives asus_shift.lua (loaded afresh on that
+clock) with stand-in Shift keys. The double-tap timing on the real clock is
+covered by test_stage11.py (Shift) and test_tab.py (Tab).
 """
 
 from __future__ import annotations
@@ -42,15 +46,45 @@ end
 
 local function run_probe()
   local real = require("asus_clock")
-  local saved = { config = package.config, popen = io.popen, api = rime_api, clock = real }
-  local function fresh(posix, api, answers)
+  local saved = { config = package.config, popen = io.popen, api = rime_api, clock = real,
+                  os_clock = os.clock, os_time = os.time, shift = package.loaded.asus_shift }
+  -- fake (optional): { c = what os.clock() returns, s = what os.time() returns }
+  local function fresh(posix, api, answers, fake)
     local calls = {}
     package.config = posix and "/\n;\n?\n!\n-\n" or saved.config
     rime_api = api
     io.popen = fake_popen(answers or {}, calls)
+    os.clock = fake and function() return fake.c end or saved.os_clock
+    os.time = fake and function(t) return t and saved.os_time(t) or fake.s end or saved.os_time
     package.loaded.asus_clock = nil
     local m = require("asus_clock")
     return m, calls
+  end
+  -- asus_shift.lua loaded afresh on top of clock module m, with a stand-in
+  -- context: returns tap() (one Shift_L press and release) and ascii().
+  local function shift_on(m)
+    package.loaded.asus_clock = m
+    package.loaded.asus_shift = nil
+    local shift = require("asus_shift")
+    local ascii = false
+    local ctx = {
+      get_option = function(_, name) return name == "ascii_mode" and ascii end,
+      set_option = function(_, name, v) if name == "ascii_mode" then ascii = v end end,
+      is_composing = function() return false end,
+      commit = function() end,
+      get_property = function() return "" end,
+    }
+    local env = { engine = { context = ctx } }
+    shift.init(env)
+    local function key(release)
+      return { keycode = 0xffe1, modifier = release and (1 << 30) or 0,
+               release = function() return release end,
+               ctrl = function() return false end, alt = function() return false end }
+    end
+    return function()
+      shift.func(key(false), env)
+      shift.func(key(true), env)
+    end, function() return ascii end
   end
   local ok, err = pcall(function()
     -- This system (Weasel 0.17.4: no get_time_ms).
@@ -71,6 +105,50 @@ local function run_probe()
     m, calls = fresh(false, noapi)
     check("windows, no get_time_ms: os.clock", m.source() == "os.clock" and #calls == 0, m.source())
 
+    -- The stand-in clock and asus_shift driver behave like the real thing.
+    local fake = { c = 10.0, s = 1794873205 }
+    m = fresh(false, noapi, nil, fake)
+    local tap, ascii = shift_on(m)
+    tap(); fake.c = 10.2; tap()
+    check("windows, os.clock: Shift taps 200 ms apart toggle", ascii() == true, tostring(ascii()))
+    fake.c = 11.0; tap(); fake.c = 11.6; tap()
+    check("windows, os.clock: Shift taps 600 ms apart do not toggle", ascii() == true, tostring(ascii()))
+
+    -- The MS CRT clock() runs out after LONG_MAX ms (24.86 days of server
+    -- uptime) and returns -1 for good: os.clock() is -0.001 from then on.
+    fake = { c = 2147483.000, s = 1794873205 }
+    m = fresh(false, noapi, nil, fake)
+    local t1 = m.now_ms()
+    fake.c = 2147483.647
+    local t2 = m.now_ms()
+    check("windows: os.clock in ms until it runs out", t1 == 2147483000 and math.abs(t2 - t1 - 647) < 0.01,
+          t1 .. " " .. t2)
+    fake.c = -0.001
+    local t3 = m.now_ms()
+    check("windows, clock ran out: never backwards", t3 >= t2, t3 - t2)
+    check("windows, clock ran out: source os.time", m.source() == "os.time", m.source())
+    fake.s = fake.s + 5
+    local t4 = m.now_ms()
+    check("windows, clock ran out: 5 s later reads 5000 ms later", t4 - t3 == 5000, t4 - t3)
+    check("windows, clock ran out: fast_ms goes on too", m.fast_ms() == t4, m.fast_ms() - t4)
+    tap, ascii = shift_on(m)
+    tap(); fake.s = fake.s + 5; tap()
+    check("windows, clock ran out: Shift taps 5 s apart do not toggle", ascii() == false, tostring(ascii()))
+    tap()
+    check("windows, clock ran out: two taps within one second still toggle", ascii() == true, tostring(ascii()))
+
+    -- A counter that wraps (or any source that jumps back): a new epoch.
+    fake = { c = 100.0, s = 1794873205 }
+    m = fresh(false, noapi, nil, fake)
+    t1 = m.now_ms(); fake.c = 5.0; t2 = m.now_ms(); fake.c = 5.2; t3 = m.now_ms()
+    check("windows, clock jumps back: far after the last reading", t2 - t1 >= 60000, t2 - t1)
+    check("windows, clock jumps back: exact differences after it", math.abs(t3 - t2 - 200) < 0.01, t3 - t2)
+    fake.c = 100.0
+    tap, ascii = shift_on(m)
+    tap(); fake.c = 0.1; tap()
+    check("windows, clock jumps back: Shift taps across it do not toggle", ascii() == false, tostring(ascii()))
+    os.clock, os.time = saved.os_clock, saved.os_time
+
     -- Linux: GNU date answers with milliseconds.
     m, calls = fresh(true, noapi, { ["date "] = "1761370000123\n" })
     check("posix: not windows", m.windows == false, tostring(m.windows))
@@ -81,6 +159,12 @@ local function run_probe()
     check("posix: one spawn per now_ms after the probe", #calls == n + 1, #calls - n)
     local f = m.fast_ms()
     check("posix: fast_ms never spawns (CPU time)", #calls == n + 1 and math.abs(f - os.clock() * 1000) < 50, f)
+    local answers = { ["date "] = "1761370000123\n" }
+    m = fresh(true, noapi, answers)
+    t1 = m.now_ms()
+    answers["date "] = "1761369000000\n"  -- the wall clock was set back
+    t2 = m.now_ms()
+    check("posix: wall clock set back, now_ms still goes forward", t2 - t1 >= 60000, t2 - t1)
 
     -- macOS: BSD date has no %3N ("...3N"), zsh's $EPOCHREALTIME answers.
     m, calls = fresh(true, noapi, { ["date "] = "17613700003N\n", ["zsh"] = "1761370000.123456789\n" })
@@ -119,7 +203,8 @@ local function run_probe()
           tostring(p.live) .. " " .. tostring(p.pipe))
   end)
   package.config, io.popen, rime_api = saved.config, saved.popen, saved.api
-  package.loaded.asus_clock = saved.clock
+  os.clock, os.time = saved.os_clock, saved.os_time
+  package.loaded.asus_clock, package.loaded.asus_shift = saved.clock, saved.shift
   check("probe ran without a Lua error", ok, err)
 end
 

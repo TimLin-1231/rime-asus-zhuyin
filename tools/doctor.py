@@ -5,7 +5,8 @@ Things that went wrong before without anybody noticing:
     (keys reached applications as plain letters under load);
   - a second Rime server (old 小狼毫) held the shared user folder for 9 days
     and every backup failed;
-  - the backup log was the only place a failure showed up.
+  - the backup log was the only place a failure showed up (a failed backup
+    now also leaves backups/learn/LAST_BACKUP_FAILED.txt, reported as FAIL).
 
     python tools/doctor.py
 
@@ -31,6 +32,7 @@ RIME = ROOT / "rime"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 GH_ACCOUNT = "TimLin-1231"
 TASKS = ("RimeLearnBackup", "DaoHuiSync")
+BACKUP_MARKER = "LAST_BACKUP_FAILED.txt"  # backup_learn.py MARKER
 # Written at run time by librime or the settings app, not configuration.
 RUNTIME_FILES = {"user.yaml", "installation.yaml", "daohui_sync_state.json", "daohui_sync_request"}
 
@@ -122,6 +124,28 @@ def check_backup() -> None:
         report("OK", "學習資料備份", detail)
     if last and not last[20:].startswith(("ok", "BAD")):
         report("WARN", "備份紀錄最後一行", last[:120])
+
+
+def check_backup_marker() -> None:
+    """backups/learn/LAST_BACKUP_FAILED.txt: left by a failed backup
+    (tools/backup_learn.py write_marker), removed by the next good one."""
+    path = ROOT / "backups" / "learn" / BACKUP_MARKER
+    if not path.exists():
+        report("OK", "備份失敗標記", f"沒有 backups/learn/{BACKUP_MARKER}")
+        return
+    body = path.read_text(encoding="utf-8-sig", errors="replace")
+    m = re.search(r"^failed_at=(\S+)", body, re.M)
+    when = m.group(1) if m else f"{dt.datetime.fromtimestamp(path.stat().st_mtime):%Y-%m-%dT%H:%M:%S}（檔案時間）"
+    head = []
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("怎麼辦") or len(head) == 6:  # the advice goes in the fix line
+            break
+        if line and not line.startswith("failed_at="):
+            head.append(line)
+    detail = "；".join(head).replace("：；", "：")  # "原因：" runs on into its first reason
+    report("FAIL", "備份失敗標記", f"failed_at {when}：{detail[:300]}{' …' if len(detail) > 300 else ''}",
+           f"看 backups/learn/{BACKUP_MARKER} 的「怎麼辦」；下一次備份成功後它會自動刪除")
 
 
 def check_deploy() -> None:
@@ -220,8 +244,8 @@ def check_environment() -> None:
 def main() -> int:
     if sys.stdout:
         sys.stdout.reconfigure(encoding="utf-8")
-    for check in (check_server, check_tasks, check_backup, check_deploy, check_slow_log, check_repo,
-                  check_environment):
+    for check in (check_server, check_tasks, check_backup, check_backup_marker, check_deploy, check_slow_log,
+                  check_repo, check_environment):
         try:
             check()
         except Exception as e:  # one broken check must not hide the others

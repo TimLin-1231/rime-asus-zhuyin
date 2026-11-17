@@ -23,7 +23,7 @@
 
 ## Lua 元件
 
-- Windows 內附的 librime-lua 沒有 `rime_api.get_time_ms`；MSVC 的 `os.clock()` 是行程開始後的牆上時間，其他平台是 CPU 時間。統一用 `rime/lua/asus_clock.lua`。
+- Windows 內附的 librime-lua 沒有 `rime_api.get_time_ms`；MSVC 的 `os.clock()` 是 rime.dll 載入後的牆上時間（毫秒），2^31 毫秒（24.86 天）之後永遠是 -1；其他平台是 CPU 時間。統一用 `rime/lua/asus_clock.lua`，它在 -1 之後改用 `os.time()`。
 - 每個 Lua 模組都要自己定義 `kAccepted`／`kNoop` 等常數：沒有全域的，少了會出現 `bad argument #1 to '?'`。
 - translator 拿到的 `seg` 是唯讀的；要改提示文字用 `ctx.composition:back()`。
 - filter 會對每一個 segment 的轉換結果各跑一次：不要用 `composition:back()` 決定行為，要看候選自己的 type 和 span。

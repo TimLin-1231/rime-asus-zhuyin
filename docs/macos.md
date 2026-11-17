@@ -32,7 +32,7 @@
 不受影響：`.gram`、`.ocd2`、`.dict.yaml`、`asus_zhuyin_data.lua`、userdb（LevelDB）都是跨平台格式；Lua 讀檔一律用 `rime_api.get_user_data_dir() .. "/..."`，`shortcuts.txt` 讀檔時已去掉 `\r`。
 
 ### 一個 Windows 上的隱憂（不在這次修）
-小狼毫 0.17.4 的 librime-lua 沒有 `get_time_ms`，所以 Windows 一直用 `os.clock()`。依微軟文件，`clock()` 超過 `clock_t`（32 位元毫秒）能表示的範圍、也就是 **WeaselServer 連續跑 24.8 天** 後會固定回傳 -1，之後每兩下 Shift 都算連按、每兩下 Tab 都算連按。島輝 Windows 版改用新版 librime（有 `get_time_ms`）就自動解決，`asus_clock.lua` 會優先用它。
+小狼毫 0.17.4 的 librime-lua 沒有 `get_time_ms`，所以 Windows 一直用 `os.clock()`。依微軟文件，`clock()` 超過 `clock_t`（32 位元毫秒）能表示的範圍、也就是 **WeaselServer 連續跑 24.8 天** 後會固定回傳 -1。`asus_clock.lua` 遇到 -1 就改用 `os.time()`（整秒），所以不會每兩下 Shift／Tab 都算連按，但連按只在同一秒內才算。島輝 Windows 版改用有 `get_time_ms` 的 librime-lua 就完全解決，`asus_clock.lua` 會優先用它。
 
 ## 2. 鼠鬚管現況（研究結果）
 

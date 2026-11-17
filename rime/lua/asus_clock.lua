@@ -2,7 +2,8 @@
 -- Wall-clock milliseconds for timing between keys, on Windows and macOS:
 -- double-tap Shift (asus_shift.lua), double Tab (asus_tab.lua).
 --
---   now_ms()   wall-clock milliseconds; any origin, only differences count
+--   now_ms()   wall-clock milliseconds; any origin, only differences count;
+--              never runs backwards
 --   fast_ms()  never blocks: now_ms() where that is cheap, otherwise process
 --              CPU time - right for timing a busy loop (asus_lang.lua's
 --              segmentation guard), wrong for the gap between two keys
@@ -18,8 +19,19 @@
 --      does not have it.
 --   2. Windows (Lua built against the Microsoft C runtime; package.config
 --      starts with "\"): os.clock(). The MS CRT clock() is the wall time since
---      the process started, not CPU time, so this is what Weasel 0.17.4 has
---      always used. (It sticks at -1 after 2^31 ms, 24.8 days of uptime.)
+--      the CRT started (rime.dll links it statically: when the server loaded
+--      rime.dll), not CPU time, so this is what Weasel 0.17.4 has always used.
+--      It runs out: clock_t is a 32-bit long, and past LONG_MAX ms (2^31 - 1,
+--      24.86 days of server uptime) the UCRT returns (clock_t)-1 for good
+--      (ucrt/time/clock.cpp in the Windows SDK), so os.clock() is -0.001 from
+--      then on. A clock that stands still makes every two Shift taps with no
+--      key between them a double tap, however far apart. So once os.clock()
+--      is negative, now_ms() counts os.time() seconds instead (case 3 says
+--      what whole seconds cost) and says so once in the log.
+--   Either way the result never runs backwards: when the source jumps back
+--   (a counter that wrapped, a wall clock that was set back), the time goes
+--   on from the last value plus NEW_EPOCH_MS, so two events on either side
+--   of the jump never look close together.
 --   3. Anywhere else os.clock() is CPU time: it stands still while the input
 --      method waits for the next key, so two Shift taps a second apart would
 --      look simultaneous. Lua has no other sub-second clock, and os.time()
@@ -42,8 +54,41 @@ local function api_ms()
   return rime_api.get_time_ms()
 end
 
-local function crt_ms()
+local function cpu_ms()
   return os.clock() * 1000
+end
+
+-- Gap that a backwards jump of the source is turned into (more than any
+-- timing that a caller compares: 300-400 ms taps, a 1 s guard window).
+local NEW_EPOCH_MS = 60000
+
+-- raw() made monotonic: a backwards jump starts a new epoch NEW_EPOCH_MS on.
+local function monotonic(raw)
+  local offset, last = 0, nil
+  return function()
+    local t = raw() + offset
+    if last and t < last then
+      offset = offset + (last - t) + NEW_EPOCH_MS
+      t = last + NEW_EPOCH_MS
+    end
+    last = t
+    return t
+  end
+end
+
+local crt_out = false  -- os.clock() has run out (clock() returned -1)
+
+local function crt_ms()
+  local c = os.clock()
+  if c >= 0 then return c * 1000 end
+  if not crt_out then
+    crt_out = true
+    if log then
+      log.warning("asus_clock.lua: os.clock() ran out (the server has run for 24.8 days);"
+        .. " double Shift / double Tab are timed in whole seconds until it restarts")
+    end
+  end
+  return os.time() * 1000
 end
 
 -- Output of a shell command, or nil.
@@ -90,13 +135,15 @@ local now, fast, source
 if rime_api and rime_api.get_time_ms then
   now, fast, source = api_ms, api_ms, "rime_api"
 elseif WINDOWS then
-  now, fast, source = crt_ms, crt_ms, "os.clock"
+  now = monotonic(crt_ms)
+  fast, source = now, "os.clock"
 else
-  now, fast, source = spawn_ms, crt_ms, nil
+  now, fast, source = monotonic(spawn_ms), cpu_ms, nil
 end
 
 M.now_ms, M.fast_ms = now, fast
 M.source = function()
+  if source == "os.clock" and crt_out then return "os.time" end
   if source then return source end
   spawn_ms()
   return chosen and chosen.name or "os.time"
