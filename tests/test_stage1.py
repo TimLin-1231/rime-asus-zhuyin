@@ -21,7 +21,11 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("stage1")
+    # raw_keys off, also under RIME_TEST_RAW_KEYS=1: the compact bubble checks
+    # are of the default display; in raw-keys mode a pending syllable (cj8)
+    # shows its reading as the first row and the keys as its comment by design
+    # (tests/test_raw_keys.py T1_display_*).
+    r = open_rime("stage1", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_lang/raw_keys: false\n"})
 
     # Compact bubble ------------------------------------------------------
     r.clear(); r.type("su3cl3"); s = r.snapshot()

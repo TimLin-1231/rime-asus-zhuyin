@@ -27,6 +27,19 @@ PATCH = ("patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: fa
          f"  asus_english/pipe: {PIPE}\n"
          "  asus_english/compose: true\n")
 NAMED = ("Tab", "BackSpace", "Return", "Escape", "Down", "Left", "F24")
+PAUSE = 0.15          # the bridge's pause (seconds) in this test
+TYPE_ON_PAUSE = 2.0   # ...for the "typing on within the pause" check
+WAIT = 5.0            # longest wait for something the bridge does
+
+
+def wait_for(cond, timeout: float = WAIT) -> bool:
+    """Poll cond until it is true or timeout seconds have passed."""
+    deadline = time.monotonic() + timeout
+    while not cond():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
 
 
 class FakeModel:
@@ -49,7 +62,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     model, notified = FakeModel(), []
-    bridge = Bridge(model, threading.Lock(), pause=0.15, name=PIPE, notify=notified.append)
+    bridge = Bridge(model, threading.Lock(), pause=PAUSE, name=PIPE, notify=notified.append)
     r = open_rime("stage16", extra={"asus_zhuyin.custom.yaml": PATCH})
 
     def run(*seq: str):
@@ -60,7 +73,9 @@ def main() -> int:
         r.set_option("ascii_mode", True)
         for item in seq:
             if item == "~":
-                before, deadline = bridge.answered, time.monotonic() + 1.0
+                # (A generous deadline: on a busy machine the answer comes late,
+                # and the loop ends as soon as it is there.)
+                before, deadline = bridge.answered, time.monotonic() + WAIT
                 while bridge.answered == before and time.monotonic() < deadline:
                     time.sleep(0.01)
                 time.sleep(0.02)
@@ -92,15 +107,32 @@ def main() -> int:
     got, snap = run("I look forward to ", "~", "F24", "Tab")
     check("a phrase in mid-sentence", got == "I look forward to hearing from you ", repr(got))
     check("the whole text so far was sent", model.seen[-2:-1] == ["I look forward to "] or "I look forward to " in model.seen, f"{model.seen[-3:]}")
-    time.sleep(0.4)
+    wait_for(lambda: model.seen[-1] == "I look forward to hearing from you ")
     check("after taking a phrase the next one is asked for with it included",
           model.seen[-1] == "I look forward to hearing from you ", f"{model.seen[-2:]}")
 
     # -- typing on -----------------------------------------------------------------
-    asked = len(model.seen)
-    got, snap = run("thank you ", "v")
-    time.sleep(0.4)
-    check("typing on within the pause: the model is not asked", len(model.seen) == asked, f"{model.seen[asked:]}")
+    # The bridge's pause is wall-clock time: on a busy machine the key typed
+    # after the request could come later than the 0.15 s pause, and then the
+    # model is asked rightly (test_stage16 failed 3 times in 11 that way). For
+    # this check the pause is TYPE_ON_PAUSE, and "v" is typed only once the
+    # request has reached the bridge (its pipes are served by several threads,
+    # so two quick messages could otherwise arrive the other way round). Then
+    # the test waits past the pause: a bridge that asked the model anyway
+    # (no debounce) is seen.
+    asked, requests = len(model.seen), bridge.asked
+    bridge.pause = TYPE_ON_PAUSE
+    try:
+        run("thank you ")
+        arrived = wait_for(lambda: bridge.asked > requests)
+        r.type("v")
+        cancelled = wait_for(lambda: bridge.request is None)  # the "typed on" message
+        time.sleep(TYPE_ON_PAUSE + 0.5)
+    finally:
+        bridge.pause = PAUSE
+    check("typing on within the pause: the model is not asked",
+          arrived and cancelled and len(model.seen) == asked,
+          f"request arrived={arrived} cancelled={cancelled} asked={model.seen[asked:]}")
     r.key("F24")
     snap = r.snapshot()
     check("...and a late F24 changes nothing", snap.input == "v" and "".join(r.committed) == "thank you ", f"{snap.input!r} {r.committed}")

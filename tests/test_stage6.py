@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from rime_harness import open_rime  # noqa: E402
+from rime_harness import error_lines, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
@@ -262,18 +262,14 @@ def main() -> int:
 
     # BackSpace with the cursor at the very start: there is nothing before it.
     # (glog writes ERROR lines at once, so the log can be read mid-run.)
-    def log_errors() -> list[str]:
-        return [line for f in r.log_dir.glob("*.log*")
-                for line in f.read_text(encoding="utf-8", errors="replace").splitlines() if line.startswith("E")]
-
     meal = "我想吃飯"
     shown = start(keys(meal))
     check("precondition: 我想吃飯 converts", shown == meal, shown)
-    errors_before = log_errors()
+    errors_before = error_lines()
     r.key("Home"); r.key("BackSpace"); s = r.snapshot()
     check("Home, BackSpace: nothing before the cursor, the text and the input stay",
           s.preview == meal and s.input == keys(meal) and s.composing, f"{s.input!r} {s.preview!r}")
-    new_errors = [line for line in log_errors() if line not in errors_before]
+    new_errors = [line for line in error_lines() if line not in errors_before]
     check("...and BackSpace there logs no error", not new_errors, new_errors[0][:200] if new_errors else "")
     r.key("Return")
     out = "".join(r.committed); r.clear()
@@ -299,10 +295,11 @@ def main() -> int:
           before == "請重新啟動應用城市" and ok and after == "這個程式跑很慢", f"{before!r} {c[:5]} {after!r}")
     r2.close()
 
-    lua_errors = [line for rr in (r, r2) for f in rr.log_dir.glob("*.log*")
-                  for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
-                  if line.startswith("E") and "lua" in line.lower()]
-    check("no Lua runtime errors in librime log", not lua_errors, lua_errors[0] if lua_errors else "")
+    # glog writes both sessions into the first one's dir (r2.log_dir stays
+    # empty): read every log dir of this process. Nothing provokes an error.
+    errors = error_lines()
+    check("no error lines in the librime log of either session (any E or F line)", not errors,
+          errors[0] if errors else "")
 
     width = max(len(n) for n, _, _ in RESULTS)
     failed = 0

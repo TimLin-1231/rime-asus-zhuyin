@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from rime_harness import open_rime  # noqa: E402
+from rime_harness import error_lines, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
@@ -64,10 +64,11 @@ def main() -> int:
     off.clear(); off.type(typo); p = off.snapshot().preview; off.close()
     check("asus_typo/enabled: false turns it off", p != sent, p)
 
-    lua_errors = [line for rr in (r, off) for f in rr.log_dir.glob("*.log*")
-                  for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
-                  if line.startswith("E") and "lua" in line.lower()]
-    check("no Lua runtime errors in librime log", not lua_errors, lua_errors[0] if lua_errors else "")
+    # glog writes both sessions into the first one's dir (off.log_dir stays
+    # empty): read every log dir of this process. Nothing provokes an error.
+    errors = error_lines()
+    check("no error lines in the librime log of either session (any E or F line)", not errors,
+          errors[0] if errors else "")
 
     width = max(len(n) for n, _, _ in RESULTS)
     failed = 0

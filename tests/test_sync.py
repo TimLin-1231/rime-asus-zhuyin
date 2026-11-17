@@ -145,10 +145,11 @@ class Step:
 
     def finish(self, extra: dict | None = None) -> None:
         self.r.close()
-        errors = [line for f in self.r.log_dir.glob("*.log*")
-                  for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
-                  if line.startswith("E") and "lua" in line.lower()]
-        self.check("no Lua errors in the librime log", not errors, errors[0] if errors else "")
+        # Every log dir of this step's process (rime_harness.error_lines()).
+        # Nothing in these steps provokes an error line.
+        errors = rh.error_lines()
+        self.check("no error lines in the librime log (any E or F line)", not errors,
+                   errors[0] if errors else "")
         print("RESULT " + json.dumps({"checks": self.checks, **(extra or {})}, ensure_ascii=False))
 
 
@@ -257,7 +258,8 @@ def step_c1() -> None:
 
 def step_rime_sync() -> None:
     ok, log_dir = rh.sync_user_data(user("a"), "sync-a-rime")
-    print("RESULT " + json.dumps({"ok": ok}))
+    errors = rh.error_lines()
+    print("RESULT " + json.dumps({"ok": ok, "errors": errors}, ensure_ascii=False))
 
 
 def step_a4() -> None:
@@ -279,7 +281,12 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def run(step: str, *args: str) -> dict:
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-    p = subprocess.run([sys.executable, __file__, "--step", step, *args], capture_output=True, env=env)
+    try:
+        p = subprocess.run([sys.executable, __file__, "--step", step, *args], capture_output=True, env=env,
+                           timeout=300)
+    except subprocess.TimeoutExpired as e:
+        check(f"step {step} ran", False, f"timeout: {(e.stderr or b'').decode('utf-8', 'replace')[-1000:]}")
+        return {"checks": []}
     out = p.stdout.decode("utf-8", "replace")
     line = next((l for l in reversed(out.splitlines()) if l.startswith("RESULT ")), None)
     if p.returncode or line is None:
@@ -397,6 +404,8 @@ def main() -> int:
     for _ in range(2):
         r = run("rime_sync")
         check("librime's own sync runs", r.get("ok"), str(r))
+        check("...and logs no error line (any E or F line)", "errors" in r and not r["errors"],
+              str(r.get("errors", "no log read"))[:300])
     a4 = run("a4")
     rime_copy = read(SYNC / "dev-a" / "asus_learn.userdb.txt")
     check("librime's own sync backs up asus_learn.userdb (two-field keys only)",

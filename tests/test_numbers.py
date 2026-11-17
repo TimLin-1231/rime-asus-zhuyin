@@ -37,7 +37,12 @@ def keys(marked: str) -> str:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("numbers", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/enabled: false\n"})
+    # raw_keys off, also under RIME_TEST_RAW_KEYS=1: "no digits while typing"
+    # reads the inline text, and in raw-keys mode an unfinished syllable is
+    # shown as the keys typed by design (tests/test_raw_keys.py T1_display_*),
+    # digit keys such as 2 (ㄉ) and 0 (ㄢ) included.
+    r = open_rime("numbers", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_learn/enabled: false\n"
+                                                              "  asus_lang/raw_keys: false\n"})
     r.set_option("prediction", False)
 
     def preview(k: str) -> str:

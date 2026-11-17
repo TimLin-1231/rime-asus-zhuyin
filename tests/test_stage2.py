@@ -30,7 +30,13 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("stage2", extra={"shortcuts.txt": SHORTCUTS, "terra_pinyin.personal.dict.yaml": PERSONAL})
+    # raw_keys off, also under RIME_TEST_RAW_KEYS=1: in raw-keys mode a
+    # shortcut without a tone key (ㄉㄓ, ㄒㄏ) shows its reading first and Enter
+    # commits the keys typed (25), not the expansion. Whether that is wanted is
+    # the owner's decision (docs/dev/OPEN.md: 先顯示按鍵模式下，自訂縮寫不再排第一、
+    # Enter 不送出展開的內容); until then these checks are of the default mode.
+    r = open_rime("stage2", extra={"shortcuts.txt": SHORTCUTS, "terra_pinyin.personal.dict.yaml": PERSONAL,
+                                   "asus_zhuyin.custom.yaml": "patch:\n  asus_lang/raw_keys: false\n"})
 
     # Symbol keyboard ------------------------------------------------------
     r.clear(); r.key("`"); s = r.snapshot()

@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from rime_harness import KEY_TIMEOUT_EXIT, SHIFT_MASK, open_rime  # noqa: E402
+from rime_harness import KEY_TIMEOUT_EXIT, SHIFT_MASK, error_lines, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
@@ -43,23 +43,31 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     RESULTS.append((name, bool(ok), detail))
 
 
-# A glog line of severity ERROR or FATAL: the letter, then the date (E20261116 ...).
-LOG_ERROR = re.compile(r"[EF]\d{8} ")
 # The one error line allowed where the bug is put back: the guard reporting itself
 # (asus_lang.lua guard_tripped).
 GUARD_LINE = re.compile(r"E\d{8} [^\]]*\] asus_lang\.lua: segmentation of \d+ keys "
                         r"did not settle after \d+ rewinds \(\d+ for this key\); "
                         r"using the stock segmentation for this input$")
+# A child prints each ERROR/FATAL line of its librime logs (rime_harness.
+# error_lines()) after this mark, then LOG_READ; the hang child, which never
+# closes, prints its log dir after LOG_DIR_MARK for main() to read.
 LOG_MARK = "librime log error: "
+LOG_READ = "log read"
+LOG_DIR_MARK = "librime log dir: "
 
 
-def log_errors(r) -> list[str]:
-    """The ERROR and FATAL lines of a closed session's librime log, each once
-    (the INFO, WARNING and ERROR files all hold them)."""
-    lines = [line for f in sorted(r.log_dir.glob("*.log*"))
-             for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
-             if LOG_ERROR.match(line)]
-    return list(dict.fromkeys(lines))
+def child_errors(out: list[str]) -> list[str]:
+    return [line[len(LOG_MARK):] for line in out if line.startswith(LOG_MARK)]
+
+
+def report_errors() -> list[str]:
+    """In a child, after its close: print every error line for main()."""
+    errors = error_lines()
+    sys.stdout.reconfigure(encoding="utf-8")
+    for line in errors:
+        print(LOG_MARK + line)
+    print(LOG_READ, flush=True)
+    return errors
 
 
 def shown(lines: list[str]) -> str:
@@ -94,6 +102,8 @@ def loop_keys(r) -> None:
 def child() -> None:
     """No guard: the watchdog has to end this process."""
     r = open_rime("stage9-hang", extra=broken(with_guard=False))
+    sys.stdout.reconfigure(encoding="utf-8")
+    print(LOG_DIR_MARK + str(r.log_dir), flush=True)
     loop_keys(r)
     sys.exit(0)  # not reached while the bug loops
 
@@ -115,9 +125,11 @@ def main() -> int:
     r.type(keys("今天天氣很好")); s = r.snapshot(); r.clear()
     check("the next input converts as usual", s.preview == "今天天氣很好", f"{s.preview!r}")
     r.close()
-    log = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in r.log_dir.glob("*.log*"))
-    check("the guard reports itself in the log", "did not settle" in log)
-    other = [line for line in log_errors(r) if not GUARD_LINE.match(line)]
+    # Every log dir of this process (rime_harness.error_lines()); the guard's
+    # own line is provoked on purpose (the bug is put back), nothing else is.
+    errors = error_lines()
+    check("the guard reports itself in the log", any(GUARD_LINE.match(line) for line in errors), shown(errors))
+    other = [line for line in errors if not GUARD_LINE.match(line)]
     check("the bug's session logs no error line but the guard's", not other, shown(other))
 
     # The current code must not need the guard for the inputs that used to loop.
@@ -125,9 +137,9 @@ def main() -> int:
     check("the real asus_lang.lua never trips the guard on those inputs", proc.returncode == 0,
           proc.stdout.decode("utf-8", "replace")[-300:] + proc.stderr.decode("utf-8", "replace")[-300:])
     out = proc.stdout.decode("utf-8", "replace").splitlines()
-    errors = [line[len(LOG_MARK):] for line in out if line.startswith(LOG_MARK)]
+    errors = child_errors(out)
     check("the real code logs no error lines at all on those inputs",
-          "log read" in out and not errors, shown(errors) if errors else f"no log read: {out[-3:]}")
+          LOG_READ in out and not errors, shown(errors) if errors else f"no log read: {out[-3:]}")
 
     t0 = time.perf_counter()
     proc = subprocess.run([sys.executable, __file__, "--child"], capture_output=True, timeout=120,
@@ -137,6 +149,12 @@ def main() -> int:
     check("without the guard the harness watchdog ends the process",
           proc.returncode == KEY_TIMEOUT_EXIT and "librime is stuck" in err, f"rc={proc.returncode} {err[-200:]!r}")
     check("...within seconds, not days", dt < 60, f"{dt:.0f} s")
+    # The watchdog ends it before any close(): its log is read here, by dir.
+    out = proc.stdout.decode("utf-8", "replace").splitlines()
+    hang_dir = next((line[len(LOG_DIR_MARK):] for line in out if line.startswith(LOG_DIR_MARK)), "")
+    errors = error_lines([hang_dir]) if hang_dir else []
+    check("...and its session logged no error line (the loop is silent; the watchdog says it on stderr)",
+          hang_dir and not errors, shown(errors) if errors else f"no log dir: {out[-3:]}")
 
     # A loop slower than 300 rewinds a second never filled the one-second
     # window; rewinds are counted per key event as well.
@@ -146,6 +164,10 @@ def main() -> int:
     dt = time.perf_counter() - t0
     check("a slow endless loop (5 ms a round) is cut short too", proc.returncode == 0,
           f"rc={proc.returncode} after {dt:.0f} s {proc.stderr.decode('utf-8', 'replace')[-200:]!r}")
+    out = proc.stdout.decode("utf-8", "replace").splitlines()
+    other = [line for line in child_errors(out) if not GUARD_LINE.match(line)]
+    check("...and logs no error line but the guard's (provoked: the bug is put back)",
+          LOG_READ in out and not other, shown(other) if other else f"no log read: {out[-3:]}")
 
     width = max(len(n) for n, _, _ in RESULTS)
     failed = 0
@@ -166,8 +188,8 @@ def slow() -> int:
     r.clear()
     r.type(keys("今天天氣很好")); ok = r.snapshot().preview == "今天天氣很好"
     r.close()
-    log = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in r.log_dir.glob("*.log*"))
-    return 0 if ok and "did not settle" in log else 1
+    errors = report_errors()
+    return 0 if ok and any(GUARD_LINE.match(line) for line in errors) else 1
 
 
 def clean() -> int:
@@ -178,13 +200,9 @@ def clean() -> int:
     for ch in "I'm fine":
         r.key("space" if ch == " " else ch, SHIFT_MASK if ch.isupper() else 0)
     r.close()
-    log = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in r.log_dir.glob("*.log*"))
     # Every error line for main() (LOG_MARK), then the marker that the log was read.
-    sys.stdout.reconfigure(encoding="utf-8")
-    for line in log_errors(r):
-        print(LOG_MARK + line)
-    print("log read")
-    return 1 if "did not settle" in log else 0
+    errors = report_errors()
+    return 1 if any("did not settle" in line for line in errors) else 0
 
 
 if __name__ == "__main__":

@@ -20,7 +20,11 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    r = open_rime("stage3")
+    # raw_keys off, also under RIME_TEST_RAW_KEYS=1: "a stays Zhuyin" and "cl
+    # is 好" read the inline text and the Enter commit, and in raw-keys mode an
+    # unfinished syllable is shown as the keys typed and Enter commits those
+    # keys by design (tests/test_raw_keys.py T1_display_*, T1_enter_commit_*).
+    r = open_rime("stage3", extra={"asus_zhuyin.custom.yaml": "patch:\n  asus_lang/raw_keys: false\n"})
 
     def typed(keys: str):
         r.clear()

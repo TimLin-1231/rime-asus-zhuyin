@@ -16,9 +16,13 @@ from rime_harness import SHIFT_MASK, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
-# asus_learn stays on: it holds the email addresses.
+# asus_learn stays on: it holds the email addresses. raw_keys off, also under
+# RIME_TEST_RAW_KEYS=1: "no digit shows while typing" reads the inline text,
+# and in raw-keys mode an unfinished syllable is shown as the keys typed by
+# design (tests/test_raw_keys.py T1_display_*), digit keys (h0 = ㄘㄢ) included.
 PATCH = ("patch:\n  translator/enable_user_dict: false\n"
-         '  asus_email/min_prefix: "4"\n')
+         '  asus_email/min_prefix: "4"\n'
+         "  asus_lang/raw_keys: false\n")
 EMAILS = "tim.lin@example.com\n"
 
 

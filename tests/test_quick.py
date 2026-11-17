@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from rime_harness import open_rime  # noqa: E402
+from rime_harness import error_lines, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
@@ -44,10 +44,9 @@ def noon_child() -> int:
     r.clear(); r.type(keys("現在")); r.key("Down")
     print(NOON + json.dumps([c for c, _ in r.snapshot().candidates], ensure_ascii=False), flush=True)
     r.close()
-    for f in r.log_dir.glob("*.log*"):
-        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line[:1] in ("E", "F") and line[1:9].isdigit():
-                print(NOON_ERR + line[:200], flush=True)
+    # Every ERROR/FATAL line of this process's librime logs, for main().
+    for line in error_lines():
+        print(NOON_ERR + line[:300], flush=True)
     return 0
 
 
@@ -122,10 +121,10 @@ def main() -> int:
           f"handled={handled} {s.preview!r}")
 
     r.close()
-    lua_errors = [line for f in r.log_dir.glob("*.log*")
-                  for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
-                  if line.startswith("E") and "lua" in line.lower()]
-    check("no Lua runtime errors in librime log", not lua_errors, lua_errors[0] if lua_errors else "")
+    # Every log dir of this process (rime_harness.error_lines()); the noon
+    # child reports its own below. Nothing here provokes an error line.
+    errors = error_lines()
+    check("no error lines in the librime log (any E or F line)", not errors, errors[0] if errors else "")
 
     # Noon: 12:xx is 下午 (12-hour clock), in its own librime process.
     try:

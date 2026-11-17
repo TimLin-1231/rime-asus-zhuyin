@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from eval_learn import Typist  # noqa: E402
-from rime_harness import CONTROL_MASK, SHIFT_MASK, XK, open_rime  # noqa: E402
+from rime_harness import CONTROL_MASK, SHIFT_MASK, XK, error_lines, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 XK["Delete"] = 0xFFFF
@@ -21,6 +21,14 @@ RESULTS: list[tuple[str, bool, str]] = []
 # The language model's 應用城市 is the wrong conversion to learn from here:
 # without the 程式 preference (asus_tw.lua).
 NO_PREFER = "  asus_tw/prefer: false\n"
+# The main session pins the default display (raw_keys off, also under
+# RIME_TEST_RAW_KEYS=1): its English checks read "is kubectl English?" off
+# the inline text, and in raw-keys mode any input without a tone key is shown
+# as the keys typed (kubectl) whether it is English or Zhuyin
+# (tests/test_raw_keys.py T1_display_*). The decay child keeps the mode it is
+# given: its sentences end in tone keys, so both modes show the conversion.
+PIN_DEFAULT_DISPLAY = "  asus_lang/raw_keys: false\n"
+DECAY_ERR = "DECAYERR "
 
 
 def keys(text: str) -> str:
@@ -41,6 +49,9 @@ def decay_case() -> None:
     time.sleep(40)  # one half-life: below the 0.9 a correction needs to apply everywhere
     old = t.preview(keys("請重新啟動應用程式"))
     r.close()
+    # Every ERROR/FATAL line of this process's librime logs, for main().
+    for line in error_lines():
+        print(DECAY_ERR + line[:300])
     print(f"{fresh}\t{old}")
 
 
@@ -49,7 +60,7 @@ def main() -> int:
     if sys.argv[1:] == ["--decay"]:
         decay_case()
         return 0
-    r = open_rime("stage5", extra={"asus_zhuyin.custom.yaml": "patch:\n" + NO_PREFER})
+    r = open_rime("stage5", extra={"asus_zhuyin.custom.yaml": "patch:\n" + NO_PREFER + PIN_DEFAULT_DISPLAY})
     t = Typist(r, SHIFT_MASK, CONTROL_MASK)
     r.set_option("prediction", False)
 
@@ -185,17 +196,24 @@ def main() -> int:
     check("learned data survives a new session", t.preview(keys(code)) == code, t.preview(keys(code)))
 
     r.close()
-    lua_errors = [line for f in r.log_dir.glob("*.log*")
-                  for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
-                  if line.startswith("E") and "lua" in line.lower()]
-    check("no Lua runtime errors in librime log", not lua_errors, lua_errors[0] if lua_errors else "")
+    # Both sessions of this process log into the first one's dir: read every
+    # log dir (rime_harness.error_lines()). Nothing here provokes an error line.
+    errors = error_lines()
+    check("no error lines in the librime log (any E or F line)", not errors, errors[0] if errors else "")
 
     # Decay (own process: librime initialises once per process).
-    out = subprocess.run([sys.executable, __file__, "--decay"], capture_output=True)
-    lines = out.stdout.decode("utf-8", "replace").strip().splitlines()
+    try:
+        out = subprocess.run([sys.executable, __file__, "--decay"], capture_output=True, timeout=300)
+        stdout, stderr, rc = out.stdout.decode("utf-8", "replace"), out.stderr[-300:], out.returncode
+    except subprocess.TimeoutExpired:
+        stdout, stderr, rc = "", b"", "timeout"
+    lines = [line for line in stdout.strip().splitlines() if not line.startswith(DECAY_ERR)]
     fresh, old = (lines[-1].split("\t") + ["", ""])[:2] if lines else ("", "")
-    check("decay: a fresh correction applies", fresh == app, f"{fresh!r} {out.stderr[-300:]!r}")
+    check("decay: a fresh correction applies", fresh == app, f"rc={rc} {fresh!r} {stderr!r}")
     check("decay: an old, faded correction no longer applies", old and old != app, f"{old!r}")
+    child_errors = [line[len(DECAY_ERR):] for line in stdout.splitlines() if line.startswith(DECAY_ERR)]
+    check("the decay process ends cleanly and logs no error", rc == 0 and not child_errors,
+          f"rc={rc} {child_errors[:3]}")
 
     width = max(len(n) for n, _, _ in RESULTS)
     failed = 0

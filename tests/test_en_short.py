@@ -15,7 +15,13 @@ from rime_harness import SHIFT_MASK, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
-NO_LEARN = "patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: false\n"
+# raw_keys off, also under RIME_TEST_RAW_KEYS=1: these checks read "English
+# or Zhuyin?" off the inline text, and in raw-keys mode an unfinished
+# syllable (這個ap) and a sentence without tone keys are shown as the keys
+# typed by design (tests/test_raw_keys.py T1_display_*), so the inline text
+# has letters either way.
+NO_LEARN = ("patch:\n  asus_learn/enabled: false\n  translator/enable_user_dict: false\n"
+            "  asus_lang/raw_keys: false\n")
 
 
 def keys(text: str) -> str:

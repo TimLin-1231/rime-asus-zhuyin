@@ -18,36 +18,27 @@ No session may log an error (any E or F line in the librime log).
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from rime_harness import open_rime  # noqa: E402
+from rime_harness import error_lines, open_rime  # noqa: E402
 from zhuyin import reading_keys  # noqa: E402
 
 RESULTS: list[tuple[str, bool, str]] = []
 ZHUYIN = set(chr(c) for c in range(0x3105, 0x3130)) | set("ˊˇˋ˙")
 NO_LEARN = "  asus_learn/enabled: false\n  translator/enable_user_dict: false\n"
-# A glog line of severity ERROR or FATAL: the letter, then the date (E20261116 ...).
-LOG_ERROR = re.compile(r"[EF]\d{8} ")
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     RESULTS.append((name, bool(ok), detail))
 
 
-def log_errors(dirs: list[Path]) -> list[str]:
-    """The ERROR and FATAL lines in the librime logs of closed sessions, each
-    once (the INFO, WARNING and ERROR files all hold them)."""
-    lines = [line for d in dict.fromkeys(dirs) for f in sorted(d.glob("*.log*"))
-             for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
-             if LOG_ERROR.match(line)]
-    return list(dict.fromkeys(lines))
-
-
-def check_log(dirs: list[Path], label: str) -> None:
-    errors = log_errors(dirs)
+def check_log(label: str) -> None:
+    """No ERROR or FATAL line in any librime log dir of this process
+    (rime_harness.error_lines(); glog writes every session into the first
+    session's dir). Nothing in this test provokes one."""
+    errors = error_lines()
     shown = "\n      ".join(errors[:10]) + (f"\n      ...and {len(errors) - 10} more" if len(errors) > 10 else "")
     check(f"{label}: no error lines in the librime log", not errors,
           f"{len(errors)} line(s):\n      {shown}")
@@ -205,19 +196,14 @@ def zhuyin_rows(s: Session, mode: str) -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    # glog is set up once per process, so the later sessions log into the first
-    # session's folder (their own stay empty): read all of them.
-    log_dirs: list[Path] = []
     for raw in ("true", "false"):
         mode = f"raw_keys {raw}"
         s = Session(f"zhuyin_row_{raw}", NO_LEARN + f"  asus_lang/raw_keys: {raw}\n")
-        log_dirs.append(s.r.log_dir)
         preference(s, mode)
         zhuyin_rows(s, mode)
         s.r.close()
 
     s = Session("zhuyin_row_off", NO_LEARN + "  asus_tw/prefer: false\n")
-    log_dirs.append(s.r.log_dir)
     got = s.enter(keys("這個程式很好用"))
     check("asus_tw/prefer: false: the language model's 城市 again", got == "這個城市很好用", got)
     got = s.enter(keys("這個坐標"))
@@ -226,7 +212,6 @@ def main() -> int:
 
     # Learning on -----------------------------------------------------------------
     s = Session("zhuyin_row_learn", "  asus_lang/raw_keys: true\n")
-    log_dirs.append(s.r.log_dir)
     # (The same text committed before each: the last commit is the language
     # model's left context.)
     s.enter("su3cl3")
@@ -253,7 +238,7 @@ def main() -> int:
     got = s.enter(keys("城市很熱鬧"))
     check("...and 城市 where it was picked", got == "城市很熱鬧", got)
     s.r.close()
-    check_log(log_dirs, "all four sessions")
+    check_log("all four sessions")
 
     failed = [x for x in RESULTS if not x[1]]
     for name, ok, detail in RESULTS:
