@@ -656,12 +656,24 @@ local MEASURE2 = {
 local DI = "2u4"
 
 -- Can one key of tok, changed to a neighbouring key, make it a syllable?
-local typo_memo = {}
+-- Memoised in two generations of at most TYPO_MEMO_MAX tokens each (the
+-- recently used ones survive a turnover): librime-lua collects garbage on
+-- every call, so a table that only grows makes every key slower. Typing adds
+-- about two tokens a sentence; 200,000 made keys ten times slower (5 -> 50
+-- ms), 20,000 about 2 ms slower (2026-11-16). asus_lang/typo_memo_max sets it.
+local TYPO_MEMO_DEFAULT = 2048
+local TYPO_MEMO_MAX = TYPO_MEMO_DEFAULT
+local typo_memo, typo_memo_old, typo_memo_n, typo_memo_old_n = {}, {}, 0, 0
 local function has_typo_fix(tok)
   local hit = typo_memo[tok]
   if hit == nil then
-    hit = #require("asus_typo").variants(tok) > 0
+    hit = typo_memo_old[tok]
+    if hit == nil then hit = #require("asus_typo").variants(tok) > 0 end
+    if typo_memo_n >= TYPO_MEMO_MAX then
+      typo_memo, typo_memo_old, typo_memo_old_n, typo_memo_n = {}, typo_memo, typo_memo_n, 0
+    end
     typo_memo[tok] = hit
+    typo_memo_n = typo_memo_n + 1
   end
   return hit
 end
@@ -1376,6 +1388,7 @@ function segmentor.init(env)
   EDGE_MARGIN = tonumber(config:get_string("asus_lang/edge_margin") or "") or EDGE_MARGIN
   EDGE_RANK = tonumber(config:get_string("asus_lang/edge_rank") or "") or EDGE_RANK
   EDGE_SYLLABLES = tonumber(config:get_string("asus_lang/edge_syllables") or "") or EDGE_SYLLABLES
+  TYPO_MEMO_MAX = tonumber(config:get_string("asus_lang/typo_memo_max") or "") or TYPO_MEMO_DEFAULT
 end
 
 function segmentor.func(segmentation, env)
@@ -1469,6 +1482,7 @@ function segmentor.func(segmentation, env)
     local last = (not segmentation:empty()) and segmentation:back() or nil
     log.info(string.format("asus_lang input=%q start=%d last=%s plan=%s", input, start,
       last and ("[" .. last.start .. "," .. last._end .. ")") or "-", table.concat(parts, " ")))
+    ctx:set_property("asus_lang_typo_memo", tostring(typo_memo_n + typo_memo_old_n))  -- for tests
   end
   for idx, span in ipairs(spans) do
     if span.s == start then

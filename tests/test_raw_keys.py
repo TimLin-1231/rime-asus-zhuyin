@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -65,6 +66,24 @@ def bs_back_to_tone(r, keys: str, n: int) -> tuple[str, str]:
     return preview, "".join(r.committed)
 
 
+def bs_comment(r, keys: str, n: int) -> tuple[list, list]:
+    """The bubble (text, comment) rows after keys and n BackSpaces, and after
+    typing what is left afresh. The kept segment's row used to keep the
+    comment made for the longer input (su3xx, BackSpace twice: 你 with ㄌㄌ,
+    the reading of the deleted xx)."""
+    r.clear()
+    r.type(keys)
+    for _ in range(n):
+        r.key("BackSpace")
+    s = r.snapshot()
+    after, left = [list(c) for c in s.candidates[:1]], s.input
+    r.clear()
+    r.type(left)
+    fresh = [list(c) for c in r.snapshot().candidates[:1]]
+    r.clear()
+    return after, fresh
+
+
 ZHUYIN_CHARS = set("ㄅㄆㄇㄈㄉㄊㄋㄌㄍㄎㄏㄐㄑㄒㄓㄔㄕㄖㄗㄘㄙㄧㄨㄩㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦˉˊˇˋ˙　")
 
 
@@ -105,6 +124,10 @@ def run_disabled_child() -> int:
     for keys, n, _ in BS_BACK_TO_TONE:
         preview, got = bs_back_to_tone(r, keys, n)
         bs_lines.append(f"BS_BACK:{keys}\t{preview}\t{got}")
+    for keys, n, _ in BS_BACK_TO_TONE:
+        after, fresh = bs_comment(r, keys, n)
+        bs_lines.append(f"BS_COMMENT:{keys}\t{json.dumps(after, ensure_ascii=False)}\t"
+                        f"{json.dumps(fresh, ensure_ascii=False)}")
     r.close()
 
     # In disabled mode, su previews and commits Chinese '你'
@@ -116,9 +139,48 @@ def run_disabled_child() -> int:
     return 0
 
 
+# asus_lang.lua memoises has_typo_fix per token; the memo lived as long as
+# the server and only grew (200,000 tokens made every key ten times slower).
+# With a cap of 50 tokens a generation it must hold 51..100 after many new
+# tokens. asus_lang/debug makes the segmentor report the size in a property.
+MEMO_CAP = 50
+EXTRA_MEMO = {
+    "asus_zhuyin.custom.yaml": (
+        "patch:\n"
+        "  asus_lang/debug: true\n"
+        f"  asus_lang/typo_memo_max: \"{MEMO_CAP}\"\n"
+        "  asus_learn/enabled: false\n"
+        "  translator/enable_user_dict: false\n"
+    )
+}
+
+
+def run_memo_child() -> int:
+    """Helper invoked via --memo: types inputs full of new tokens (three keys
+    and a tone key, seeded) and prints the typo memo size after each one."""
+    import random
+    sys.stdout.reconfigure(encoding="utf-8")
+    r = open_rime("raw_keys_memo_probe", extra=EXTRA_MEMO)
+    r.set_option("prediction", False)
+    rng = random.Random(20261116)
+    letters, tones = "qazwsxedcrfvtgbyhnujmik,ol.p;/-", "3467"
+    sizes = []
+    for _ in range(40):
+        r.clear()
+        r.type("".join("".join(rng.choice(letters) for _ in range(3)) + rng.choice(tones)
+                       for _ in range(6)))
+        sizes.append(int(r.get_property("asus_lang_typo_memo") or "-1"))
+        r.key("Return")
+    r.close()
+    print("MEMO_SIZES:" + json.dumps(sizes))
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--disabled":
         return run_disabled_child()
+    if len(sys.argv) > 1 and sys.argv[1] == "--memo":
+        return run_memo_child()
 
     sys.stdout.reconfigure(encoding="utf-8")
     t0_start = time.perf_counter()
@@ -356,6 +418,16 @@ def main() -> int:
         got = disabled_bs.get(keys)
         check("Tier 1", f"T1_toggle_disabled_bs_back_to_tone_{keys}", got == (want, want),
               f"(inline, commit)={got!r}, want {(want, want)!r}")
+    # The bubble after those BackSpaces, mode off: as if typed afresh.
+    disabled_cm = {}
+    for line in out.splitlines():
+        if line.startswith("BS_COMMENT:"):
+            keys, after, fresh = line.split("BS_COMMENT:", 1)[1].split("\t")
+            disabled_cm[keys] = (json.loads(after), json.loads(fresh))
+    for keys, n, _ in BS_BACK_TO_TONE:
+        after, fresh = disabled_cm.get(keys, (None, None))
+        check("Tier 1", f"T1_toggle_disabled_bs_comment_{keys}", bool(after) and after == fresh,
+              f"bubble after BackSpace={after!r}, typed afresh={fresh!r}")
 
     # -------------------------------------------------------------------------
     # Tier 2: Boundary & Corner Cases
@@ -515,6 +587,12 @@ def main() -> int:
         preview, got = bs_back_to_tone(r, keys, n)
         check("Tier 2", f"T2_bs_back_to_tone_{keys}", (preview, got) == (want, want),
               f"(inline, commit)={(preview, got)!r}, want {(want, want)!r}")
+    # ... and the bubble shows what typing the rest afresh shows, not the
+    # reading of the deleted keys.
+    for keys, n, _ in BS_BACK_TO_TONE:
+        after, fresh = bs_comment(r, keys, n)
+        check("Tier 2", f"T2_bs_comment_{keys}", bool(after) and after == fresh,
+              f"bubble after BackSpace={after!r}, typed afresh={fresh!r}")
 
     # 2.8c Numpad keys while composing: what is shown is committed, then the
     # character (top-row digits are Zhuyin keys); in an open list 1-9 pick.
@@ -781,6 +859,23 @@ def main() -> int:
         "T4_keystroke_latency_perf_acceptable",
         ms_per_key < 30.0,
         f"latency={ms_per_key:.2f} ms/key (threshold < 30 ms/key)",
+    )
+
+    # 4.3b The typo memo of asus_lang.lua stays bounded (child process).
+    try:
+        proc = subprocess.run([sys.executable, __file__, "--memo"], capture_output=True, text=True,
+                              encoding="utf-8", timeout=120)
+    except subprocess.TimeoutExpired:
+        proc = None  # reported as a failed check below, not as a traceback
+    sizes = []
+    for line in (proc.stdout if proc else "").splitlines():
+        if line.startswith("MEMO_SIZES:"):
+            sizes = json.loads(line.split(":", 1)[1])
+    check(
+        "Tier 4",
+        "T4_typo_memo_bounded",
+        bool(proc) and proc.returncode == 0 and len(sizes) == 40 and MEMO_CAP < max(sizes) <= 2 * MEMO_CAP,
+        f"rc={proc.returncode if proc else 'timeout'}, sizes={sizes}, want max in ({MEMO_CAP}, {2 * MEMO_CAP}]",
     )
 
     # 4.4 Close librime and verify clean logs (zero Lua runtime errors)

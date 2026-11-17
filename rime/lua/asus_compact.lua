@@ -215,20 +215,30 @@ local function func(input, env)
       yield(cand)
       english = 1
     elseif keep_rare or not is_rare(cand.text) then
+      -- An earlier segment's candidate gets the comment for the input that
+      -- ends with it: librime keeps that segment and its menu when BackSpace
+      -- deletes the keys after it, and the filter does not run again, so the
+      -- comment for the whole input stayed (su3xx, BackSpace twice: 你 with
+      -- ㄌㄌ, the reading of the deleted xx).
+      local inp, cand_reading = ctx.input, reading
+      if ctx.caret_pos == #ctx.input and seg and cand.start < seg.start then
+        inp = ctx.input:sub(1, cand._end)
+        cand_reading = pending_reading(inp)
+      end
       local comment = ""
       if cand.type ~= "english" and cand.comment == "" then
-        comment = reading
+        comment = cand_reading
         -- Autocomplete hint (Tab accepts, see asus_predict.lua).
-        local cont = reading == "" and ctx:get_option("prediction") and complete(cand.text)
+        local cont = cand_reading == "" and ctx:get_option("prediction") and complete(cand.text)
         if cont then comment = "⇥" .. cont end
       end
       -- A remembered email address starting with the keys typed (Tab types
       -- it, asus_email.lua).
-      local mail = cand._end == #ctx.input and email_match(ctx.input)[1]
+      local mail = cand._end == #inp and email_match(inp)[1]
       if mail then comment = "⇥" .. mail end
-      if env.show_keys and cand._end == #ctx.input and ctx.input ~= "" then
+      if env.show_keys and cand._end == #inp and inp ~= "" then
         comment = ((comment ~= "") and comment or cand.comment)
-        comment = (comment ~= "" and (comment .. "　") or "") .. typed(ctx.input)
+        comment = (comment ~= "" and (comment .. "　") or "") .. typed(inp)
       end
       local is_trailing = (cand._end == #ctx.input) and (ctx.caret_pos == #ctx.input)
       if raw_keys and is_trailing and reading ~= "" and cand.type ~= "number"
@@ -241,6 +251,10 @@ local function func(input, env)
         end
         local display_text = prefix ~= "" and (prefix .. "　" .. reading) or reading
         local comment_keys = env.show_keys and typed(ctx.input) or ""
+        -- The email hint, as in the ordinary bubble (Tab still types it).
+        if mail then
+          comment_keys = "⇥" .. mail .. (comment_keys ~= "" and ("　" .. comment_keys) or "")
+        end
         local cand0 = ShadowCandidate(cand, cand.type, display_text, comment_keys)
         local cand1 = ShadowCandidate(cand, cand.type, cand.text, "")
         yield(cand0)
