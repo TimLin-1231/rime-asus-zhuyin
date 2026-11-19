@@ -38,6 +38,8 @@ fn xml_escape(s: &str) -> String {
 
 /// The Task Scheduler task (schema 1.2, Windows 7+). `user`: DOMAIN\name of
 /// the current user; `start`: local date-time of the first daily run.
+/// Priority 4 (normal): at 7 the process, and the input method server should
+/// the sync start it, ran at below-normal CPU and low I/O and memory priority.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn task_xml(exe: &str, user: &str, start: &str) -> String {
     let dir = xml_escape(exe.rfind(['\\', '/']).map_or("", |i| &exe[..i]));
@@ -90,7 +92,7 @@ pub fn task_xml(exe: &str, user: &str, start: &str) -> String {
     <RunOnlyIfIdle>true</RunOnlyIfIdle>
     <WakeToRun>false</WakeToRun>
     <ExecutionTimeLimit>PT30M</ExecutionTimeLimit>
-    <Priority>7</Priority>
+    <Priority>4</Priority>
   </Settings>
   <Actions Context="Author">
     <Exec>
@@ -388,6 +390,8 @@ mod tests {
         assert_eq!(text(settings, &["RunOnlyIfIdle"]), "true");
         assert_eq!(text(settings, &["DisallowStartIfOnBatteries"]), "false");
         assert_eq!(text(settings, &["MultipleInstancesPolicy"]), "IgnoreNew");
+        // 5-10 would hand below-normal CPU and low I/O priority to the server
+        assert_eq!(text(settings, &["Priority"]), "4");
         let exec = child(child(task, "Actions"), "Exec");
         assert_eq!(text(exec, &["Command"]), exe);
         assert_eq!(text(exec, &["Arguments"]), "--sync");

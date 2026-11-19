@@ -30,11 +30,9 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    # raw_keys off, also under RIME_TEST_RAW_KEYS=1: in raw-keys mode a
-    # shortcut without a tone key (ㄉㄓ, ㄒㄏ) shows its reading first and Enter
-    # commits the keys typed (25), not the expansion. Whether that is wanted is
-    # the owner's decision (docs/dev/OPEN.md: 先顯示按鍵模式下，自訂縮寫不再排第一、
-    # Enter 不送出展開的內容); until then these checks are of the default mode.
+    # The main session is of the default display mode (raw_keys off, also under
+    # RIME_TEST_RAW_KEYS=1); the shortcuts are checked in raw-keys mode too, in
+    # a second session below.
     r = open_rime("stage2", extra={"shortcuts.txt": SHORTCUTS, "terra_pinyin.personal.dict.yaml": PERSONAL,
                                    "asus_zhuyin.custom.yaml": "patch:\n  asus_lang/raw_keys: false\n"})
 
@@ -179,7 +177,38 @@ def main() -> int:
               f"top={s.top!r} preview={s.preview!r}")
 
     r.close()
-    lua_errors = [line for f in r.log_dir.glob("*.log*")
+    main_log_dir = r.log_dir
+
+    # Raw-keys mode: a shortcut is still its expansion, shown inline and
+    # committed by Enter (the owner's choice, 2026-11-18); other unfinished
+    # keys still show as keys.
+    r = open_rime("stage2raw", extra={"shortcuts.txt": SHORTCUTS,
+                                      "asus_zhuyin.custom.yaml": "patch:\n  asus_lang/raw_keys: true\n"})
+    r.clear(); r.type("25"); s = r.snapshot()
+    check("raw keys: shortcut ㄉㄓ is the first candidate and the inline text",
+          s.top == "測試地址一號" and s.preview == "測試地址一號", f"top={s.top!r} preview={s.preview!r}")
+    r.key("Return"); s = r.snapshot()
+    check("raw keys: Enter commits the expansion", s.committed == "測試地址一號", f"{s.committed!r}")
+    r.clear(); r.type("vc"); s = r.snapshot()
+    check("raw keys: shortcut ㄒㄏ expands", s.top == "此致\n敬禮" and s.preview == "此致\n敬禮",
+          f"top={s.top!r} preview={s.preview!r}")
+    r.clear(); r.type("ji3"); s = r.snapshot()
+    check("raw keys: shortcut on a toned syllable (ㄨㄛˇ) comes first",
+          s.top == "我的快捷文字" and s.preview == "我的快捷文字", f"top={s.top!r} preview={s.preview!r}")
+    r.clear(); r.type("25"); r.key("Down"); s = r.snapshot()
+    check("raw keys: normal conversion stays available below the shortcut",
+          len(s.candidates) > 1, f"n={len(s.candidates)}")
+    r.clear(); r.type("2"); s = r.snapshot()
+    check("raw keys: the first key of a shortcut alone still shows the key",
+          s.preview == "2", f"preview={s.preview!r}")
+    r.clear(); r.type("su"); s = r.snapshot()
+    check("raw keys: unfinished keys that are no shortcut still show as keys",
+          s.preview == "su", f"preview={s.preview!r}")
+    r.key("Return"); s = r.snapshot()
+    check("raw keys: Enter on them commits the keys", s.committed == "su", f"{s.committed!r}")
+    r.close()
+
+    lua_errors = [line for d in {main_log_dir, r.log_dir} for f in d.glob("*.log*")
                   for line in f.read_text(encoding="utf-8", errors="replace").splitlines()
                   if line.startswith("E") and "lua" in line.lower()]
     check("no Lua runtime errors in librime log", not lua_errors,

@@ -241,8 +241,11 @@ local function func(input, env)
         comment = (comment ~= "" and (comment .. "　") or "") .. typed(inp)
       end
       local is_trailing = (cand._end == #ctx.input) and (ctx.caret_pos == #ctx.input)
+      -- (A shortcut, asus_shortcuts.lua, is shown and committed as its
+      -- expansion in raw keys mode too: the owner's choice, 2026-11-18.)
       if raw_keys and is_trailing and reading ~= "" and cand.type ~= "number"
-         and cand.type ~= "edit" and (ctx:get_property("asus_edit") or "") == "" then
+         and cand.type ~= "edit" and cand.type ~= "shortcut"
+         and (ctx:get_property("asus_edit") or "") == "" then
         env.raw_active = ctx.input  -- the input these rows are for (see init)
         local tail = ctx.input:sub(1, ctx.caret_pos):match("[^ 6347']*$") or ""
         local prefix = ""

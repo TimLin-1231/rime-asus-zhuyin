@@ -2194,7 +2194,9 @@ function steady.func(input, env)
   for cand in input:iter() do
     if first then
       first = false
-      local text = (cand.type ~= "english" and cand.type ~= "number") and steady_text(env, ctx, cand) or nil
+      -- (A shortcut is its expansion, in raw keys mode too.)
+      local text = (cand.type ~= "english" and cand.type ~= "number" and cand.type ~= "shortcut")
+        and steady_text(env, ctx, cand) or nil
       if text and text ~= cand.text then
         yield(ShadowCandidate(cand, cand.type, text, cand.comment))
       else
