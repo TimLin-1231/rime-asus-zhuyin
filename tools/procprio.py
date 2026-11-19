@@ -85,6 +85,36 @@ def set_normal(pid: int) -> list[str]:
     return failed
 
 
+_adv = C.WinDLL("advapi32", use_last_error=True)
+_adv.OpenProcessToken.argtypes = [W.HANDLE, W.DWORD, C.POINTER(W.HANDLE)]
+_adv.GetTokenInformation.argtypes = [W.HANDLE, C.c_int, C.c_void_p, W.DWORD, C.POINTER(W.DWORD)]
+TOKEN_QUERY = 0x0008
+TOKEN_ELEVATION = 20  # TOKEN_INFORMATION_CLASS
+
+
+def elevated(pid: int) -> bool | None:
+    """Whether pid runs with an administrator (elevated) token; None if that
+    cannot be read. (An elevated installer used to start the server
+    elevated: it then wrote the user's learning data as an administrator.)"""
+    try:
+        h = _open(pid, PROCESS_QUERY_LIMITED_INFORMATION)
+    except OSError:
+        return None
+    tok = W.HANDLE()
+    try:
+        if not _adv.OpenProcessToken(h, TOKEN_QUERY, C.byref(tok)):
+            return None
+        try:
+            value, size = W.DWORD(), W.DWORD()
+            if not _adv.GetTokenInformation(tok, TOKEN_ELEVATION, C.byref(value), 4, C.byref(size)):
+                return None
+            return bool(value.value)
+        finally:
+            _k32.CloseHandle(tok)
+    finally:
+        _k32.CloseHandle(h)
+
+
 def pids(image: str) -> list[int]:
     out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {image}", "/NH", "/FO", "CSV"],
                          capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout

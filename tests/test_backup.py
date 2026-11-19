@@ -362,17 +362,21 @@ child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
 try:
     before = pp.state(child.pid)
     failed = pp.set_normal(child.pid)
-    print(before, failed, pp.state(child.pid), sep="|")
+    print(before, failed, pp.state(child.pid), pp.elevated(child.pid), pp.elevated(2**31 - 1), sep="|")
 finally:
     child.kill()
 '''
     p = subprocess.run([sys.executable, "-c", probe, str(ROOT / "tools")], capture_output=True, text=True, timeout=60)
     parts = p.stdout.strip().split("|")
     check("a child of a background task starts with low priorities",
-          len(parts) == 3 and "BELOW_NORMAL" in parts[0] and "'Low'" in parts[0], p.stdout + p.stderr)
+          len(parts) == 5 and "BELOW_NORMAL" in parts[0] and "'Low'" in parts[0], p.stdout + p.stderr)
     check("set_normal() gives it normal CPU, I/O and memory priority",
-          len(parts) == 3 and parts[1] == "[]" and parts[2] == "{'cpu': 'NORMAL', 'io': 'Normal', 'page': 5}",
+          len(parts) == 5 and parts[1] == "[]" and parts[2] == "{'cpu': 'NORMAL', 'io': 'Normal', 'page': 5}",
           p.stdout + p.stderr)
+    # (doctor.py warns about an elevated server; the tests do not run elevated.
+    # The True case was seen on the server 0.17.4.18's installer started.)
+    check("elevated(): a process of the signed-in user is not elevated; no process gives None",
+          len(parts) == 5 and parts[3] == "False" and parts[4] == "None", p.stdout + p.stderr)
     check("the scheduled task runs at a normal (interactive) priority",
           "<Priority>4</Priority>" in bl.TASK_XML)
 

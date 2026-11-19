@@ -73,6 +73,14 @@ def check_server() -> None:
         else:
             report("FAIL", "島輝伺服器優先權", detail + "（背景優先權：電腦忙時按鍵會變成英數字）",
                    "開始功能表 → 島輝輸入法 → 島輝算法服務（以正常優先權重啟）")
+        elev = procprio.elevated(pid)
+        if elev:
+            report("WARN", "島輝伺服器權限", f"pid {pid} 是系統管理員權限：由安裝或更新啟動（0.17.4.18 和更早的安裝檔都會這樣），"
+                   "學習資料會由系統管理員程式寫入", "登出再登入，或等下一次備份重啟伺服器")
+        elif elev is None:
+            report("WARN", "島輝伺服器權限", f"pid {pid}：讀不到權限")
+        else:
+            report("OK", "島輝伺服器權限", f"pid {pid}：一般使用者")
     if weasel:
         report("FAIL", "小狼毫伺服器也在執行", f"WeaselServer.exe pid {weasel}：會鎖住共用的詞庫，備份會失敗",
                "結束 WeaselServer，並把小狼毫從輸入法清單移除")
