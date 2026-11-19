@@ -8,7 +8,7 @@
 - 使用者目錄＝這個 repo 的 `rime/`（`HKCU\Software\DaoHui` 的 `RimeUserDir`）。改 `rime/` 等於改正在用的輸入法，下次重新部署就上線。
 - 舊小狼毫 0.17.4.0 還裝著、還在輸入法清單裡，`RimeUserDir` 也指向 `rime/`（自動啟動已拿掉）。它的伺服器一啟動就會鎖住詞庫。使用者 11-18 同意移除，等使用者解除安裝。
 - 排程：`RimeLearnBackup`（00:30 起每 2 小時，閒置時備份，會停伺服器 1–3 秒；優先權 4）、`DaoHuiSync`（登入後與每天 12:30；優先權 4，11-18 重新登記）。
-- `D:\src\daohui` 有本機 commit 4809790（前端紀錄被放行的按鍵、伺服器自己設定正常優先權），已在本機編譯，還沒發佈也還沒裝。
+- 0.17.4.18（前端紀錄被放行的按鍵、伺服器自己設定正常優先權；daohui-weasel 4809790）2026-11-19 發佈。
 - 同步：`installation.yaml` 的 `sync_dir` 指向 Google Drive 的鏡像資料夾；只有這一台裝置。
 - AI 修正（Ctrl+R）的模型在 `%USERPROFILE%\.daohui\ai`。
 - 伺服器由備份排程重啟後仍是正常優先權：2026-11-17 00:30 的備份停機 0.6 秒、重啟後 CPU、I/O、記憶體都正常（`tools/doctor.py`）。同一次備份把 `backups/learn` 從 139 個資料夾清到 44 個（剩下 2 個是 10-25 還原時留下的 `_before-restore-*`，刻意保留）。
@@ -18,7 +18,7 @@
 | repo | 本機 | 分支 | 最新發佈 |
 |---|---|---|---|
 | rime-asus-zhuyin（方案、Lua、工具、設定程式、更新資訊） | `D:\Document\輸入法` | `main` | 只有語言模型 `model-wanxiang-lts-20261006` |
-| daohui-weasel（Windows 前端、安裝檔） | `D:\src\daohui` | `daohui` | v0.17.4.17（2026-11-02） |
+| daohui-weasel（Windows 前端、安裝檔） | `D:\src\daohui` | `daohui` | v0.17.4.18（2026-11-19，資料來自 `main` ec4ef06） |
 | daohui-squirrel（Mac 前端） | `D:\src\daohui-mac` | `daohui` | v1.1.2.29（2026-11-19，資料來自 `main` ec4ef06） |
 
 - 三個都是公開的。daohui-squirrel 的 `upstream`（rime/squirrel）禁止推送。
@@ -29,7 +29,7 @@
 
 - Windows：librime 1.13.1（和小狼毫 0.17.4 同一個 `rime.dll`）。版本號第 4 位要用 `DAOHUI_BUILD` 指定（commit 數已經比發佈過的小）。
 - Mac：鼠鬚管 1.1.2，librime 1.16；版本號＝`876adeb` 之後的 commit 數。
-- 更新資訊在 `update/`：`appcast.xml`（Windows 0.17.4.17）、`appcast-macos-app.xml` 與 `appcast-macos.xml`（Mac 1.1.2.29）。
+- 更新資訊在 `update/`：`appcast.xml`（Windows 0.17.4.18）、`appcast-macos-app.xml` 與 `appcast-macos.xml`（Mac 1.1.2.29）。
 - 語言模型：萬象 LTS 2026-10-06 版，410,679,340 bytes，從我們自己的 Release 下載並比對 SHA-256。
 
 ## 開發環境

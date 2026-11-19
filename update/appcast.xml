@@ -15,6 +15,28 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.18</title>
+      <pubDate>Thu, 19 Nov 2026 12:33:00 +0000</pubDate>
+      <sparkle:version>0.17.4.18</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.18</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.18</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>修正：電腦很忙時，按鍵變成英文字母和數字、不跳出選字框（伺服器被排程重新啟動後變成背景優先權）</li>
+          <li>前端等不到伺服器、把按鍵交給程式時，會記在 %USERPROFILE%\.daohui\logs\frontend.log</li>
+          <li>先顯示按鍵：Backspace 之後的注音和 Enter 送出的字是對的；email 提示回來了；自訂縮寫也排第一</li>
+          <li>伺服器連續執行 25 天以上時，按兩下 Shift 或 Tab 不會再每次都被當成連按</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.18/daohui-0.17.4.18-installer.exe"
+                 sparkle:version="0.17.4.18"
+                 sparkle:os="windows"
+                 sparkle:installerArguments="/S"
+                 length="17699758"
+                 type="application/octet-stream"
+                 daohui:sha256="55f5c76670138e506cb4aec8faa25a5538ad9d7d7c022db40b2ec51b28b1000c" />
+    </item>
+    <item>
       <title>島輝 0.17.4.17</title>
       <pubDate>Tue, 03 Nov 2026 02:23:00 +0000</pubDate>
       <sparkle:version>0.17.4.17</sparkle:version>
