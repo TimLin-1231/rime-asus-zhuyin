@@ -15,6 +15,26 @@
     <description>島輝輸入法 Windows 版更新</description>
     <language>zh-TW</language>
     <item>
+      <title>島輝 0.17.4.19</title>
+      <pubDate>Thu, 19 Nov 2026 14:30:00 +0000</pubDate>
+      <sparkle:version>0.17.4.19</sparkle:version>
+      <sparkle:shortVersionString>0.17.4.19</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink xml:lang="zh-TW">https://github.com/TimLin-1231/daohui-weasel/releases/tag/v0.17.4.19</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <ul>
+          <li>修正：安裝或更新後，島輝伺服器以系統管理員權限執行到下次登入。現在改用你的身分啟動</li>
+          <li>0.17.4.18 的改動：電腦很忙時打不出中文的修正、先顯示按鍵的修正、被放行按鍵的紀錄</li>
+        </ul>
+      ]]></description>
+      <enclosure url="https://github.com/TimLin-1231/daohui-weasel/releases/download/v0.17.4.19/daohui-0.17.4.19-installer.exe"
+                 sparkle:version="0.17.4.19"
+                 sparkle:os="windows"
+                 sparkle:installerArguments="/S"
+                 length="17703742"
+                 type="application/octet-stream"
+                 daohui:sha256="427e54795e6b08134762982038e335695d635d8e5b328c741903ce79eff9493e" />
+    </item>
+    <item>
       <title>島輝 0.17.4.18</title>
       <pubDate>Thu, 19 Nov 2026 12:33:00 +0000</pubDate>
       <sparkle:version>0.17.4.18</sparkle:version>
