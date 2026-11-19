@@ -19,7 +19,7 @@
 |---|---|---|---|
 | rime-asus-zhuyin（方案、Lua、工具、設定程式、更新資訊） | `D:\Document\輸入法` | `main` | 只有語言模型 `model-wanxiang-lts-20261006` |
 | daohui-weasel（Windows 前端、安裝檔） | `D:\src\daohui` | `daohui` | v0.17.4.17（2026-11-02） |
-| daohui-squirrel（Mac 前端） | `D:\src\daohui-mac` | `daohui` | v1.1.2.24（2026-10-31）；之後還有 4 個 commit 沒發佈 |
+| daohui-squirrel（Mac 前端） | `D:\src\daohui-mac` | `daohui` | v1.1.2.29（2026-11-19，資料來自 `main` ec4ef06） |
 
 - 三個都是公開的。daohui-squirrel 的 `upstream`（rime/squirrel）禁止推送。
 - `D:\src\weasel` 是舊的小狼毫修補原始碼，不再發佈。
@@ -29,7 +29,7 @@
 
 - Windows：librime 1.13.1（和小狼毫 0.17.4 同一個 `rime.dll`）。版本號第 4 位要用 `DAOHUI_BUILD` 指定（commit 數已經比發佈過的小）。
 - Mac：鼠鬚管 1.1.2，librime 1.16；版本號＝`876adeb` 之後的 commit 數。
-- 更新資訊在 `update/`：`appcast.xml`（Windows 0.17.4.17）、`appcast-macos-app.xml` 與 `appcast-macos.xml`（Mac 1.1.2.24）。
+- 更新資訊在 `update/`：`appcast.xml`（Windows 0.17.4.17）、`appcast-macos-app.xml` 與 `appcast-macos.xml`（Mac 1.1.2.29）。
 - 語言模型：萬象 LTS 2026-10-06 版，410,679,340 bytes，從我們自己的 Release 下載並比對 SHA-256。
 
 ## 開發環境

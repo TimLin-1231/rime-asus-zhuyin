@@ -7,18 +7,18 @@
     <description>島輝 DaoHui for macOS Appcast 更新頻道</description>
     <language>zh</language>
     <item>
-      <title>島輝 1.1.2.24</title>
-      <description><![CDATA[<p>島輝 1.1.2.24</p><ul><li>AI 修正（Ctrl+R）會再想一次：第一次沒找到要改的地方時，自動再問一次，聲調按錯也修得到（例如「一血範例」→「一些範例」）。第二次只會換成同一個注音、不同聲調的字</li><li>不需要重新下載模型</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.24">完整的更新說明</a></p>]]></description>
+      <title>島輝 1.1.2.29</title>
+      <description><![CDATA[<p>島輝 1.1.2.29</p><ul><li>打「ㄔㄥˊㄕˋ」，第一個候選是「程式」</li><li>展開的候選清單，最後一列會顯示注音</li><li>先顯示按鍵：按 Backspace 刪掉沒打完的鍵之後，小框的注音是對的，按 Enter 送出的是轉好的字</li><li>先顯示按鍵：打存過的 email 開頭時，小框又會出現「⇥地址」提示</li><li>自訂縮寫（例如 ㄉㄓ）在先顯示按鍵時也排第一，按 Enter 送出展開的內容</li><li>錯字更正的暫存有上限，長時間使用不會越用越佔記憶體</li><li>不需要重新下載模型</li></ul><p><a href="https://github.com/TimLin-1231/daohui-squirrel/releases/tag/v1.1.2.29">完整的更新說明</a></p>]]></description>
       <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
-      <pubDate>Sat, 31 Oct 2026 06:20:17 +0000</pubDate>
-      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.24/DaoHui-1.1.2.24.zip"
-                 sparkle:version="1.1.2.24"
-                 sparkle:shortVersionString="1.1.2.24"
-                 sparkle:edSignature="ha1T/TovHEwaUVtPbteSJjXWWSWH9jKTO8RcMvxzeD3FgpN3Lae7SPSSkRJ1ie6SYztbzsYuRnqZK6XdrjA3BA=="
+      <pubDate>Thu, 19 Nov 2026 12:26:10 +0000</pubDate>
+      <enclosure url="https://github.com/TimLin-1231/daohui-squirrel/releases/download/v1.1.2.29/DaoHui-1.1.2.29.zip"
+                 sparkle:version="1.1.2.29"
+                 sparkle:shortVersionString="1.1.2.29"
+                 sparkle:edSignature="frJCicVQjZNEU/iT7XZakyNGimC3jOCX5OqpwURo4JELi0DUnTLwBn8g9g2cM/3Zv2cRYrIxzF4d/MEe2nbHCQ=="
                  sparkle:os="macos"
-                 length="26556757"
+                 length="26560212"
                  type="application/octet-stream"
-                 daohui:sha256="759b5ca2b6c25f43227baaaf16176ee15156ea3ecc638d02aa51d66139c2ac78"/>
+                 daohui:sha256="6213ccaafe8baeacd71bdbfa255527b45c42061c81958d45191bdca0bd53b0cd"/>
     </item>
   </channel>
 </rss>
